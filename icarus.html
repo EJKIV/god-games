@@ -1,0 +1,2558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ICARUS</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #000; overflow: hidden; }
+canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── Constants ──────────────────────────────────────────────────────────────
+const GRAVITY        = 400;
+const THRUST         = 620;
+const MAX_SPEED      = 360;
+const MAX_DAMAGE     = 28;   // wing HP/s at full danger
+const BASE_XP        = 5;
+const BONUS_XP       = 45;
+const MAX_SHAKE      = 10;
+const GOLD           = '#D4AF37';
+const FLIGHT_SPEED   = 130;   // px/s auto-rightward world scroll
+const ISLAND_XP_BONUS  = 100;
+const ISLAND_SINK_TIME = 1.1; // s for island to sink after claiming
+
+// ── Tutorial dialogue ──────────────────────────────────────────────────────
+const TUTORIAL_LINES = [
+  { speaker: 'DAEDALUS', text: 'Icarus, my son. I have crafted these wings myself — feathers gathered one by one, bound together with wax. They will carry you into the sky.' },
+  { speaker: 'DAEDALUS', text: 'Hold ↑ to beat the wings and climb. Release the key and you will fall. You will fly forward on your own — guide your height to avoid sun and sea.' },
+  { speaker: 'DAEDALUS', text: 'Islands rest upon the sea below. Land on them to gather honour — each one will reward you with glory before it sinks beneath your feet.' },
+  { speaker: 'DAEDALUS', text: 'But listen closely. Fly too close to the sun and its heat will melt the wax. Your wings will burn, your feathers will fall, and you will plummet.' },
+  { speaker: 'DAEDALUS', text: 'The sea is cold and will weigh your wings with water. Fly too low and they will turn blue and heavy — seek the middle skies when that happens.' },
+  { speaker: 'DAEDALUS', text: 'Fly neither too high nor too low. Follow me, keep your course steady, and we will reach freedom. Now — are you ready?' },
+];
+
+// ── State ──────────────────────────────────────────────────────────────────
+let state = 'title'; // 'title' | 'tutorial' | 'playing' | 'dying' | 'dead'
+let tutorialStep = 0;
+let time  = 0;
+let lastTime = null;
+
+let player, feathers, fires, clouds, floaters, islands, splashes, drips, shakeAmt, shakeDecay;
+let eagles, eagleSpawnTimer;
+let orcas, orcaSpawnTimer;
+let waves, waveSpawnTimer;
+let cameraX = 0;
+let keys = {};
+
+// ── Audio ──────────────────────────────────────────────────────────────────
+let audioCtx = null;
+let windOsc = null, windGain = null;
+let crackleNode = null, crackleGain = null;
+let noiseBuffer = null;
+
+function initAudio() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  // white noise buffer for crackle
+  const len = audioCtx.sampleRate * 2;
+  noiseBuffer = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
+  const d = noiseBuffer.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+
+  // wind oscillator (continuous)
+  windOsc  = audioCtx.createOscillator();
+  windGain = audioCtx.createGain();
+  windOsc.type = 'sine';
+  windOsc.frequency.value = 90;
+  windGain.gain.value = 0;
+  windOsc.connect(windGain);
+  windGain.connect(audioCtx.destination);
+  windOsc.start();
+}
+
+function playFlapSound() {
+  if (!audioCtx) return;
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = 'sawtooth';
+  o.frequency.value = 180;
+  o.frequency.linearRampToValueAtTime(120, audioCtx.currentTime + 0.12);
+  g.gain.setValueAtTime(0.08, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(); o.stop(audioCtx.currentTime + 0.15);
+}
+
+function playFeatherLoss() {
+  if (!audioCtx) return;
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(400, audioCtx.currentTime);
+  o.frequency.exponentialRampToValueAtTime(130, audioCtx.currentTime + 0.35);
+  g.gain.setValueAtTime(0.15, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.35);
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(); o.stop(audioCtx.currentTime + 0.4);
+}
+
+function playDeathSound() {
+  if (!audioCtx) return;
+  // descending cascade
+  [440,370,311,261,220,185,155,130].forEach((freq, i) => {
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = 'sawtooth';
+    o.frequency.value = freq;
+    const t = audioCtx.currentTime + i * 0.12;
+    g.gain.setValueAtTime(0.18, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(t); o.stop(t + 0.3);
+  });
+  // low boom
+  const o2 = audioCtx.createOscillator();
+  const g2 = audioCtx.createGain();
+  o2.type = 'sine';
+  o2.frequency.value = 55;
+  const t2 = audioCtx.currentTime + 1.0;
+  g2.gain.setValueAtTime(0.4, t2);
+  g2.gain.exponentialRampToValueAtTime(0.001, t2 + 1.2);
+  o2.connect(g2); g2.connect(audioCtx.destination);
+  o2.start(t2); o2.stop(t2 + 1.3);
+}
+
+function playXPTick() {
+  if (!audioCtx) return;
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = 'sine';
+  o.frequency.value = 880;
+  g.gain.setValueAtTime(0.04, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.07);
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(); o.stop(audioCtx.currentTime + 0.07);
+}
+
+function playIslandLand() {
+  if (!audioCtx) return;
+  // ascending triumphant chime
+  [523, 659, 784, 1047].forEach((freq, i) => {
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = 'sine';
+    o.frequency.value = freq;
+    const t = audioCtx.currentTime + i * 0.09;
+    g.gain.setValueAtTime(0.14, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(t); o.stop(t + 0.35);
+  });
+}
+
+function playEagleScreech() {
+  if (!audioCtx) return;
+  const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.type = 'sawtooth';
+  o.frequency.setValueAtTime(1100, audioCtx.currentTime);
+  o.frequency.exponentialRampToValueAtTime(520, audioCtx.currentTime + 0.28);
+  o.frequency.exponentialRampToValueAtTime(740, audioCtx.currentTime + 0.46);
+  g.gain.setValueAtTime(0.13, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.55);
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(); o.stop(audioCtx.currentTime + 0.6);
+}
+
+function playOrcaSound() {
+  if (!audioCtx) return;
+  [180, 240, 110].forEach((freq, i) => {
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = 'sine';
+    const t = audioCtx.currentTime + i * 0.15;
+    o.frequency.setValueAtTime(freq, t);
+    o.frequency.exponentialRampToValueAtTime(freq * 0.6, t + 0.4);
+    g.gain.setValueAtTime(0.18, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(t); o.stop(t + 0.55);
+  });
+}
+
+function playSplash() {
+  if (!audioCtx) return;
+  // filtered noise burst
+  const src = audioCtx.createBufferSource();
+  src.buffer = noiseBuffer;
+  const filt = audioCtx.createBiquadFilter();
+  filt.type = 'lowpass';
+  filt.frequency.value = 600;
+  const g = audioCtx.createGain();
+  g.gain.setValueAtTime(0.3, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+  src.connect(filt); filt.connect(g); g.connect(audioCtx.destination);
+  src.start(); src.stop(audioCtx.currentTime + 0.55);
+}
+
+function updateSounds(dangerHeat, vy) {
+  if (!audioCtx) return;
+  // wind pitch tracks vertical speed
+  const freq = 90 + Math.abs(vy) * 0.25;
+  windOsc.frequency.linearRampToValueAtTime(freq, audioCtx.currentTime + 0.1);
+  const windVol = state === 'playing' || state === 'dying' ? 0.05 + Math.abs(vy) * 0.0002 : 0;
+  windGain.gain.linearRampToValueAtTime(windVol, audioCtx.currentTime + 0.1);
+
+  // crackle when hot
+  if (dangerHeat > 0.45 && !crackleNode) {
+    crackleNode = audioCtx.createBufferSource();
+    crackleNode.buffer = noiseBuffer;
+    crackleNode.loop = true;
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = 2200;
+    filter.Q.value = 0.8;
+    crackleGain = audioCtx.createGain();
+    crackleGain.gain.value = 0;
+    crackleNode.connect(filter);
+    filter.connect(crackleGain);
+    crackleGain.connect(audioCtx.destination);
+    crackleNode.start();
+  }
+  if (crackleGain) {
+    const vol = dangerHeat > 0.45 ? (dangerHeat - 0.45) * 0.22 : 0;
+    crackleGain.gain.linearRampToValueAtTime(vol, audioCtx.currentTime + 0.1);
+  }
+}
+
+function stopCrackle() {
+  if (crackleNode) { try { crackleNode.stop(); } catch(e){} crackleNode = null; crackleGain = null; }
+}
+
+// ── Init game ──────────────────────────────────────────────────────────────
+function initGame() {
+  player = {
+    x: canvas.width * 0.28,
+    y: canvas.height * 0.78,
+    worldX: 0,
+    facingRight: true,
+    vx: 0,
+    vy: -220,
+    angle: 0,
+    spinV: 0,
+    wingHealth: 50,
+    burnDmg: 0,   // accumulated sun damage  (drives orange/fire visuals)
+    wetDmg: 0,    // accumulated ocean damage (drives blue/drip visuals)
+    eagleDmg: 0,  // permanent burn floor from eagle hits (irreversible)
+    orcaDmg: 0,   // permanent wet floor from orca hits (irreversible)
+    directDmg: 0, // damage from eagles/orcas — no visual effect, permanent
+    inWater: false,
+    xp: 0,
+    flapPhase: 0,
+    flapThresholdsHit: new Set(),
+    lastXPTick: 0,
+    lastFlapSound: 0,
+    driftX: 0,
+    onIsland: false,
+  };
+  feathers = [];
+  fires    = [];
+  splashes = [];
+  drips    = [];
+  clouds   = initClouds();
+  islands  = initIslands();
+  floaters = [];
+  eagles = []; eagleSpawnTimer = 5;
+  orcas  = []; orcaSpawnTimer  = 8;
+  waves = []; waveSpawnTimer = 5;
+  shakeAmt = 0;
+  shakeDecay = 0;
+  cameraX = player.worldX - canvas.width * 0.42;
+  stopCrackle();
+}
+
+function initClouds() {
+  const arr = [];
+  for (let i = 0; i < 32; i++) {
+    const yFrac = Math.random(); // 0=top, 1=bottom
+    arr.push({
+      x: Math.random() * canvas.width,
+      y: yFrac * canvas.height,
+      w: 60 + Math.random() * 100,
+      h: 22 + Math.random() * 30,
+      speed: 15 + Math.random() * 20,
+      baseAlpha: 0.55 * Math.pow(yFrac, 1.4), // thin near top
+    });
+  }
+  return arr;
+}
+
+function initIslands() {
+  const arr = [];
+  const worldXs = [350,  700, 1100, 1550, 2050, 2600];
+  const widths  = [110,   85,  120,   90,  100,   80];
+  const trees   = [  0,    2,    1,    0,    1,    2];
+  for (let i = 0; i < worldXs.length; i++) {
+    arr.push({
+      worldX: worldXs[i],
+      w: widths[i],
+      treeType: trees[i],
+      sinking: false,
+      sinkT: 0,
+      sparkle: 0,
+    });
+  }
+  return arr;
+}
+
+function spawnIsland() {
+  // place ahead of the furthest existing island
+  const maxWorldX = islands.length > 0
+    ? Math.max(...islands.map(i => i.worldX))
+    : player.worldX + 400;
+  const worldX = maxWorldX + 450 + Math.random() * 350;
+  islands.push({
+    worldX,
+    w: 80 + Math.random() * 55,
+    treeType: Math.floor(Math.random() * 3),
+    sinking: false,
+    sinkT: 0,
+    sparkle: 0,
+  });
+}
+
+function islandSurfaceY() { return canvas.height * 0.805; }
+function oceanY()         { return canvas.height * 0.83; }
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function altRatio() {
+  return 1 - player.y / oceanY();
+}
+function dangerHeat() {
+  return Math.max(0, (altRatio() - 0.45) * (1 / 0.55));
+}
+function lerpColor(a, b, t) {
+  const ah = parseInt(a.slice(1),16), bh = parseInt(b.slice(1),16);
+  const ar=(ah>>16)&255, ag=(ah>>8)&255, ab=ah&255;
+  const br=(bh>>16)&255, bg=(bh>>8)&255, bb=bh&255;
+  const r=Math.round(ar+(br-ar)*t), g=Math.round(ag+(bg-ag)*t), bl2=Math.round(ab+(bb-ab)*t);
+  return `rgb(${r},${g},${bl2})`;
+}
+
+function spawnFeathers(count, fromX, fromY) {
+  for (let i = 0; i < count; i++) {
+    feathers.push({
+      x: fromX + (Math.random()-0.5)*30,
+      y: fromY + (Math.random()-0.5)*20,
+      vx: (Math.random()-0.5)*120,
+      vy: -40 - Math.random()*80,
+      rot: Math.random()*Math.PI*2,
+      rotV: (Math.random()-0.5)*6,
+      alpha: 1,
+      size: 6 + Math.random()*8,
+      color: `hsl(${30+Math.random()*30},80%,${70+Math.random()*20}%)`,
+    });
+  }
+}
+
+function spawnFire(x, y, count) {
+  const colors = ['#ff6a00','#ff9500','#ffcc00','#ff3300','#ffee88'];
+  for (let i = 0; i < count; i++) {
+    fires.push({
+      x: x+(Math.random()-0.5)*22,
+      y: y+(Math.random()-0.5)*12,
+      vx: (Math.random()-0.5)*70,
+      vy: -60 - Math.random()*90,
+      life: 1, maxLife: 0.4+Math.random()*0.5,
+      size: 3+Math.random()*5,
+      color: colors[Math.floor(Math.random()*colors.length)],
+    });
+  }
+}
+
+function addShake(amt) {
+  shakeAmt = Math.max(shakeAmt, amt);
+}
+
+// ── Update ─────────────────────────────────────────────────────────────────
+function update(dt) {
+  time += dt;
+
+  if (state === 'playing') {
+    updatePlaying(dt);
+  } else if (state === 'dying') {
+    updateDying(dt);
+  }
+}
+
+function updatePlaying(dt) {
+  const thrusting = keys['ArrowUp'] || keys[' '];
+
+  // player-driven horizontal flight — no auto-scroll
+  const targetVx = (keys['ArrowRight'] ? 260 : 0) - (keys['ArrowLeft'] ? 260 : 0);
+  player.vx += (targetVx - player.vx) * Math.min(1, dt * 10);
+  player.worldX += player.vx * dt;
+  if (Math.abs(player.vx) > 20) player.facingRight = player.vx > 0;
+  player.x = canvas.width * 0.42;  // fixed screen position; camera follows
+  cameraX = player.worldX - player.x;
+
+  // vertical physics
+  if (thrusting) {
+    player.vy -= THRUST * dt;
+    player.flapPhase += dt * 8;
+    if (time - player.lastFlapSound > 0.18) {
+      playFlapSound();
+      player.lastFlapSound = time;
+    }
+  } else {
+    player.flapPhase += dt * 2;
+  }
+  player.vy += GRAVITY * dt;
+  player.vy = Math.max(-MAX_SPEED, Math.min(MAX_SPEED, player.vy));
+  player.y += player.vy * dt;
+
+  // island landing & ocean clamping
+  player.onIsland = false;
+  const surf = islandSurfaceY();
+  const oY   = oceanY();
+
+  // advance sinking islands and remove when done
+  for (let i = islands.length - 1; i >= 0; i--) {
+    const isl = islands[i];
+    isl.sparkle = Math.max(0, isl.sparkle - dt * 1.5);
+    if (isl.sinking) {
+      isl.sinkT += dt;
+      // gurgle splashes while sinking
+      if (Math.random() < dt * 10) {
+        const ix = isl.worldX - cameraX;
+        for (let j = 0; j < 3; j++) {
+          splashes.push({
+            x: ix + (Math.random()-0.5)*isl.w,
+            y: surf + isl.sinkT / ISLAND_SINK_TIME * 25,
+            vx: (Math.random()-0.5)*60,
+            vy: -30 - Math.random()*40,
+            alpha: 0.7,
+            size: 2 + Math.random()*3,
+          });
+        }
+      }
+      if (isl.sinkT >= ISLAND_SINK_TIME) {
+        islands.splice(i, 1);
+        spawnIsland();
+      }
+    }
+  }
+
+  for (const isl of islands) {
+    if (isl.sinking) continue; // can't land on a sinking island
+
+    const ix = isl.worldX - cameraX;
+    const onX = Math.abs(player.x - ix) < isl.w * 0.48;
+    if (onX && player.y + 14 >= surf - 4 && player.vy >= 0) {
+      // land on island
+      player.y  = surf - 14;
+      player.vy = 0;
+      player.onIsland = true;
+      // claim: give XP and start sinking
+      isl.sinking = true;
+      isl.sinkT   = 0;
+      isl.sparkle = 1;
+      player.xp  += ISLAND_XP_BONUS;
+      floaters.push({
+        x: ix, y: surf - 30,
+        val: ISLAND_XP_BONUS, alpha: 1.5, vy: -75, big: true,
+      });
+      playIslandLand();
+      addShake(3);
+      for (let i = 0; i < 12; i++) {
+        splashes.push({
+          x: ix + (Math.random()-0.5)*isl.w,
+          y: surf,
+          vx: (Math.random()-0.5)*120,
+          vy: -60 - Math.random()*80,
+          alpha: 1,
+          size: 3 + Math.random()*4,
+        });
+      }
+      break;
+    }
+  }
+
+  // ocean surface: bounce + wing damage (water extinguishes burn)
+  if (player.y + 14 >= oY) {
+    // burst damage on first contact each entry
+    if (!player.inWater) {
+      player.wetDmg = Math.min(100, player.wetDmg + 18);
+      player.wingHealth = Math.max(0, 50 - player.burnDmg - player.wetDmg - player.directDmg);
+    }
+    player.inWater = true;
+    const oceanDmg = 80 * dt;
+    player.wetDmg  = Math.min(100, player.wetDmg  + oceanDmg);
+    player.burnDmg = Math.max(player.eagleDmg, player.burnDmg - oceanDmg * 0.625); // water heals only 25% as effectively; eagle damage permanent
+    player.wingHealth = Math.max(0, 50 - player.burnDmg - player.wetDmg - player.directDmg);
+    player.y = oY - 14;
+    if (player.vy > 40) {
+      playSplash();
+      addShake(4);
+      for (let i = 0; i < 18; i++) {
+        splashes.push({
+          x: player.x + (Math.random()-0.5)*40,
+          y: oY,
+          vx: (Math.random()-0.5)*150,
+          vy: -80 - Math.random()*100,
+          alpha: 1,
+          size: 2 + Math.random()*5,
+        });
+      }
+    }
+    player.vy = -player.vy * 0.3;
+  } else {
+    player.inWater = false;
+  }
+
+  player.y = Math.max(80, player.y);
+
+  // wing health — two cancelling sources
+  const heat   = dangerHeat();
+  const sunDmg = heat * MAX_DAMAGE * dt;
+  player.burnDmg = Math.min(100, player.burnDmg + sunDmg);
+  player.wetDmg  = Math.max(player.orcaDmg, player.wetDmg  - sunDmg * 0.625); // sun heals only 25% as effectively; orca damage permanent
+  const prev = player.wingHealth;
+  player.wingHealth = Math.max(0, 50 - player.burnDmg - player.wetDmg - player.directDmg);
+
+  // feather threshold events — only when near the sun
+  if (heat > 0) {
+    const thresholds = [90, 75, 60, 45, 30, 15];
+    for (const t of thresholds) {
+      if (prev > t && player.wingHealth <= t && !player.flapThresholdsHit.has(t)) {
+        player.flapThresholdsHit.add(t);
+        spawnFeathers(8 + Math.floor((100-t)/10), player.x, player.y);
+        playFeatherLoss();
+        addShake(5 + (100-t)*0.06);
+      }
+    }
+  }
+
+  // XP
+  const xpRate = BASE_XP + altRatio() * BONUS_XP;
+  player.xp += xpRate * dt;
+  // floating xp numbers
+  if (time - player.lastXPTick > 0.9) {
+    player.lastXPTick = time;
+    floaters.push({ x: player.x + (Math.random()-0.5)*40, y: player.y - 20,
+      val: Math.round(xpRate * 0.9), alpha: 1, vy: -55 });
+    playXPTick();
+  }
+
+  // water drips driven by wetDmg, regardless of altitude
+  if (player.wetDmg > 10) {
+    const wetness = Math.min(1, player.wetDmg / 60);
+    const ww = 55;
+    if (Math.random() < wetness * dt * 18) {
+      const side = Math.random() < 0.5 ? -1 : 1;
+      const ex = player.x + side * (ww * (0.4 + Math.random() * 0.6));
+      drips.push({
+        x: ex, y: player.y + (Math.random()-0.5)*12,
+        vy: 40 + Math.random()*60,
+        alpha: 0.7 + Math.random()*0.3,
+        size: 2 + Math.random()*2.5,
+        stretch: 1,
+      });
+    }
+  }
+
+  // burning effects driven by burnDmg (sun source only)
+  if (player.burnDmg > 0) {
+    // continuous feathers shedding (from wing area — above+behind player)
+    if (player.burnDmg > 80 && Math.random() < dt * 12) {
+      spawnFeathers(2, player.x - 8, player.y - 28);
+    }
+    // fire particles from wing
+    if (player.burnDmg > 40) {
+      const intensity = (player.burnDmg - 40) / 60;
+      if (Math.random() < intensity * dt * 40) {
+        spawnFire(player.x - 8, player.y - 32, Math.ceil(intensity*3));
+        spawnFire(player.x - 18, player.y - 18, Math.ceil(intensity*2));
+      }
+    }
+    // screen shake
+    if (player.burnDmg > 70) {
+      const intensity = (player.burnDmg - 70) / 30;
+      shakeAmt = Math.max(shakeAmt, intensity * MAX_SHAKE * (0.3 + 0.7*Math.random()));
+    }
+  }
+
+  // remove islands far behind the player
+  for (let i = islands.length - 1; i >= 0; i--) {
+    if (islands[i].worldX < player.worldX - 1200) islands.splice(i, 1);
+  }
+  // ensure there are always at least 5 non-sinking islands ahead
+  const readyAhead = islands.filter(i => !i.sinking && i.worldX > player.worldX).length;
+  if (readyAhead < 5) spawnIsland();
+
+  // ── Eagles ──
+  eagleSpawnTimer -= dt;
+  if (eagleSpawnTimer <= 0) {
+    const diff = Math.min(1, player.worldX / 5000);
+    eagleSpawnTimer = Math.max(2.5, 7 - diff * 4) + Math.random() * 3;
+    const count = Math.random() < diff * 0.5 ? 2 : 1;
+    for (let i = 0; i < count; i++) {
+      eagles.push({
+        x: canvas.width + 70 + i * 110,
+        y: player.y + (Math.random() - 0.5) * canvas.height * 0.42,
+        speed: 340 + Math.random() * 140 + diff * 90,
+        wingPhase: Math.random() * Math.PI * 2,
+        size: 0.9 + Math.random() * 0.4,
+      });
+    }
+  }
+  for (let i = eagles.length - 1; i >= 0; i--) {
+    const e = eagles[i];
+    e.x -= e.speed * dt;
+    e.wingPhase += dt * 5.5;
+    const edx = e.x - player.x, edy = e.y - player.y;
+    if (Math.sqrt(edx*edx + edy*edy) < 28) {
+      player.directDmg = Math.min(100, player.directDmg + 8);  // no fire visuals
+      player.wingHealth = Math.max(0, 50 - player.burnDmg - player.wetDmg - player.directDmg);
+      spawnFeathers(6, player.x - 8, player.y - 25);
+      addShake(9);
+      playEagleScreech();
+      eagles.splice(i, 1);
+      continue;
+    }
+    if (e.x < -90) eagles.splice(i, 1);
+  }
+
+  // ── Orcas ──
+  orcaSpawnTimer -= dt;
+  if (orcaSpawnTimer <= 0) {
+    orcaSpawnTimer = 4 + Math.random() * 4;
+    // always spawn directly below Icarus
+    orcas.push({
+      x: player.x,
+      y: oceanY(),
+      vx: 0,
+      vy: 0,
+      chargeT: 0.5,   // warning phase before launch
+      splashed: false,
+    });
+  }
+  for (let i = orcas.length - 1; i >= 0; i--) {
+    const o = orcas[i];
+    const oY = oceanY();
+
+    if (o.chargeT > 0) {
+      // warning phase: bubble and churn at the surface
+      o.chargeT -= dt;
+      // escalating warning splashes — more frequent as chargeT approaches 0
+      const urgency = 1 - o.chargeT / 0.5;
+      if (Math.random() < dt * (6 + urgency * 28)) {
+        const spread = 55 * (1 - urgency * 0.5);
+        splashes.push({
+          x: o.x + (Math.random()-0.5) * spread, y: oY,
+          vx: (Math.random()-0.5) * 80,
+          vy: -30 - Math.random() * 50 * (1 + urgency),
+          alpha: 0.6 + urgency * 0.4,
+          size: 2 + Math.random() * 3 * (1 + urgency),
+        });
+      }
+      // play sound on launch
+      if (o.chargeT <= 0) {
+        o.vy = -(380 + Math.random() * 80);
+        o.vx = +(170 + Math.random() * 80);  // arc rightward
+        playOrcaSound();
+      }
+      continue;
+    }
+
+    // airborne phase — ballistic arc leftward
+    o.vy += GRAVITY * dt;
+    o.y  += o.vy * dt;
+    o.x  += o.vx * dt;
+
+    // collision with player while above water
+    if (o.y < oY) {
+      const odx = o.x - player.x, ody = o.y - player.y;
+      if (Math.sqrt(odx*odx + ody*ody) < 38) {
+        player.directDmg = Math.min(100, player.directDmg + 8);  // no water visuals
+        player.wingHealth = Math.max(0, 50 - player.burnDmg - player.wetDmg - player.directDmg);
+        addShake(11);
+        playSplash();
+        orcas.splice(i, 1);
+        continue;
+      }
+    }
+    // re-enter water
+    if (o.y >= oY && !o.splashed) {
+      o.splashed = true;
+      playSplash();
+      addShake(5);
+      for (let j = 0; j < 22; j++) {
+        splashes.push({ x: o.x+(Math.random()-0.5)*70, y: oY,
+          vx:(Math.random()-0.5)*170, vy:-75-Math.random()*90, alpha:1, size:3+Math.random()*6 });
+      }
+    }
+    if (o.y > oY + 80) orcas.splice(i, 1);
+  }
+
+  // ── Waves ──────────────────────────────────────────────────────────────
+  waveSpawnTimer -= dt;
+  if (waveSpawnTimer <= 0 && waves.length < 3) {
+    // Only spawn if no other wave is within 400px of the spawn zone
+    const tooClose = waves.some(w => w.x > canvas.width - 100);
+    if (!tooClose) {
+      waveSpawnTimer = 6 + Math.random() * 5;
+      waves.push({
+        x:      canvas.width + 80 + Math.random() * 300,
+        h:      0, maxH: 80 + Math.random() * 70,
+        w:      55 + Math.random() * 35,
+        phase:  'rise', timer: 0, inWave: false,
+      });
+    } else {
+      waveSpawnTimer = 1.5;
+    }
+  }
+  for (let i = waves.length - 1; i >= 0; i--) {
+    const wv = waves[i];
+    wv.x -= 450 * dt;
+    if (wv.x < -wv.w - 20 || wv.x > canvas.width + wv.w + 20) {
+      // Space loop-back away from any other wave
+      let spawnX = canvas.width + 200 + Math.random() * 400;
+      for (const other of waves) {
+        if (other !== wv && Math.abs(other.x - spawnX) < 350)
+          spawnX += 350;
+      }
+      wv.x = spawnX;
+      wv.h = 0; wv.phase = 'rise'; wv.timer = 0; wv.inWave = false;
+      wv.maxH = 80 + Math.random() * 70;
+      wv.w = 55 + Math.random() * 35;
+    }
+    wv.timer += dt;
+    const riseT = 0.55, holdT = 8.0, fallT = 0.7;
+    if (wv.phase === 'rise') {
+      wv.h = wv.maxH * Math.min(1, wv.timer / riseT);
+      if (wv.timer >= riseT) { wv.phase = 'hold'; wv.timer = 0; }
+    } else if (wv.phase === 'hold') {
+      wv.h = wv.maxH;
+      if (wv.timer >= holdT) { wv.phase = 'fall'; wv.timer = 0; }
+    } else {
+      wv.h = wv.maxH * Math.max(0, 1 - wv.timer / fallT);
+      if (wv.timer >= fallT) {
+        // Loop back instead of removing
+        wv.x = canvas.width + 40 + Math.random() * 200;
+        wv.h = 0; wv.phase = 'rise'; wv.timer = 0; wv.inWave = false;
+        wv.maxH = 70 + Math.random() * 80;
+        wv.w = 38 + Math.random() * 30;
+      }
+    }
+
+    // Collision: player hitbox vs wave column
+    const waveTop = oY - wv.h;
+    const inRange = Math.abs(player.x - wv.x) < wv.w + 10
+                 && player.y - 20 < oY
+                 && player.y + 14 > waveTop;
+    if (inRange && !player.inWater) {
+      if (!wv.inWave) {
+        // burst on first contact
+        player.wetDmg = Math.min(100, player.wetDmg + 9);
+        player.wingHealth = Math.max(0, 50 - player.burnDmg - player.wetDmg - player.directDmg);
+        // knock Icarus downward
+        player.vy = Math.max(player.vy + 60, 60);
+        playSplash(); playSplash(); addShake(10);
+        // dramatic splash burst at wave crest
+        const waveTop = oY - wv.h;
+        // main upward column
+        for (let s = 0; s < 28; s++) {
+          const angle = -Math.PI/2 + (Math.random()-0.5)*1.6;
+          const spd = 180 + Math.random()*280;
+          splashes.push({
+            x: wv.x + (Math.random()-0.5)*wv.w*1.4,
+            y: waveTop,
+            vx: Math.cos(angle)*spd,
+            vy: Math.sin(angle)*spd,
+            alpha: 1,
+            size: 4 + Math.random()*8,
+          });
+        }
+        // wide lateral spray
+        for (let s = 0; s < 18; s++) {
+          const side = Math.random() < 0.5 ? -1 : 1;
+          splashes.push({
+            x: wv.x + side*(wv.w*0.3 + Math.random()*wv.w*1.2),
+            y: waveTop + Math.random()*wv.h*0.4,
+            vx: side*(60 + Math.random()*220),
+            vy: -30 - Math.random()*130,
+            alpha: 0.85,
+            size: 2 + Math.random()*5,
+          });
+        }
+      }
+      wv.inWave = true;
+      const waveDmg = 40 * dt;
+      player.wetDmg = Math.min(100, player.wetDmg + waveDmg);
+      player.burnDmg = Math.max(player.eagleDmg, player.burnDmg - waveDmg * 0.625);
+      player.wingHealth = Math.max(0, 50 - player.burnDmg - player.wetDmg - player.directDmg);
+    } else {
+      wv.inWave = false;
+    }
+  }
+
+  // update particles
+  updateParticles(dt);
+  updateClouds(dt);
+  updateFloaters(dt);
+  updateSounds(heat, player.vy);
+  shakeAmt *= Math.pow(0.85, dt * 60);
+
+  if (player.wingHealth <= 0) {
+    state = 'dying';
+    player.spinV = (Math.random() > 0.5 ? 1 : -1) * 4;
+    player.driftX = (Math.random() > 0.5 ? 1 : -1) * 80;
+    playDeathSound();
+    stopCrackle();
+  }
+}
+
+function updateDying(dt) {
+  player.vy += GRAVITY * 1.6 * dt;
+  player.vy = Math.min(player.vy, MAX_SPEED * 1.5);
+  player.y += player.vy * dt;
+  player.x += player.driftX * dt;
+  player.angle += player.spinV * dt;
+  player.spinV += (player.spinV > 0 ? 1 : -1) * 3 * dt;
+
+  // death fire trail
+  if (Math.random() < dt * 30) {
+    spawnFire(player.x, player.y, 4);
+  }
+  spawnFeathers(Math.ceil(dt*8), player.x - 8, player.y - 25);
+  addShake(MAX_SHAKE);
+  shakeAmt *= Math.pow(0.9, dt * 60);
+
+  updateParticles(dt);
+  updateClouds(dt);
+  updateSounds(0, player.vy);
+
+  const oY = oceanY();
+  if (player.y + 14 >= oY && player.vy > 0) {
+    // hit the ocean — splash and die
+    if (!player._splashed) {
+      player._splashed = true;
+      playSplash();
+      addShake(MAX_SHAKE);
+      for (let i = 0; i < 30; i++) {
+        splashes.push({
+          x: player.x + (Math.random()-0.5)*60,
+          y: oY,
+          vx: (Math.random()-0.5)*180,
+          vy: -100 - Math.random()*120,
+          alpha: 1,
+          size: 3 + Math.random()*6,
+        });
+      }
+    }
+    player.y = oY - 14;
+    player.vy *= -0.1;
+  }
+  if (player._splashed && Math.abs(player.vy) < 5) {
+    state = 'dead';
+    stopCrackle();
+    if (windGain) windGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.5);
+  }
+}
+
+function updateParticles(dt) {
+  for (let i = feathers.length-1; i >= 0; i--) {
+    const f = feathers[i];
+    f.x += f.vx * dt; f.y += f.vy * dt;
+    f.vy += 150 * dt;
+    f.vx *= Math.pow(0.92, dt*60);
+    f.rot += f.rotV * dt;
+    f.alpha -= dt * 0.45;
+    if (f.alpha <= 0) feathers.splice(i,1);
+  }
+  for (let i = fires.length-1; i >= 0; i--) {
+    const f = fires[i];
+    f.x += f.vx * dt; f.y += f.vy * dt;
+    f.vy -= 20 * dt;
+    f.life -= dt / f.maxLife;
+    if (f.life <= 0) fires.splice(i,1);
+  }
+  for (let i = splashes.length-1; i >= 0; i--) {
+    const s = splashes[i];
+    s.x += s.vx * dt; s.y += s.vy * dt;
+    s.vy += 200 * dt;
+    s.vx *= Math.pow(0.88, dt*60);
+    s.alpha -= dt * 1.2;
+    if (s.alpha <= 0) splashes.splice(i,1);
+  }
+  for (let i = drips.length-1; i >= 0; i--) {
+    const d = drips[i];
+    d.y     += d.vy * dt;
+    d.vy    += 180 * dt;          // gravity pulls drip down
+    d.stretch = 1 + d.vy * 0.012; // elongate as it accelerates
+    d.alpha -= dt * 1.4;
+    if (d.alpha <= 0) drips.splice(i,1);
+  }
+}
+
+function updateClouds(dt) {
+  for (const c of clouds) {
+    c.x += c.speed * dt;
+    if (c.x - c.w > canvas.width) c.x = -c.w;
+  }
+}
+
+function updateFloaters(dt) {
+  for (let i = floaters.length-1; i >= 0; i--) {
+    const f = floaters[i];
+    f.y += f.vy * dt;
+    f.alpha -= dt * 0.9;
+    if (f.alpha <= 0) floaters.splice(i,1);
+  }
+}
+
+// ── Render ─────────────────────────────────────────────────────────────────
+function render() {
+  const W = canvas.width, H = canvas.height;
+
+  if (state === 'title') {
+    renderTitle(W, H);
+    return;
+  }
+  if (state === 'tutorial') {
+    renderTutorial(W, H);
+    return;
+  }
+  if (state === 'dead') {
+    renderDead(W, H);
+    return;
+  }
+
+  // screen shake
+  ctx.save();
+  if (shakeAmt > 0.5) {
+    ctx.translate(
+      (Math.random()-0.5)*shakeAmt*2,
+      (Math.random()-0.5)*shakeAmt*2
+    );
+  }
+
+  // background
+  renderBackground(W, H);
+
+  // sun
+  renderSun(W, H);
+
+  // clouds
+  renderClouds();
+
+  // ocean (behind islands)
+  renderOcean(W, H);
+
+  // waves
+  for (const wv of waves) {
+    const oY = oceanY();
+    const h = wv.h, cx = wv.x, hw = wv.w;
+    if (h < 2) continue;
+    const progress = Math.min(1, h / wv.maxH);
+    const lean = hw * 0.72 * progress;   // lip pitches left (direction of travel) as wave peaks
+    const top  = oY - h;
+
+    ctx.save();
+
+    // ── Whitewater trail (right of wave — already broken surface)
+    const trailLen = hw * 2.5 * progress;
+    const trailGrad = ctx.createLinearGradient(cx + hw * 0.3, 0, cx + hw * 0.3 + trailLen, 0);
+    trailGrad.addColorStop(0,   'rgba(210,240,255,0.30)');
+    trailGrad.addColorStop(1,   'rgba(210,240,255,0.00)');
+    ctx.beginPath();
+    ctx.moveTo(cx + hw * 0.3, oY - h * 0.04);
+    ctx.quadraticCurveTo(cx + hw * 0.3 + trailLen * 0.5, oY - h * 0.09, cx + hw * 0.3 + trailLen, oY);
+    ctx.lineTo(cx + hw * 0.3, oY);
+    ctx.closePath();
+    ctx.fillStyle = trailGrad;
+    ctx.fill();
+
+    // ── Main wave body (asymmetric — steep concave face left, gentle back right)
+    const bodyGrad = ctx.createLinearGradient(cx - lean, top, cx + hw * 0.4, oY);
+    bodyGrad.addColorStop(0,    'rgba(28, 165, 215, 0.88)');  // crest — bright cyan-blue
+    bodyGrad.addColorStop(0.42, 'rgba(10,  88, 172, 0.93)');  // mid — rich blue
+    bodyGrad.addColorStop(1,    'rgba(4,   38, 108, 0.97)');  // base — deep ocean
+    ctx.beginPath();
+    ctx.moveTo(cx + hw * 0.55, oY);                            // right base
+    ctx.bezierCurveTo(                                          // back wall — gentle slope
+      cx + hw * 0.42, oY - h * 0.30,
+      cx + hw * 0.10, top + h * 0.16,
+      cx - lean + hw * 0.08, top                              // back of crest
+    );
+    ctx.bezierCurveTo(                                          // lip curls left/forward
+      cx - lean + hw * 0.36, top - h * 0.07,
+      cx - lean - hw * 0.06, top + h * 0.04,
+      cx - lean - hw * 0.26, top + h * 0.22                  // curl tip
+    );
+    ctx.bezierCurveTo(                                          // concave scoop face
+      cx - lean - hw * 0.10, oY - h * 0.54,
+      cx - hw * 0.16, oY - h * 0.11,
+      cx - hw * 0.09, oY                                      // front base
+    );
+    ctx.closePath();
+    ctx.fillStyle = bodyGrad;
+    ctx.fill();
+
+    // ── Backlit teal glow through thin wave face (sun behind the wave)
+    const faceGrad = ctx.createLinearGradient(cx - lean, top + h * 0.18, cx + hw * 0.1, oY - h * 0.1);
+    faceGrad.addColorStop(0,   'rgba(70, 225, 205, 0.40)');
+    faceGrad.addColorStop(0.6, 'rgba(20, 160, 200, 0.15)');
+    faceGrad.addColorStop(1,   'rgba(10, 100, 170, 0.00)');
+    ctx.fillStyle = faceGrad;
+    ctx.fill();
+
+    // ── Barrel interior — the glowing hollow tube under the curling lip
+    ctx.beginPath();
+    ctx.moveTo(cx - lean + hw * 0.07, top + h * 0.06);
+    ctx.bezierCurveTo(
+      cx - lean - hw * 0.05, top + h * 0.17,
+      cx - lean - hw * 0.20, top + h * 0.33,
+      cx - hw * 0.05, oY - h * 0.27
+    );
+    ctx.bezierCurveTo(
+      cx + hw * 0.09, oY - h * 0.13,
+      cx + hw * 0.13, top + h * 0.11,
+      cx - lean + hw * 0.07, top + h * 0.06
+    );
+    const barrelGrad = ctx.createRadialGradient(
+      cx - lean * 0.22, top + h * 0.33, h * 0.02,
+      cx - lean * 0.22, top + h * 0.33, hw * 0.52
+    );
+    barrelGrad.addColorStop(0,    'rgba(155, 245, 225, 0.58)');
+    barrelGrad.addColorStop(0.45, 'rgba(45,  190, 210, 0.22)');
+    barrelGrad.addColorStop(1,    'rgba(10,  100, 170, 0.00)');
+    ctx.fillStyle = barrelGrad;
+    ctx.fill();
+
+    // ── Bright foam ridge along breaking crest
+    ctx.beginPath();
+    ctx.moveTo(cx - lean + hw * 0.05, top + 1);
+    ctx.bezierCurveTo(
+      cx - lean + hw * 0.26, top - h * 0.065,
+      cx - lean + hw * 0.52, top - h * 0.018,
+      cx + hw * 0.10, top + h * 0.09
+    );
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.96)';
+    ctx.lineWidth = 4.5;
+    ctx.lineCap = 'round';
+    ctx.shadowColor = '#dff5ff';
+    ctx.shadowBlur = 12;
+    ctx.stroke();
+
+    // ── Foam ribbon down the face
+    ctx.beginPath();
+    ctx.moveTo(cx - lean - hw * 0.20, top + h * 0.24);
+    ctx.bezierCurveTo(
+      cx - lean * 0.50, oY - h * 0.44,
+      cx - hw * 0.11, oY - h * 0.14,
+      cx - hw * 0.05, oY - h * 0.03
+    );
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.52)';
+    ctx.lineWidth = 2.2;
+    ctx.shadowBlur = 5;
+    ctx.stroke();
+
+    // ── Mist / spray above the crest (when wave is near peak)
+    if (progress > 0.5) {
+      const mist = (progress - 0.5) / 0.5;
+      ctx.shadowBlur = 0;
+      for (let i = 0; i < 10; i++) {
+        const ang = -Math.PI * 0.6 + i * 0.13 + Math.sin(time * 2.8 + i * 1.6) * 0.07;
+        const r   = (hw * 0.20 + i * hw * 0.055) * mist;
+        const sx  = cx - lean + hw * 0.08 + Math.cos(ang) * r;
+        const sy  = top - Math.abs(Math.sin(ang)) * r * 0.75;
+        ctx.beginPath();
+        ctx.arc(sx, sy, 1.0 + i * 0.45, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(225, 248, 255, ${mist * 0.52 * (1 - i / 10)})`;
+        ctx.fill();
+      }
+    }
+
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+
+  // world objects: ledge + islands drawn in world space
+  ctx.save();
+  ctx.translate(-cameraX, 0);
+  renderLedge(W, H);
+  renderIslands(W, H);
+  ctx.restore();
+
+  // splash droplets
+  for (const s of splashes) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, s.alpha);
+    ctx.fillStyle = '#7dd6f7';
+    ctx.shadowColor = '#aee8ff';
+    ctx.shadowBlur = 4;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.size, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // feathers
+  for (const f of feathers) {
+    ctx.save();
+    ctx.translate(f.x, f.y);
+    ctx.rotate(f.rot);
+    ctx.globalAlpha = f.alpha;
+    ctx.fillStyle = f.color;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, f.size*0.4, f.size, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // water drips
+  for (const d of drips) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, d.alpha);
+    ctx.fillStyle = '#66aaee';
+    ctx.shadowColor = '#aaddff';
+    ctx.shadowBlur = 4;
+    ctx.beginPath();
+    ctx.ellipse(d.x, d.y, d.size * 0.5, d.size * d.stretch, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // fire particles
+  for (const f of fires) {
+    ctx.save();
+    ctx.globalAlpha = f.life * 0.85;
+    ctx.fillStyle = f.color;
+    ctx.shadowColor = f.color;
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.arc(f.x, f.y, f.size * f.life, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // orcas (breach from ocean)
+  for (const o of orcas) {
+    if (o.y > oceanY() + 60) continue; // fully submerged
+    ctx.save();
+    ctx.translate(o.x, o.y);
+    // rotate to face direction of travel when airborne
+    if (o.chargeT <= 0 && (Math.abs(o.vx) > 10 || Math.abs(o.vy) > 10)) {
+      ctx.rotate(Math.atan2(o.vx, -o.vy));
+    }
+    drawOrca(oceanY() - o.y);
+    ctx.restore();
+  }
+
+  // eagles
+  for (const e of eagles) {
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    drawEagle(e.size, e.wingPhase);
+    ctx.restore();
+  }
+
+  // player
+  renderPlayer(W, H);
+
+  // Daedalus flies near Icarus during play
+  if (state === 'playing') renderFlyingDaedalus(W, H);
+
+  // floaters
+  for (const f of floaters) {
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, f.alpha);
+    ctx.fillStyle = f.big ? '#fff' : GOLD;
+    ctx.font = f.big ? 'bold 26px monospace' : 'bold 16px monospace';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = GOLD;
+    ctx.shadowBlur = f.big ? 18 : 6;
+    ctx.fillText(`+${f.val} points`, f.x, f.y);
+    ctx.restore();
+  }
+
+  // HUD
+  renderHUD(W, H);
+
+  ctx.restore();
+}
+
+function renderBackground(W, H) {
+  const alt = altRatio();
+  const heat = dangerHeat();
+  // gradient shifts: the hotter, the more orange bleeds downward
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  // top colors get more intense with heat
+  const topC  = lerpColor('#ff8800', '#ffdd00', Math.sin(time*1.5)*0.15+0.5);
+  const midHiC = lerpColor('#cc4400', '#ff7700', heat);
+  const midC  = lerpColor('#1a6b9e', '#c2650a', heat * 0.9);
+  const botC  = '#0d3a5c'; // deep blue that blends into ocean
+
+  grad.addColorStop(0,    topC);
+  grad.addColorStop(0.12 + heat*0.15, midHiC);
+  grad.addColorStop(0.45 + heat*0.2,  midC);
+  grad.addColorStop(0.80, botC);
+  grad.addColorStop(1,    '#071e30');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // subtle heat shimmer lines near top when dangerous
+  if (heat > 0.3) {
+    ctx.save();
+    ctx.globalAlpha = heat * 0.12;
+    for (let i = 0; i < 8; i++) {
+      const yy = (time*40 + i*30) % (H*0.5);
+      ctx.strokeStyle = '#ffaa00';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, yy);
+      ctx.lineTo(W, yy + Math.sin(time*3+i)*8);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
+function renderSun(W, H) {
+  const cx = W/2, cy = -30;
+  const pulse = 1 + Math.sin(time*1.8)*0.06;
+  const R = 120 * pulse;
+
+  // glow layers
+  const glows = [
+    {r: R*5.5, a: 0.022}, {r: R*4,   a: 0.04},
+    {r: R*2.8, a: 0.07},  {r: R*1.9, a: 0.12},
+    {r: R*1.35,a: 0.22},
+  ];
+  for (const g of glows) {
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, g.r);
+    grad.addColorStop(0,   `rgba(255,200,50,${g.a})`);
+    grad.addColorStop(0.6, `rgba(255,120,0,${g.a*0.5})`);
+    grad.addColorStop(1,   'rgba(255,80,0,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(cx, cy, g.r, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  // corona rays
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(time * 0.12);
+  ctx.globalAlpha = 0.25;
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2;
+    const r1 = R * 1.2, r2 = R * 3.5 + Math.sin(time*2+i)*20;
+    ctx.strokeStyle = '#ffcc44';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a)*r1, Math.sin(a)*r1);
+    ctx.lineTo(Math.cos(a)*r2, Math.sin(a)*r2);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // core
+  const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, R);
+  coreGrad.addColorStop(0,   '#ffffff');
+  coreGrad.addColorStop(0.3, '#fffaaa');
+  coreGrad.addColorStop(0.7, '#ffcc00');
+  coreGrad.addColorStop(1,   '#ff8800');
+  ctx.fillStyle = coreGrad;
+  ctx.beginPath();
+  ctx.arc(cx, cy, R, 0, Math.PI*2);
+  ctx.fill();
+}
+
+function renderClouds() {
+  for (const c of clouds) {
+    const a = c.baseAlpha;
+    if (a < 0.01) continue;
+    ctx.save();
+    ctx.globalAlpha = a;
+    // fluffy cloud from overlapping ellipses
+    const puffs = [
+      {dx:0,    dy:0,    rx:c.w*0.45, ry:c.h*0.6},
+      {dx:-c.w*0.28, dy:c.h*0.15, rx:c.w*0.32, ry:c.h*0.5},
+      {dx: c.w*0.28, dy:c.h*0.15, rx:c.w*0.32, ry:c.h*0.5},
+      {dx:-c.w*0.12, dy:-c.h*0.1, rx:c.w*0.28, ry:c.h*0.45},
+      {dx: c.w*0.12, dy:-c.h*0.1, rx:c.w*0.28, ry:c.h*0.45},
+    ];
+    ctx.fillStyle = 'rgba(200,220,255,0.9)';
+    for (const p of puffs) {
+      ctx.beginPath();
+      ctx.ellipse(c.x+p.dx, c.y+p.dy, p.rx, p.ry, 0, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+function renderOcean(W, H) {
+  const oY = oceanY();
+  const waveAmp1 = 9, waveAmp2 = 5;
+
+  // wave surface path
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(0, oY + waveAmp1);
+  for (let x = 0; x <= W; x += 6) {
+    const y = oY
+      + Math.sin(x * 0.018 + time * 1.6) * waveAmp1
+      + Math.sin(x * 0.032 - time * 2.1) * waveAmp2;
+    ctx.lineTo(x, y);
+  }
+  ctx.lineTo(W, H);
+  ctx.lineTo(0, H);
+  ctx.closePath();
+
+  // ocean body gradient
+  const oGrad = ctx.createLinearGradient(0, oY, 0, H);
+  oGrad.addColorStop(0,   '#1a7fbf');
+  oGrad.addColorStop(0.15,'#1060a0');
+  oGrad.addColorStop(0.5, '#0a3d70');
+  oGrad.addColorStop(1,   '#071e30');
+  ctx.fillStyle = oGrad;
+  ctx.fill();
+
+  // foam / wave crest highlight
+  ctx.beginPath();
+  ctx.moveTo(0, oY + waveAmp1);
+  for (let x = 0; x <= W; x += 6) {
+    const y = oY
+      + Math.sin(x * 0.018 + time * 1.6) * waveAmp1
+      + Math.sin(x * 0.032 - time * 2.1) * waveAmp2;
+    ctx.lineTo(x, y);
+  }
+  ctx.strokeStyle = 'rgba(180,230,255,0.45)';
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+
+  // secondary ripple
+  ctx.beginPath();
+  for (let x = 0; x <= W; x += 6) {
+    const y = oY + 14
+      + Math.sin(x * 0.022 - time * 1.2) * 6
+      + Math.sin(x * 0.04  + time * 1.9) * 3;
+    x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.strokeStyle = 'rgba(100,180,240,0.2)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // light sparkles on water surface
+  ctx.globalAlpha = 0.55;
+  for (let i = 0; i < 18; i++) {
+    const sx = ((i * 137 + time * 25) % W);
+    const sy = oY + 4 + Math.sin(sx * 0.02 + time * 1.5) * waveAmp1;
+    const blink = Math.sin(time * 4 + i * 1.7) * 0.5 + 0.5;
+    ctx.fillStyle = `rgba(200,240,255,${blink * 0.7})`;
+    ctx.beginPath();
+    ctx.arc(sx, sy, 2 + blink, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // danger zone tint near ocean — warm orange ripple when close
+  if (player && player.y + 14 > oY - 50) {
+    const depth = Math.max(0, (player.y + 14 - (oY - 50)) / 50);
+    ctx.globalAlpha = depth * 0.18;
+    ctx.fillStyle = '#ff6600';
+    ctx.fillRect(0, oY - 50, W, 50);
+  }
+
+  ctx.restore();
+}
+
+function renderLedge(W, H) {
+  const surf = islandSurfaceY();
+  const oY   = oceanY();
+  // ledge runs from worldX -800 to 0 (where Icarus starts)
+  const lx1 = -800, lx2 = 0;
+  // only draw if any part is visible
+  if (lx2 - cameraX < -50 || lx1 - cameraX > W + 50) return;
+
+  // stone body (fills to screen bottom)
+  ctx.fillStyle = '#7a7060';
+  ctx.fillRect(lx1, surf, lx2 - lx1, H - surf);
+  // top edge highlight
+  ctx.strokeStyle = '#a09880'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(lx1, surf); ctx.lineTo(lx2, surf); ctx.stroke();
+  // stone tile vertical lines
+  ctx.strokeStyle = 'rgba(0,0,0,0.15)'; ctx.lineWidth = 1;
+  for (let tx = Math.ceil(lx1 / 80) * 80; tx <= lx2; tx += 80) {
+    ctx.beginPath(); ctx.moveTo(tx, surf); ctx.lineTo(tx, H); ctx.stroke();
+  }
+  // horizontal mortar line
+  ctx.beginPath(); ctx.moveTo(lx1, surf + 30); ctx.lineTo(lx2, surf + 30); ctx.stroke();
+
+  // subtle edge cliff detail on right side
+  ctx.fillStyle = '#5a5048';
+  ctx.beginPath();
+  ctx.moveTo(lx2, surf);
+  ctx.lineTo(lx2 + 18, surf + 14);
+  ctx.lineTo(lx2 + 12, H);
+  ctx.lineTo(lx2, H);
+  ctx.closePath();
+  ctx.fill();
+
+  // Daedalus stands near the ledge edge (worldX = -135)
+  const daedX = -135;
+  if (daedX - cameraX > -100 && daedX - cameraX < W + 100) {
+    drawDaedalus(daedX, surf);
+  }
+}
+
+function drawIslandTrees(ix, baseTop, iw, worldX) {
+  // deterministic pseudo-random from island's world position
+  const r = (salt) => Math.abs(Math.sin(worldX * 0.137 + salt * 2.719));
+  const nTrees = Math.max(3, Math.floor(iw / 13)); // pack as many as fit
+
+  for (let t = 0; t < nTrees; t++) {
+    // evenly spread with small per-tree jitter
+    const xOff = iw * (-0.42 + 0.84 * ((t + 0.5 + (r(t*3+2) - 0.5) * 0.3) / nTrees));
+    const tType = Math.floor(r(t*5+7) * 3);  // 0=palm, 1=cypress, 2=rock (no tree)
+    const sc    = 0.38 + r(t*7+4) * 0.26;    // 0.38..0.64 scale
+    const tx    = ix + xOff;
+
+    if (tType === 0) {
+      // palm
+      const h = 26 * sc;
+      ctx.strokeStyle = '#8B6914'; ctx.lineWidth = Math.max(1.2, 3 * sc); ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(tx, baseTop);
+      ctx.bezierCurveTo(tx + 2*sc, baseTop - h*0.4, tx + sc, baseTop - h*0.75, tx - sc, baseTop - h);
+      ctx.stroke();
+      const fronds = [[-15,-5],[11,-4],[-9,-10],[8,-8],[0,-2]];
+      for (const [dx, dy] of fronds) {
+        ctx.strokeStyle = '#5a9030'; ctx.lineWidth = Math.max(0.8, 1.8 * sc);
+        ctx.beginPath();
+        ctx.moveTo(tx - sc, baseTop - h);
+        ctx.quadraticCurveTo(tx + dx*sc*0.5, baseTop - h + dy*sc*0.5, tx + dx*sc, baseTop - h + dy*sc + 4*sc);
+        ctx.stroke();
+      }
+    } else if (tType === 1) {
+      // cypress
+      const h = 28 * sc, hw = 9 * sc;
+      ctx.fillStyle = '#2e6030';
+      ctx.beginPath(); ctx.moveTo(tx, baseTop-h); ctx.lineTo(tx-hw*0.65, baseTop-1); ctx.lineTo(tx+hw*0.65, baseTop-1); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(tx, baseTop-h*0.65); ctx.lineTo(tx-hw, baseTop-h*0.1); ctx.lineTo(tx+hw, baseTop-h*0.1); ctx.closePath(); ctx.fill();
+    }
+    // tType 2 = bare rock — nothing drawn
+  }
+}
+
+function renderIslands(W, H) {
+  const surf = islandSurfaceY();
+  const oY   = oceanY();
+  for (const isl of islands) {
+    const ix = isl.worldX;  // world space — camera translate already applied
+    const iw = isl.w;
+    // cull off-screen islands
+    const screenX = ix - cameraX;
+    if (screenX < -iw - 50 || screenX > W + iw + 50) continue;
+
+    const pulse = Math.sin(time * 2.5) * 0.5 + 0.5;
+
+    // sinking: island slides down and fades out
+    const sinkFrac = isl.sinking ? Math.min(1, isl.sinkT / ISLAND_SINK_TIME) : 0;
+    const sinkOffset = sinkFrac * 40;       // how far it's dropped in px
+    const alpha = 1 - sinkFrac * 0.85;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    const baseTop = surf + sinkOffset;
+    const baseBot = baseTop + 30;
+    const topHalf = iw * 0.5;
+    const botHalf = iw * 0.38;
+
+    // clip so sinking island disappears below the wave line (world-space rect)
+    ctx.beginPath();
+    ctx.rect(cameraX, 0, W, oY + 10);
+    ctx.clip();
+
+    // pulsing gold glow while not sinking
+    if (!isl.sinking) {
+      ctx.shadowColor = GOLD;
+      ctx.shadowBlur  = 12 + pulse * 10;
+    }
+
+    // rock base
+    ctx.beginPath();
+    ctx.moveTo(ix - topHalf, baseTop);
+    ctx.bezierCurveTo(ix - topHalf - 8, baseTop + 10, ix - botHalf - 4, baseBot - 8, ix - botHalf, baseBot);
+    ctx.lineTo(ix + botHalf, baseBot);
+    ctx.bezierCurveTo(ix + botHalf + 4, baseBot - 8, ix + topHalf + 8, baseTop + 10, ix + topHalf, baseTop);
+    ctx.closePath();
+    ctx.fillStyle = '#6a7c60';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(200,230,180,0.4)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // grassy top
+    ctx.shadowBlur = 0;
+    ctx.beginPath();
+    ctx.ellipse(ix, baseTop, topHalf * 0.9, 9, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#9ab870';
+    ctx.fill();
+
+    // trees — multiple small trees spread across the island
+    ctx.shadowBlur = 0;
+    drawIslandTrees(ix, baseTop, iw, isl.worldX);
+
+    // pulsing gold ring (only while not sinking)
+    if (!isl.sinking) {
+      ctx.globalAlpha = (0.4 + pulse * 0.4) * alpha;
+      ctx.strokeStyle = GOLD;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.ellipse(ix, baseTop, topHalf + 6 + pulse * 4, 12 + pulse * 3, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // sparkle burst on claim
+    if (isl.sparkle > 0) {
+      ctx.globalAlpha = isl.sparkle * alpha;
+      ctx.shadowColor = GOLD;
+      ctx.shadowBlur = 15;
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2 + time * 3;
+        const r = (1 - isl.sparkle) * 55 + 10;
+        ctx.fillStyle = GOLD;
+        ctx.beginPath();
+        ctx.arc(ix + Math.cos(a) * r, baseTop + Math.sin(a) * r * 0.4, 3, 0, Math.PI*2);
+        ctx.fill();
+      }
+      ctx.shadowBlur = 0;
+    }
+
+    ctx.restore();
+  }
+}
+
+function renderPlayer(W, H) {
+  const p = player;
+  const wh       = p.wingHealth / 50;
+  const burnFrac = p.burnDmg / 100;
+  const wetFrac  = p.wetDmg  / 100;
+  const thrusting = keys['ArrowUp'] || keys[' '];
+  // flapY: positive = wing sweeps down (power stroke), negative = wing up (recovery)
+  const flapY = Math.sin(p.flapPhase) * (thrusting ? 24 : 11);
+
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  if (state === 'dying') ctx.rotate(p.angle);
+  ctx.scale(p.facingRight ? 0.65 : -0.65, 0.65);
+
+  // glow aura
+  if (burnFrac > wetFrac && burnFrac > 0.1) {
+    const g = Math.min(1, (burnFrac - 0.1) / 0.4);
+    ctx.shadowColor = lerpColor('#ff8800','#ff2200', g);
+    ctx.shadowBlur  = 10 + g * 28;
+  } else if (wetFrac > burnFrac && wetFrac > 0.1) {
+    const g = Math.min(1, (wetFrac - 0.1) / 0.4);
+    ctx.shadowColor = lerpColor('#5599dd','#1a3a7a', g);
+    ctx.shadowBlur  = 10 + g * 20;
+  }
+
+  // Wing behind body (side profile — flies rightward)
+  drawSideWing(ctx, flapY, wh, burnFrac, wetFrac);
+  ctx.shadowBlur = 0;
+
+  const skin  = '#f0c87a';
+  const tunic = '#f0ead8';
+  const shade = '#d8ccaa';
+  // tunic cloth streams backward (leftward) proportional to speed
+  const streamX = Math.max(0, -p.vy * 0.008);
+
+  // Legs trail behind (left + slightly down in flight pose)
+  ctx.strokeStyle = skin; ctx.lineWidth = 5; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-2, 8); ctx.quadraticCurveTo(-18+streamX, 22, -20+streamX, 40); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo( 4, 8); ctx.quadraticCurveTo(-10+streamX, 18, -12+streamX, 40); ctx.stroke();
+  ctx.strokeStyle = '#7a5010'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(-22+streamX, 40); ctx.lineTo(-16+streamX, 40); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-14+streamX, 40); ctx.lineTo(-8+streamX, 40); ctx.stroke();
+
+  // Tunic (horizontal flight silhouette, cloth streaming left)
+  ctx.fillStyle = tunic;
+  ctx.beginPath();
+  ctx.moveTo(-12, -14);
+  ctx.lineTo( 14, -14);
+  ctx.bezierCurveTo(16, -4, 14, 8, 10, 12);
+  ctx.bezierCurveTo(0, 14+streamX*0.5, -12+streamX*0.8, 12, -14+streamX, 6);
+  ctx.closePath();
+  ctx.fill();
+  // fabric folds
+  ctx.strokeStyle = shade; ctx.lineWidth = 0.8;
+  for (let i = -1; i <= 1; i++) {
+    ctx.beginPath(); ctx.moveTo(i*4, -11); ctx.quadraticCurveTo(i*5+streamX*0.3, 0, i*3+streamX*0.5, 10); ctx.stroke();
+  }
+  // belt
+  ctx.strokeStyle = GOLD; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.moveTo(-11, 0); ctx.lineTo(13, 0); ctx.stroke();
+  ctx.fillStyle = GOLD; ctx.beginPath(); ctx.arc(2, 0, 2.5, 0, Math.PI*2); ctx.fill();
+
+  // Arms — one forward (right), one slightly behind
+  ctx.strokeStyle = skin; ctx.lineWidth = 5; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(12, -8); ctx.quadraticCurveTo(26, -5, 36, 0); ctx.stroke();
+  ctx.fillStyle = skin; ctx.beginPath(); ctx.arc(36, 0, 3.5, 0, Math.PI*2); ctx.fill();
+  ctx.globalAlpha = 0.55;
+  ctx.beginPath(); ctx.moveTo(6, -6); ctx.quadraticCurveTo(18, -3, 28, 2); ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  // Neck
+  ctx.fillStyle = skin;
+  ctx.beginPath(); ctx.rect(9, -24, 7, 12); ctx.fill();
+
+  // Head in profile facing RIGHT
+  ctx.fillStyle = skin;
+  ctx.beginPath(); ctx.arc(16, -32, 12, 0, Math.PI*2); ctx.fill();
+  // Jaw shadow
+  ctx.fillStyle = lerpColor(skin, '#c07830', 0.22);
+  ctx.beginPath(); ctx.ellipse(19, -26, 7, 5, 0.3, 0, Math.PI); ctx.fill();
+  // One eye (forward/right side of profile)
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.ellipse(21, -33, 2.2, 1.6, 0, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#2a1800';
+  ctx.beginPath(); ctx.arc(21, -33, 1.2, 0, Math.PI*2); ctx.fill();
+  // Brow
+  ctx.strokeStyle = '#2a1500'; ctx.lineWidth = 1.4;
+  ctx.beginPath(); ctx.moveTo(19, -36); ctx.lineTo(23.5, -35.5); ctx.stroke();
+  // Nose pointing right
+  ctx.strokeStyle = lerpColor(skin, '#8a5020', 0.5); ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.moveTo(26, -31); ctx.lineTo(28, -28); ctx.stroke();
+  // Mouth (determined)
+  ctx.strokeStyle = '#8a4828'; ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.moveTo(25, -26); ctx.lineTo(21, -25.5); ctx.stroke();
+
+  // Hair — dark curly, streaming backward (left) in wind
+  ctx.fillStyle = '#1e1000';
+  ctx.beginPath(); ctx.arc(14, -37, 12, Math.PI*0.75, Math.PI*2.1); ctx.fill();
+  ctx.beginPath(); ctx.arc(0, -35, 7, Math.PI*1.2, Math.PI*2.5); ctx.fill();
+  ctx.beginPath(); ctx.arc(7, -41, 6, Math.PI*0.9, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = '#0e0800'; ctx.lineWidth = 1.8;
+  for (let i = 0; i < 4; i++) {
+    const hx = 8 - i * 5, hy = -38;
+    ctx.beginPath(); ctx.arc(hx, hy, 3, 0, Math.PI, i % 2 === 0); ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+// ── Side-view wing ─────────────────────────────────────────────────────────
+function drawSideWing(ctx, flapY, wh, burnFrac, wetFrac) {
+  const dominant = burnFrac >= wetFrac ? 'burn' : 'wet';
+  const domFrac  = dominant === 'burn' ? burnFrac : wetFrac;
+
+  const fBase = dominant === 'burn'
+    ? (domFrac < 0.35 ? '#f2ead8' : domFrac < 0.65 ? lerpColor('#f2ead8','#dd7700',(domFrac-0.35)/0.3) : lerpColor('#dd7700','#220800',(domFrac-0.65)/0.35))
+    : (domFrac < 0.35 ? '#f2ead8' : domFrac < 0.65 ? lerpColor('#f2ead8','#4488cc',(domFrac-0.35)/0.3) : lerpColor('#4488cc','#081840',(domFrac-0.65)/0.35));
+  const fDark = dominant === 'burn'
+    ? (domFrac < 0.35 ? '#d8ceb0' : domFrac < 0.65 ? lerpColor('#d8ceb0','#993300',(domFrac-0.35)/0.3) : '#110400')
+    : (domFrac < 0.35 ? '#d8ceb0' : domFrac < 0.65 ? lerpColor('#d8ceb0','#1a5599',(domFrac-0.35)/0.3) : '#040c28');
+
+  // Wing root (upper back/shoulder)
+  const rx = -5, ry = -12;
+  // Tip: sweeps down on power stroke (positive flapY) and up on recovery (negative)
+  const tipX = -8 + flapY * 0.45;
+  const tipY = -55 + flapY * 0.88;
+
+  const maxFeathers = 8;
+  const nFeathers = Math.max(2, Math.round(wh * maxFeathers));
+
+  // Translucent wing membrane
+  ctx.save();
+  ctx.globalAlpha = 0.28;
+  ctx.fillStyle = fBase;
+  ctx.beginPath();
+  ctx.moveTo(rx, ry);
+  ctx.bezierCurveTo(rx + 14, ry - 18, tipX + 22, tipY + 16, tipX, tipY);
+  ctx.bezierCurveTo(tipX - 12, tipY + 20, rx - 14, ry + 6, rx, ry);
+  ctx.fill();
+  ctx.restore();
+
+  // Individual feathers fanning along the trailing edge
+  for (let i = 0; i < nFeathers; i++) {
+    const t = i / Math.max(1, nFeathers - 1);
+    const bx = rx + (tipX - rx) * t;
+    const by = ry + (tipY - ry) * t;
+    const len = 22 - t * 6;
+    // fan angle: more spread at the tip
+    const spreadAngle = -0.25 - t * 0.72 - flapY * 0.007;
+    const col = i % 2 === 0 ? fBase : lerpColor(fBase, fDark, 0.18);
+
+    ctx.save();
+    ctx.translate(bx, by);
+    ctx.rotate(spreadAngle);
+    // leading vane
+    ctx.fillStyle = lerpColor(col, fDark, 0.12);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.bezierCurveTo(len*0.32, len*0.22, len*0.26, len*0.78, 0, len);
+    ctx.bezierCurveTo(-len*0.04, len*0.7, -len*0.06, len*0.28, 0, 0);
+    ctx.fill();
+    // trailing vane
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.bezierCurveTo(-len*0.5, len*0.2, -len*0.44, len*0.76, 0, len);
+    ctx.bezierCurveTo(len*0.06, len*0.68, len*0.08, len*0.22, 0, 0);
+    ctx.fill();
+    // highlight shimmer
+    ctx.fillStyle = 'rgba(255,255,255,0.09)';
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.bezierCurveTo(-len*0.1, len*0.18, -len*0.08, len*0.62, 0, len);
+    ctx.bezierCurveTo(len*0.05, len*0.55, len*0.04, len*0.16, 0, 0);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Wing arm / bone
+  ctx.save();
+  ctx.strokeStyle = lerpColor(fDark, '#000', 0.3);
+  ctx.lineWidth = 1.5;
+  ctx.globalAlpha = 0.32;
+  ctx.beginPath();
+  ctx.moveTo(rx, ry);
+  ctx.quadraticCurveTo((rx+tipX)/2 + 10, (ry+tipY)/2 - 4, tipX, tipY);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ── Daedalus commentary ────────────────────────────────────────────────────
+function getDaedalusComment() {
+  if (!player) return null;
+  if (player.onIsland) return null;  // island landing is fine
+  const alt  = altRatio();
+  const heat = dangerHeat();
+  if (player.burnDmg > 88) return 'Your wings are melting! Come down!';
+  if (player.wetDmg  > 88) return 'Too heavy with water! Climb higher!';
+  if (heat > 0.82)          return 'Too high! The sun will take you!';
+  if (heat > 0.60)          return 'I feel the heat from here...';
+  if (alt < 0.03)           return 'The sea! Pull up, Icarus!';
+  if (alt < 0.08)           return 'Too low — the waves will take you!';
+  return null;
+}
+
+// ── Flying Daedalus character ──────────────────────────────────────────────
+function drawDaedalusWingSide(ctx, flapY) {
+  const rx = -5, ry = -10;
+  const tipX = -7 + flapY * 0.4;
+  const tipY = -46 + flapY * 0.85;
+  // membrane
+  ctx.save(); ctx.globalAlpha = 0.22; ctx.fillStyle = '#ccc8b8';
+  ctx.beginPath(); ctx.moveTo(rx, ry);
+  ctx.bezierCurveTo(rx+11, ry-14, tipX+18, tipY+14, tipX, tipY);
+  ctx.bezierCurveTo(tipX-10, tipY+18, rx-11, ry+5, rx, ry);
+  ctx.fill(); ctx.restore();
+  // feathers (grey/white)
+  const cols = ['#d0ccc0', '#b8b4a8'];
+  for (let i = 0; i < 6; i++) {
+    const t = i / 5;
+    const bx = rx + (tipX-rx)*t, by = ry + (tipY-ry)*t;
+    const len = 18 - t*4;
+    const ang = -0.2 - t*0.62 - flapY*0.007;
+    ctx.save(); ctx.translate(bx, by); ctx.rotate(ang);
+    ctx.fillStyle = cols[i%2];
+    ctx.beginPath(); ctx.moveTo(0,0);
+    ctx.bezierCurveTo(-len*0.44,len*0.2,-len*0.38,len*0.74,0,len);
+    ctx.bezierCurveTo(len*0.06,len*0.68,len*0.08,len*0.22,0,0);
+    ctx.fill(); ctx.restore();
+  }
+}
+
+function renderFlyingDaedalus(W, H) {
+  const comment = getDaedalusComment();
+  // Daedalus hovers behind and slightly below Icarus, gently bobbing
+  const bob   = Math.sin(time * 1.35 + 0.8) * 7;
+  const ddx   = player.x - 108;
+  const ddy   = player.y + 14 + bob;
+  const flapY = Math.sin(time * 3.2 + 1.4) * 13;
+
+  ctx.save();
+  ctx.translate(ddx, ddy);
+  ctx.scale(0.50, 0.50);
+
+  const skin = '#d4a060';
+  const robe = '#3a2e1e';
+  const robeL = '#5a4830';
+  const grey = '#c0b8a8';
+
+  // Wing (grey, behind body)
+  drawDaedalusWingSide(ctx, flapY);
+
+  // Legs trailing
+  ctx.strokeStyle = skin; ctx.lineWidth = 5; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-2,8); ctx.quadraticCurveTo(-15,20,-17,36); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo( 3,8); ctx.quadraticCurveTo(-7,17,-9,36); ctx.stroke();
+
+  // Dark robe body
+  ctx.fillStyle = robe;
+  ctx.beginPath(); ctx.moveTo(-12,-14); ctx.lineTo(14,-14);
+  ctx.bezierCurveTo(15,-4,12,10,8,14); ctx.bezierCurveTo(-2,16,-12,12,-14,6);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = robeL; ctx.lineWidth = 0.8;
+  for (let i = -1; i <= 1; i++) {
+    ctx.beginPath(); ctx.moveTo(i*4,-11); ctx.lineTo(i*3,10); ctx.stroke();
+  }
+  ctx.strokeStyle = '#8a7050'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(-11,2); ctx.lineTo(12,2); ctx.stroke();
+
+  // Arm forward
+  ctx.strokeStyle = skin; ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.moveTo(11,-8); ctx.quadraticCurveTo(23,-5,32,1); ctx.stroke();
+  ctx.fillStyle = skin; ctx.beginPath(); ctx.arc(32,1,3.5,0,Math.PI*2); ctx.fill();
+
+  // Neck + head profile facing right
+  ctx.fillStyle = skin; ctx.beginPath(); ctx.rect(8,-22,7,11); ctx.fill();
+  ctx.fillStyle = skin; ctx.beginPath(); ctx.arc(15,-30,11,0,Math.PI*2); ctx.fill();
+  // Jaw
+  ctx.fillStyle = lerpColor(skin,'#9a5020',0.22);
+  ctx.beginPath(); ctx.ellipse(18,-25,6,4.5,0.3,0,Math.PI); ctx.fill();
+  // Beard
+  ctx.fillStyle = grey;
+  ctx.beginPath(); ctx.moveTo(9,-23); ctx.quadraticCurveTo(8,-14,13,-10);
+  ctx.quadraticCurveTo(20,-8,24,-14); ctx.quadraticCurveTo(26,-21,22,-24);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#a8a098'; ctx.lineWidth = 0.8;
+  for (let i=0;i<3;i++){ctx.beginPath();ctx.moveTo(11+i*2,-20);ctx.lineTo(13+i*2,-12);ctx.stroke();}
+  // Eye
+  ctx.fillStyle='#fff'; ctx.beginPath(); ctx.ellipse(20,-32,2,1.5,0,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#1a1000'; ctx.beginPath(); ctx.arc(20,-32,1.1,0,Math.PI*2); ctx.fill();
+  // Worried brow
+  ctx.strokeStyle = grey; ctx.lineWidth = 2.2;
+  ctx.beginPath(); ctx.moveTo(17.5,-35.5); ctx.quadraticCurveTo(20,-36.5,23,-35); ctx.stroke();
+  // White hair
+  ctx.fillStyle = grey;
+  ctx.beginPath(); ctx.arc(13,-35,11,Math.PI*0.78,Math.PI*2.0); ctx.fill();
+  ctx.beginPath(); ctx.arc(2,-32,6,Math.PI*1.3,Math.PI*2.4); ctx.fill();
+  ctx.beginPath(); ctx.arc(8,-40,5,Math.PI*0.9,Math.PI*2); ctx.fill();
+
+  ctx.restore();
+
+  // Speech bubble above Daedalus when he has something to say
+  if (comment) {
+    const bw = 178, bh = 44;
+    const bx = Math.max(4, Math.min(W - bw - 4, ddx - bw/2 + 8));
+    const by = Math.max(4, ddy - 72);
+
+    ctx.save();
+    ctx.globalAlpha = 0.92;
+    ctx.fillStyle = 'rgba(5,10,22,0.90)';
+    ctx.shadowColor = GOLD; ctx.shadowBlur = 6;
+    ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 7); ctx.fill();
+    ctx.strokeStyle = GOLD; ctx.lineWidth = 1.3;
+    ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 7); ctx.stroke();
+    ctx.shadowBlur = 0;
+    // tail pointing down toward Daedalus head
+    const tx = Math.max(bx + 14, Math.min(bx + bw - 14, ddx + 8));
+    ctx.fillStyle = 'rgba(5,10,22,0.90)';
+    ctx.strokeStyle = GOLD; ctx.lineWidth = 1.3;
+    ctx.beginPath(); ctx.moveTo(tx-7, by+bh); ctx.lineTo(tx, ddy-28); ctx.lineTo(tx+7, by+bh); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // speaker
+    ctx.fillStyle = GOLD; ctx.font = 'bold 10px monospace'; ctx.textAlign = 'center';
+    ctx.shadowColor = GOLD; ctx.shadowBlur = 3;
+    ctx.fillText('DAEDALUS', bx + bw/2, by + 13);
+    ctx.shadowBlur = 0;
+    // text
+    ctx.fillStyle = 'rgba(240,230,200,0.95)'; ctx.font = '12px serif';
+    const lines = wrapText(comment, bw - 18, '12px serif');
+    lines.forEach((l, i) => ctx.fillText(l, bx + bw/2, by + 27 + i * 14));
+    ctx.restore();
+  }
+}
+
+// ── Eagle & Orca drawing ───────────────────────────────────────────────────
+function drawEagle(size, wingPhase) {
+  const s = size;
+  const flapY = Math.sin(wingPhase) * 18 * s;
+  // Left-facing eagle: head at -x, tail at +x, wing root at upper-right (back)
+  const rx = 6*s, ry = -8*s;
+  const tipX = 8*s - flapY * 0.38;
+  const tipY = -46*s + flapY * 0.86;
+
+  // Wing membrane
+  ctx.save(); ctx.globalAlpha = 0.22; ctx.fillStyle = '#3d2a0a';
+  ctx.beginPath(); ctx.moveTo(rx, ry);
+  ctx.bezierCurveTo(rx+12*s, ry-14*s, tipX+18*s, tipY+12*s, tipX, tipY);
+  ctx.bezierCurveTo(tipX-10*s, tipY+15*s, rx-12*s, ry+5*s, rx, ry);
+  ctx.fill(); ctx.restore();
+  // Primary feathers
+  for (let i = 0; i < 5; i++) {
+    const t = i / 4;
+    const bx = rx + (tipX-rx)*t, by2 = ry + (tipY-ry)*t;
+    const len = (20 - t*5) * s;
+    const ang = -0.18 - t*0.62 - flapY*0.006/s;
+    ctx.save(); ctx.translate(bx, by2); ctx.rotate(ang);
+    ctx.fillStyle = i%2===0 ? '#3d2a0a' : '#2a1a04';
+    ctx.beginPath(); ctx.moveTo(0,0);
+    ctx.bezierCurveTo(-len*0.44,len*0.2,-len*0.38,len*0.73,0,len);
+    ctx.bezierCurveTo(len*0.06,len*0.68,len*0.08,len*0.22,0,0);
+    ctx.fill(); ctx.restore();
+  }
+  // Body (dark brown)
+  ctx.fillStyle = '#3d2a0a';
+  ctx.beginPath(); ctx.ellipse(2*s, 0, 15*s, 5.5*s, 0, 0, Math.PI*2); ctx.fill();
+  // White tail band
+  ctx.fillStyle = 'rgba(220,210,175,0.75)';
+  ctx.beginPath(); ctx.ellipse(14*s, 0, 5*s, 3.5*s, 0, 0, Math.PI*2); ctx.fill();
+  // Tail shape
+  ctx.fillStyle = '#2a1a04';
+  ctx.beginPath(); ctx.moveTo(16*s,-3*s);
+  ctx.bezierCurveTo(22*s,-7*s,27*s,-3*s,28*s,0);
+  ctx.bezierCurveTo(27*s,4*s,22*s,7*s,16*s,3*s); ctx.closePath(); ctx.fill();
+  // White head (bald eagle)
+  ctx.fillStyle = '#e8e0c8';
+  ctx.beginPath(); ctx.arc(-9*s, -2*s, 6.5*s, 0, Math.PI*2); ctx.fill();
+  // Yellow eye
+  ctx.fillStyle = '#e8c000'; ctx.beginPath(); ctx.arc(-11*s,-3.5*s,2*s,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#111';    ctx.beginPath(); ctx.arc(-11*s,-3.5*s,1*s,0,Math.PI*2); ctx.fill();
+  // Hooked beak (points LEFT)
+  ctx.fillStyle = '#cc9900';
+  ctx.beginPath(); ctx.moveTo(-14*s,-1.5*s); ctx.lineTo(-22*s,-0.5*s);
+  ctx.lineTo(-18*s,3.5*s); ctx.lineTo(-13*s,2*s); ctx.closePath(); ctx.fill();
+}
+
+// surfaceLocalY = oceanY - orca.y (ocean position in the orca's local coord space)
+function drawOrca(surfaceLocalY) {
+  const bLen = 52, bW = 17;
+  ctx.save();
+  // Only draw what's above the ocean surface
+  ctx.beginPath(); ctx.rect(-70, -bLen - 40, 140, bLen + 40 + surfaceLocalY); ctx.clip();
+
+  // Body
+  ctx.fillStyle = '#111';
+  ctx.beginPath(); ctx.ellipse(0, 0, bW, bLen, 0, 0, Math.PI*2); ctx.fill();
+  // White belly
+  ctx.fillStyle = '#f0f0e8';
+  ctx.beginPath(); ctx.ellipse(9, 12, bW*0.48, bLen*0.48, 0.2, 0, Math.PI*2); ctx.fill();
+  // White eye patch
+  ctx.fillStyle = '#f0f0e8';
+  ctx.beginPath(); ctx.ellipse(13, -22, 10, 7, 0.3, 0, Math.PI*2); ctx.fill();
+  // Dorsal fin
+  ctx.fillStyle = '#111';
+  ctx.beginPath(); ctx.moveTo(-4,-28); ctx.lineTo(-18,-68); ctx.lineTo(4,-32); ctx.closePath(); ctx.fill();
+  // Fluke (tail, at bottom)
+  ctx.beginPath();
+  ctx.moveTo(-4, bLen-4);
+  ctx.bezierCurveTo(-24,bLen+10,-28,bLen+24,-14,bLen+19); ctx.lineTo(0,bLen+5);
+  ctx.lineTo(14,bLen+19); ctx.bezierCurveTo(28,bLen+24,24,bLen+10,4,bLen-4);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+function renderHUD(W, H) {
+  const wh = player.wingHealth;
+  const heat = dangerHeat();
+
+  // Wing health bar
+  const bx=20, by=20, bw=200, bh=22;
+  ctx.save();
+  // label
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.font = '12px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('WING HEALTH', bx, by - 4);
+  // bg
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.fillRect(bx, by, bw, bh);
+  // fill
+  const barFrac = wh / 50;
+  const barColor = wh > 15 ? '#44dd66' :
+                   wh > 9  ? '#ddcc00' :
+                   wh > 4  ? '#ff8800' : '#ff2200';
+  // flicker at low health
+  const flicker = wh < 5 ? (Math.sin(time*18)*0.3+0.7) : 1;
+  ctx.fillStyle = barColor;
+  ctx.globalAlpha = flicker;
+  ctx.fillRect(bx, by, bw * barFrac, bh);
+  ctx.globalAlpha = 1;
+  // border
+  ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(bx, by, bw, bh);
+  // bar glow
+  if (wh < 10) {
+    ctx.shadowColor = barColor;
+    ctx.shadowBlur = 8;
+    ctx.strokeRect(bx, by, bw * barFrac, bh);
+    ctx.shadowBlur = 0;
+  }
+  ctx.restore();
+
+  // Altitude indicator (left edge strip)
+  const alt = altRatio();
+  const stripH = H * 0.6;
+  const stripY = (H - stripH) / 2;
+  ctx.save();
+  ctx.globalAlpha = 0.35;
+  const sGrad = ctx.createLinearGradient(0, stripY, 0, stripY+stripH);
+  sGrad.addColorStop(0, '#ff8800');
+  sGrad.addColorStop(1, '#1a6b9e');
+  ctx.fillStyle = sGrad;
+  ctx.fillRect(5, stripY, 6, stripH);
+  // indicator dot
+  ctx.globalAlpha = 0.9;
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(8, stripY + stripH * (1-alt), 5, 0, Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+
+  // XP display
+  ctx.save();
+  ctx.textAlign = 'right';
+  ctx.font = 'bold 13px monospace';
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.fillText('POINTS', W - 20, 28);
+  ctx.font = 'bold 32px monospace';
+  ctx.fillStyle = GOLD;
+  ctx.shadowColor = GOLD;
+  ctx.shadowBlur = 10;
+  ctx.fillText(Math.floor(player.xp).toLocaleString(), W - 20, 62);
+  ctx.restore();
+
+  // island counter — how many are ready to land on
+  const readyIslands = islands ? islands.filter(i => !i.sinking).length : 0;
+  ctx.save();
+  ctx.textAlign = 'left';
+  ctx.font = '12px monospace';
+  ctx.fillStyle = readyIslands > 0 ? 'rgba(100,220,120,0.85)' : 'rgba(180,180,180,0.5)';
+  ctx.shadowColor = readyIslands > 0 ? '#44dd66' : 'transparent';
+  ctx.shadowBlur = readyIslands > 0 ? 6 : 0;
+  ctx.fillText(`ISLANDS: ${readyIslands} ready  (+${ISLAND_XP_BONUS} points each)`, 20, 70);
+  ctx.restore();
+
+  // danger warning
+  if (heat > 0.65) {
+    const pulse = Math.sin(time * 6) * 0.5 + 0.5;
+    ctx.save();
+    ctx.globalAlpha = 0.5 + pulse * 0.5;
+    ctx.fillStyle = '#ff4400';
+    ctx.font = 'bold 15px monospace';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = '#ff4400';
+    ctx.shadowBlur = 12;
+    ctx.fillText('⚠  TOO CLOSE TO THE SUN  ⚠', W/2, H - 30);
+    ctx.restore();
+  }
+}
+
+// ── Tutorial ───────────────────────────────────────────────────────────────
+function wrapText(text, maxWidth, font) {
+  ctx.font = font;
+  const words = text.split(' ');
+  const lines = [];
+  let line = '';
+  for (const word of words) {
+    const test = line ? line + ' ' + word : word;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = test;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+function drawDaedalus(x, y) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(0.55, 0.55);
+
+  const skin  = '#d4a060';
+  const robe  = '#4a3a28';
+  const robeL = '#6a5438';
+  const grey  = '#b0a898';
+
+  // robe body
+  ctx.fillStyle = robe;
+  ctx.beginPath();
+  ctx.moveTo(-13,-18); ctx.lineTo(13,-18);
+  ctx.lineTo(16, 20);  ctx.lineTo(-16, 20);
+  ctx.closePath(); ctx.fill();
+  // robe folds
+  ctx.strokeStyle = robeL; ctx.lineWidth = 1;
+  for (const xi of [-5, 0, 5]) {
+    ctx.beginPath(); ctx.moveTo(xi,-14); ctx.lineTo(xi+2,18); ctx.stroke();
+  }
+  // belt rope
+  ctx.strokeStyle = '#8a7050'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(-14,6); ctx.lineTo(14,6); ctx.stroke();
+  // legs
+  ctx.strokeStyle = skin; ctx.lineWidth = 5; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-5,20); ctx.lineTo(-5,48); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo( 5,20); ctx.lineTo( 5,48); ctx.stroke();
+  // sandals
+  ctx.strokeStyle = '#5a3a10'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(-8,48); ctx.lineTo(-2,48); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo( 2,48); ctx.lineTo( 8,48); ctx.stroke();
+  // left arm down at side
+  ctx.strokeStyle = skin; ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.moveTo(-13,-10); ctx.quadraticCurveTo(-22,-2,-20,18); ctx.stroke();
+  ctx.fillStyle = skin; ctx.beginPath(); ctx.arc(-20,18,3.5,0,Math.PI*2); ctx.fill();
+  // right arm raised (gesturing / pointing)
+  ctx.beginPath(); ctx.moveTo(13,-10); ctx.quadraticCurveTo(28,-22,38,-32); ctx.stroke();
+  ctx.fillStyle = skin; ctx.beginPath(); ctx.arc(38,-32,3.5,0,Math.PI*2); ctx.fill();
+  // neck
+  ctx.fillStyle = skin; ctx.beginPath(); ctx.rect(-4,-28,8,12); ctx.fill();
+  // head
+  ctx.fillStyle = skin;
+  ctx.beginPath(); ctx.arc(0,-36,11,0,Math.PI*2); ctx.fill();
+  // beard
+  ctx.fillStyle = grey;
+  ctx.beginPath();
+  ctx.moveTo(-9,-30); ctx.quadraticCurveTo(-11,-20,-8,-12);
+  ctx.quadraticCurveTo(0,-8,8,-12);
+  ctx.quadraticCurveTo(11,-20,9,-30);
+  ctx.closePath(); ctx.fill();
+  // beard texture
+  ctx.strokeStyle = '#888078'; ctx.lineWidth = 0.8;
+  for (let i = -6; i <= 6; i += 3) {
+    ctx.beginPath(); ctx.moveTo(i,-26); ctx.lineTo(i*0.8,-14); ctx.stroke();
+  }
+  // hair (white/grey, receding)
+  ctx.fillStyle = grey;
+  ctx.beginPath(); ctx.arc(0,-42,10,Math.PI,0); ctx.fill();
+  ctx.beginPath(); ctx.arc(-9,-37,4,Math.PI*1.2,Math.PI*2.2); ctx.fill();
+  ctx.beginPath(); ctx.arc( 9,-37,4,Math.PI*0.8,Math.PI*1.8,true); ctx.fill();
+  // eyes
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.ellipse(-3.5,-37,2,1.5,0,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse( 3.5,-37,2,1.5,0,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#1a1000';
+  ctx.beginPath(); ctx.arc(-3.5,-37,1.1,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc( 3.5,-37,1.1,0,Math.PI*2); ctx.fill();
+  // bushy brows
+  ctx.strokeStyle = grey; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(-5.5,-40); ctx.lineTo(-1,-39); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo( 5.5,-40); ctx.lineTo( 1,-39); ctx.stroke();
+  // nose
+  ctx.strokeStyle = lerpColor(skin,'#7a4010',0.45); ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.moveTo(0,-35); ctx.lineTo(-2,-31); ctx.lineTo(2,-31); ctx.stroke();
+  // mouth (wise expression)
+  ctx.strokeStyle = '#704820'; ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.moveTo(-3,-28.5); ctx.quadraticCurveTo(0,-27,3,-28.5); ctx.stroke();
+
+  ctx.restore();
+}
+
+function renderTutorial(W, H) {
+  const line = TUTORIAL_LINES[tutorialStep];
+  const isLast = tutorialStep === TUTORIAL_LINES.length - 1;
+
+  // sky background (dawn, soft)
+  const bg = ctx.createLinearGradient(0,0,0,H);
+  bg.addColorStop(0,   '#2a4a7a');
+  bg.addColorStop(0.4, '#4a80b0');
+  bg.addColorStop(0.75,'#7ab0d8');
+  bg.addColorStop(1,   '#a8cce8');
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+  // soft sun glow on horizon
+  const hx = W/2, hy = H*0.68;
+  const hglow = ctx.createRadialGradient(hx,hy,0,hx,hy,H*0.5);
+  hglow.addColorStop(0,'rgba(255,200,100,0.22)');
+  hglow.addColorStop(1,'rgba(255,150,0,0)');
+  ctx.fillStyle = hglow; ctx.fillRect(0,0,W,H);
+
+  // stone platform
+  const platY = H * 0.72;
+  ctx.fillStyle = '#7a7060';
+  ctx.fillRect(0, platY, W, H - platY);
+  // platform edge highlight
+  ctx.strokeStyle = '#a09880'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, platY); ctx.lineTo(W, platY); ctx.stroke();
+  // stone tile lines
+  ctx.strokeStyle = 'rgba(0,0,0,0.15)'; ctx.lineWidth = 1;
+  for (let tx = 0; tx < W; tx += 80) {
+    ctx.beginPath(); ctx.moveTo(tx, platY); ctx.lineTo(tx, H); ctx.stroke();
+  }
+  ctx.beginPath(); ctx.moveTo(0, platY+30); ctx.lineTo(W, platY+30); ctx.stroke();
+
+  // sea in background
+  const seaY = platY - 60;
+  ctx.fillStyle = '#1a5080';
+  ctx.beginPath();
+  for (let sx = 0; sx <= W; sx += 8) {
+    const wy = seaY + Math.sin(sx*0.025 + time*1.4)*5 + Math.sin(sx*0.04 - time*2)*3;
+    sx === 0 ? ctx.moveTo(sx, wy) : ctx.lineTo(sx, wy);
+  }
+  ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath(); ctx.fill();
+
+  // Daedalus (left)
+  drawDaedalus(W * 0.3, platY);
+
+  // Icarus (right, standing with wings, no flight state)
+  ctx.save();
+  ctx.translate(W * 0.65, platY);
+  ctx.scale(0.55, 0.55);
+  // static wings folded (simplified behind figure)
+  for (const side of [-1, 1]) {
+    ctx.save();
+    ctx.globalAlpha = 0.7;
+    ctx.fillStyle = '#f2ead8';
+    ctx.beginPath();
+    ctx.moveTo(side*12, -14);
+    ctx.quadraticCurveTo(side*40, 10, side*35, 40);
+    ctx.quadraticCurveTo(side*20, 50, side*12, 20);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  // tunic + body (reuse same draw calls as renderPlayer but arms down)
+  const skin2 = '#f0c87a', tunic2 = '#f0ead8', shade2 = '#d8ccaa';
+  // legs
+  ctx.strokeStyle = skin2; ctx.lineWidth = 5; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-4,16); ctx.lineTo(-5,48); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo( 4,16); ctx.lineTo( 5,48); ctx.stroke();
+  ctx.strokeStyle = '#7a5010'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(-8,48); ctx.lineTo(-2,48); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo( 2,48); ctx.lineTo( 8,48); ctx.stroke();
+  // tunic
+  ctx.fillStyle = tunic2;
+  ctx.beginPath(); ctx.moveTo(-11,-18); ctx.lineTo(11,-18); ctx.lineTo(12,16); ctx.lineTo(-12,16); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = shade2; ctx.lineWidth = 0.8;
+  for (const xi of [-3,0,3]) { ctx.beginPath(); ctx.moveTo(xi,-14); ctx.lineTo(xi+1,14); ctx.stroke(); }
+  ctx.fillStyle = tunic2;
+  ctx.beginPath(); ctx.moveTo(-12,16); ctx.lineTo(12,16); ctx.quadraticCurveTo(13,24,9,28); ctx.lineTo(-9,28); ctx.quadraticCurveTo(-13,24,-12,16); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = GOLD; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.moveTo(-12,10); ctx.lineTo(12,10); ctx.stroke();
+  ctx.fillStyle = GOLD; ctx.beginPath(); ctx.arc(0,10,2.5,0,Math.PI*2); ctx.fill();
+  // arms at sides
+  ctx.strokeStyle = skin2; ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.moveTo(-11,-12); ctx.quadraticCurveTo(-20,-8,-18,14); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo( 11,-12); ctx.quadraticCurveTo( 20,-8, 18,14); ctx.stroke();
+  ctx.fillStyle = skin2;
+  ctx.beginPath(); ctx.arc(-18,14,3.5,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc( 18,14,3.5,0,Math.PI*2); ctx.fill();
+  // neck + head
+  ctx.fillStyle = skin2; ctx.beginPath(); ctx.rect(-4,-28,8,11); ctx.fill();
+  ctx.beginPath(); ctx.arc(0,-36,11,0,Math.PI*2); ctx.fill();
+  // face (wonder/excitement expression)
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.ellipse(-3.8,-37,2.2,1.6,0,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse( 3.8,-37,2.2,1.6,0,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#2a1800';
+  ctx.beginPath(); ctx.arc(-3.8,-37,1.3,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc( 3.8,-37,1.3,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle = '#2a1500'; ctx.lineWidth = 1.4;
+  ctx.beginPath(); ctx.moveTo(-5.5,-40); ctx.lineTo(-1.5,-40.5); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo( 5.5,-40); ctx.lineTo( 1.5,-40.5); ctx.stroke();
+  ctx.strokeStyle = lerpColor(skin2,'#8a5020',0.45); ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0,-36); ctx.lineTo(-1.5,-32); ctx.lineTo(1.5,-32); ctx.stroke();
+  // slight open mouth smile
+  ctx.strokeStyle = '#8a4828'; ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.moveTo(-3,-29.5); ctx.quadraticCurveTo(0,-27.5,3,-29.5); ctx.stroke();
+  // hair
+  ctx.fillStyle = '#1e1000';
+  ctx.beginPath(); ctx.arc(0,-40,11,Math.PI,0); ctx.fill();
+  ctx.beginPath(); ctx.arc(-10,-36,4,Math.PI*1.2,Math.PI*2.2); ctx.fill();
+  ctx.beginPath(); ctx.arc( 10,-36,4,Math.PI*0.8,Math.PI*1.8,true); ctx.fill();
+  ctx.strokeStyle = '#0e0800'; ctx.lineWidth = 1.8;
+  for (let i = -4; i <= 4; i += 2) { ctx.beginPath(); ctx.arc(i*2.2,-41,2.2,0,Math.PI,i%4===0); ctx.stroke(); }
+  ctx.restore();
+
+  // dialogue box
+  const boxX = W*0.04, boxY = H*0.76, boxW = W*0.92, boxH = H*0.2;
+  // box background
+  ctx.fillStyle = 'rgba(8,16,32,0.88)';
+  ctx.beginPath();
+  ctx.roundRect(boxX, boxY, boxW, boxH, 8);
+  ctx.fill();
+  // gold border
+  ctx.strokeStyle = GOLD; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.roundRect(boxX, boxY, boxW, boxH, 8); ctx.stroke();
+  // step dots
+  for (let i = 0; i < TUTORIAL_LINES.length; i++) {
+    ctx.fillStyle = i === tutorialStep ? GOLD : 'rgba(180,150,60,0.35)';
+    ctx.beginPath(); ctx.arc(boxX + boxW/2 + (i - TUTORIAL_LINES.length/2 + 0.5)*14, boxY + boxH - 10, 3, 0, Math.PI*2); ctx.fill();
+  }
+  // speaker name
+  ctx.fillStyle = GOLD;
+  ctx.font = 'bold 14px monospace';
+  ctx.textAlign = 'left';
+  ctx.shadowColor = GOLD; ctx.shadowBlur = 6;
+  ctx.fillText(line.speaker, boxX + 16, boxY + 20);
+  ctx.shadowBlur = 0;
+  // dialogue text with wrapping
+  const textFont = '16px serif';
+  const textLines = wrapText('"' + line.text + '"', boxW - 32, textFont);
+  ctx.font = textFont;
+  ctx.fillStyle = 'rgba(240,230,200,0.92)';
+  textLines.forEach((l, i) => ctx.fillText(l, boxX + 16, boxY + 40 + i * 22));
+  // continue prompt
+  const blink = Math.sin(time * 4) > 0;
+  if (blink) {
+    ctx.font = 'bold 13px monospace';
+    ctx.fillStyle = 'rgba(200,180,100,0.8)';
+    ctx.textAlign = 'right';
+    ctx.fillText(isLast ? '↑  FLY, ICARUS' : '↑  CONTINUE', boxX + boxW - 14, boxY + boxH - 10);
+  }
+}
+
+// ── Title Screen ───────────────────────────────────────────────────────────
+function renderTitle(W, H) {
+  // background gradient
+  const bg = ctx.createLinearGradient(0,0,0,H);
+  bg.addColorStop(0, '#ff8800');
+  bg.addColorStop(0.35, '#c2650a');
+  bg.addColorStop(0.7, '#1a6b9e');
+  bg.addColorStop(1, '#0a1628');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0,0,W,H);
+
+  // animated sun
+  const cx=W/2, cy=H*0.18;
+  const R = 70 + Math.sin(time*1.8)*5;
+  const glows2 = [{r:R*5,a:0.025},{r:R*3.2,a:0.05},{r:R*2,a:0.1},{r:R*1.4,a:0.2}];
+  for(const g of glows2){
+    const grd=ctx.createRadialGradient(cx,cy,0,cx,cy,g.r);
+    grd.addColorStop(0,`rgba(255,200,50,${g.a})`);
+    grd.addColorStop(1,'rgba(255,80,0,0)');
+    ctx.fillStyle=grd;
+    ctx.beginPath();ctx.arc(cx,cy,g.r,0,Math.PI*2);ctx.fill();
+  }
+  const cg=ctx.createRadialGradient(cx,cy,0,cx,cy,R);
+  cg.addColorStop(0,'#ffffff');cg.addColorStop(0.4,'#fffaaa');
+  cg.addColorStop(0.8,'#ffcc00');cg.addColorStop(1,'#ff8800');
+  ctx.fillStyle=cg;ctx.beginPath();ctx.arc(cx,cy,R,0,Math.PI*2);ctx.fill();
+
+  // mini Icarus flying toward sun
+  const fly_y = H*0.35 + Math.sin(time*1.5)*12;
+  const fly_x = W*0.5 + Math.cos(time*0.8)*30;
+  drawMiniIcarus(fly_x, fly_y, Math.sin(time*3)*22);
+
+  // title
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 90px serif';
+  ctx.shadowColor = '#ff8800';
+  ctx.shadowBlur = 30;
+  ctx.fillStyle = GOLD;
+  ctx.fillText('ICARUS', W/2, H*0.58);
+  ctx.shadowBlur = 0;
+  ctx.font = 'italic 22px serif';
+  ctx.fillStyle = 'rgba(255,230,150,0.85)';
+  ctx.fillText('Fly high. Earn glory. Don\'t burn.', W/2, H*0.64);
+  ctx.restore();
+
+  // controls
+  ctx.save();
+  ctx.textAlign='center';
+  ctx.font='16px monospace';
+  ctx.fillStyle='rgba(255,255,255,0.7)';
+  ctx.fillText('HOLD ↑ TO FLY  —  LAND ON ISLANDS FOR +100 POINTS', W/2, H*0.75);
+  const blink = Math.sin(time*3) > 0;
+  if (blink) {
+    ctx.fillStyle = 'rgba(255,220,100,0.9)';
+    ctx.font = 'bold 18px monospace';
+    ctx.fillText('PRESS  ↑  OR  SPACE  TO BEGIN', W/2, H*0.83);
+  }
+  ctx.restore();
+}
+
+function drawMiniIcarus(x, y, flapY) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(0.75, 0.75);
+  const skin = '#f0c87a'; const tunic = '#f0ead8';
+
+  // Side-profile wing
+  const tipX = -8 + flapY * 0.45;
+  const tipY2 = -52 + flapY * 0.85;
+  ctx.save(); ctx.globalAlpha = 0.3; ctx.fillStyle = '#e8e0c8';
+  ctx.beginPath();
+  ctx.moveTo(-5, -12);
+  ctx.bezierCurveTo(-5+14, -12-18, tipX+22, tipY2+16, tipX, tipY2);
+  ctx.bezierCurveTo(tipX-12, tipY2+20, -5-14, -12+6, -5, -12);
+  ctx.fill(); ctx.restore();
+  // feathers
+  for (let i = 0; i < 6; i++) {
+    const t = i / 5;
+    const bx = -5 + (tipX+5)*t, by2 = -12 + (tipY2+12)*t;
+    const len = 20 - t * 5;
+    ctx.save();
+    ctx.translate(bx, by2);
+    ctx.rotate(-0.25 - t * 0.68 - flapY * 0.007);
+    ctx.fillStyle = '#f2ead8';
+    ctx.beginPath();
+    ctx.moveTo(0,0); ctx.bezierCurveTo(-len*0.45,len*0.2,-len*0.4,len*0.75,0,len);
+    ctx.bezierCurveTo(len*0.06,len*0.7,len*0.08,len*0.22,0,0); ctx.fill();
+    ctx.restore();
+  }
+  // legs
+  ctx.strokeStyle = skin; ctx.lineWidth = 4; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-2,8); ctx.quadraticCurveTo(-16,20,-18,36); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo( 3,8); ctx.quadraticCurveTo(-8,18,-10,36); ctx.stroke();
+  // tunic
+  ctx.fillStyle = tunic;
+  ctx.beginPath(); ctx.moveTo(-12,-14); ctx.lineTo(14,-14); ctx.bezierCurveTo(16,-4,14,10,10,12); ctx.bezierCurveTo(0,14,-12,12,-14,6); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = GOLD; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(-10,0); ctx.lineTo(12,0); ctx.stroke();
+  // arm forward
+  ctx.strokeStyle = skin; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(12,-8); ctx.quadraticCurveTo(24,-5,32,0); ctx.stroke();
+  // neck + head profile
+  ctx.fillStyle = skin;
+  ctx.beginPath(); ctx.rect(9,-22,6,10); ctx.fill();
+  ctx.beginPath(); ctx.arc(15,-28,10,0,Math.PI*2); ctx.fill();
+  // hair
+  ctx.fillStyle = '#1e1000';
+  ctx.beginPath(); ctx.arc(13,-34,10,Math.PI*0.75,Math.PI*2.1); ctx.fill();
+  ctx.beginPath(); ctx.arc(1,-32,6,Math.PI*1.2,Math.PI*2.5); ctx.fill();
+  ctx.restore();
+}
+
+// ── Dead screen ────────────────────────────────────────────────────────────
+function renderDead(W, H) {
+  // darken
+  ctx.fillStyle='rgba(0,0,0,0.85)';
+  ctx.fillRect(0,0,W,H);
+  // red vignette
+  const vig=ctx.createRadialGradient(W/2,H/2,H*0.1,W/2,H/2,H*0.75);
+  vig.addColorStop(0,'rgba(80,0,0,0)');
+  vig.addColorStop(1,'rgba(120,0,0,0.6)');
+  ctx.fillStyle=vig;ctx.fillRect(0,0,W,H);
+
+  ctx.save();
+  ctx.textAlign='center';
+  ctx.shadowBlur=20;
+
+  ctx.font='bold 52px serif';
+  ctx.fillStyle='#cc2200';
+  ctx.shadowColor='#ff4400';
+  ctx.fillText('YOU ARE NOW A MYTH', W/2, H*0.36);
+
+  // myth summary
+  ctx.font='italic 15px serif';
+  ctx.fillStyle='rgba(220,200,160,0.75)';
+  ctx.shadowBlur=0;
+  const myth = [
+    'Daedalus crafted wings of feathers and wax so he and his son could escape the island of Crete.',
+    'He warned Icarus not to fly too close to the sun — but the boy, drunk on the joy of flight, soared ever higher.',
+    'The wax melted. The feathers fell. And Icarus plunged into the sea, immortalised forever in myth.',
+  ];
+  myth.forEach((line, i) => ctx.fillText(line, W/2, H*0.42 + i*22));
+
+  ctx.font='18px monospace';
+  ctx.fillStyle='rgba(255,200,100,0.7)';
+  ctx.fillText('FINAL SCORE', W/2, H*0.56);
+
+  ctx.font='bold 64px monospace';
+  ctx.fillStyle=GOLD;
+  ctx.shadowColor=GOLD;
+  ctx.shadowBlur=18;
+  ctx.fillText(Math.floor(player.xp).toLocaleString()+' POINTS', W/2, H*0.66);
+
+  const blink = Math.sin(time*3) > 0;
+  if (blink) {
+    ctx.font='bold 20px monospace';
+    ctx.fillStyle='rgba(255,220,100,0.9)';
+    ctx.shadowColor=GOLD;
+    ctx.shadowBlur=8;
+    ctx.fillText('PRESS  1  TO RISE AGAIN', W/2, H*0.80);
+  }
+  ctx.shadowBlur=0;
+  ctx.font='13px monospace';
+  ctx.fillStyle='rgba(180,180,180,0.55)';
+  ctx.fillText('ESC — Return to World', W/2, H*0.87);
+  ctx.restore();
+}
+
+// ── Session helpers ────────────────────────────────────────────────────────
+const LAST_PLAY_KEY = 'icarus_lastPlay';
+const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+
+function recentlyPlayed() {
+  const last = localStorage.getItem(LAST_PLAY_KEY);
+  if (!last) return false;
+  return (Date.now() - parseInt(last, 10)) < THREE_DAYS_MS;
+}
+
+function recordPlay() {
+  localStorage.setItem(LAST_PLAY_KEY, Date.now().toString());
+}
+
+function startGame() {
+  initGame();
+  recordPlay();
+  state = 'playing';
+}
+
+// ── Input ──────────────────────────────────────────────────────────────────
+window.addEventListener('keydown', e => {
+  keys[e.key] = true;
+  if (state === 'title' && (e.key === 'ArrowUp' || e.key === ' ')) {
+    initAudio();
+    if (recentlyPlayed()) {
+      startGame();
+    } else {
+      tutorialStep = 0;
+      state = 'tutorial';
+    }
+  }
+  if (state === 'tutorial' && (e.key === 'ArrowUp' || e.key === ' ')) {
+    tutorialStep++;
+    if (tutorialStep >= TUTORIAL_LINES.length) {
+      startGame();
+    }
+  }
+  if (state === 'dead' && e.key === '1') {
+    if (recentlyPlayed()) {
+      startGame();
+    } else {
+      tutorialStep = 0;
+      state = 'tutorial';
+    }
+  }
+  if (state === 'dead' && e.key === 'Escape') {
+    window.location.href = 'index.html';
+  }
+  e.preventDefault();
+});
+window.addEventListener('keyup', e => { keys[e.key] = false; });
+
+// ── Loop ───────────────────────────────────────────────────────────────────
+function loop(ts) {
+  if (lastTime === null) lastTime = ts;
+  const dt = Math.min((ts - lastTime) / 1000, 0.05);
+  lastTime = ts;
+
+  update(dt);
+  render();
+
+  requestAnimationFrame(loop);
+}
+
+initGame();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
