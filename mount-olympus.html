@@ -73,8 +73,8 @@ nav.topbar .who button:hover { color:var(--gold); }
 
 main {
   flex:1; display:grid;
-  grid-template-columns: 1fr 1fr;
-  gap:34px;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap:24px;
   min-height:0;
 }
 .tablet {
@@ -181,6 +181,9 @@ footer {
 }
 .modal button:hover { transform:translateY(-1px); box-shadow:0 4px 14px rgba(212,175,55,0.4); }
 
+@media (max-width: 1100px) {
+  main { grid-template-columns: 1fr 1fr; gap:18px; }
+}
 @media (max-width: 720px) {
   main { grid-template-columns: 1fr; gap:18px; }
   nav.topbar { font-size:11px; }
@@ -217,6 +220,14 @@ footer {
         <div class="label">Swiftest Hunts · by Time</div>
       </header>
       <ol id="list-orion"><li class="loading">Consulting the Fates…</li></ol>
+    </section>
+
+    <section class="tablet" id="tablet-achilles">
+      <header class="thead">
+        <h2>ACHILLES</h2>
+        <div class="label">Greatest Stands · by Score</div>
+      </header>
+      <ol id="list-achilles"><li class="loading">Consulting the Fates…</li></ol>
     </section>
   </main>
 
@@ -267,7 +278,8 @@ $('nameInput').addEventListener('keydown', (e) => {
 })();
 
 // ─── Leaderboard fetching ───────────────────────────────────────────────
-function fmtIcarus(score) { return Math.floor(score).toLocaleString() + ' XP'; }
+function fmtIcarus(score)   { return Math.floor(score).toLocaleString() + ' XP'; }
+function fmtAchilles(score) { return Math.floor(score).toLocaleString(); }
 function fmtOrion(ms) {
   const total = Math.max(0, Math.floor(ms));
   const m = Math.floor(total / 60000);
@@ -297,28 +309,34 @@ function renderList(listEl, entries, fmt) {
   });
 }
 
-let cachedIcarus = [], cachedOrion = [];
+let cachedIcarus = [], cachedOrion = [], cachedAchilles = [];
 
 async function load() {
-  const icarusList = $('list-icarus');
-  const orionList  = $('list-orion');
+  const icarusList   = $('list-icarus');
+  const orionList    = $('list-orion');
+  const achillesList = $('list-achilles');
   try {
-    const [iRes, oRes] = await Promise.all([
+    const [iRes, oRes, aRes] = await Promise.all([
       fetch('/api/leaderboard?game=icarus').then(r => r.json()),
       fetch('/api/leaderboard?game=orion').then(r => r.json()),
+      fetch('/api/leaderboard?game=achilles').then(r => r.json()),
     ]);
-    cachedIcarus = iRes.entries || [];
-    cachedOrion  = oRes.entries || [];
-    renderList(icarusList, cachedIcarus, fmtIcarus);
-    renderList(orionList,  cachedOrion,  fmtOrion);
+    cachedIcarus   = iRes.entries || [];
+    cachedOrion    = oRes.entries || [];
+    cachedAchilles = aRes.entries || [];
+    renderList(icarusList,   cachedIcarus,   fmtIcarus);
+    renderList(orionList,    cachedOrion,    fmtOrion);
+    renderList(achillesList, cachedAchilles, fmtAchilles);
   } catch (err) {
-    icarusList.innerHTML = '<li class="errmsg">The Fates are silent. (offline)</li>';
-    orionList.innerHTML  = '<li class="errmsg">The Fates are silent. (offline)</li>';
+    icarusList.innerHTML   = '<li class="errmsg">The Fates are silent. (offline)</li>';
+    orionList.innerHTML    = '<li class="errmsg">The Fates are silent. (offline)</li>';
+    achillesList.innerHTML = '<li class="errmsg">The Fates are silent. (offline)</li>';
   }
 }
 function refreshHighlights() {
-  renderList($('list-icarus'), cachedIcarus, fmtIcarus);
-  renderList($('list-orion'),  cachedOrion,  fmtOrion);
+  renderList($('list-icarus'),   cachedIcarus,   fmtIcarus);
+  renderList($('list-orion'),    cachedOrion,    fmtOrion);
+  renderList($('list-achilles'), cachedAchilles, fmtAchilles);
 }
 load();
 

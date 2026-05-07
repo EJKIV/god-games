@@ -96,9 +96,10 @@ const stars = Array.from({length:160}, () => ({
 // To add a new game: append an entry. x is auto-distributed across the screen.
 // kind: 'arch' (default) draws an archway portal; 'mountain' draws a snow-capped peak.
 const portals = [
-  { name: 'ORION',   sub: 'The Giant Scorpion',    hue: '#8844ff', glow: '#6622cc', href: 'orion.html'         },
-  { name: 'OLYMPUS', sub: 'Hall of the Gods',      hue: '#fff5c0', glow: '#D4AF37', href: 'mount-olympus.html', kind: 'mountain' },
-  { name: 'ICARUS',  sub: 'The Flight of Icarus',  hue: '#ff7700', glow: '#ff4400', href: 'icarus.html'        },
+  { name: 'ORION',    sub: 'The Giant Scorpion',    hue: '#8844ff', glow: '#6622cc', href: 'orion.html'         },
+  { name: 'ACHILLES', sub: 'The Arrow Gauntlet',    hue: '#cc2222', glow: '#882200', href: 'achilles.html'      },
+  { name: 'OLYMPUS',  sub: 'Hall of the Gods',      hue: '#fff5c0', glow: '#D4AF37', href: 'mount-olympus.html', kind: 'mountain' },
+  { name: 'ICARUS',   sub: 'The Flight of Icarus',  hue: '#ff7700', glow: '#ff4400', href: 'icarus.html'        },
 ];
 portals.forEach((p, i) => { p.x = W * (i + 1) / (portals.length + 1); p._btn = null; });
 const PORTAL_RADIUS = Math.min(130, (W / (portals.length + 1)) * 0.45);

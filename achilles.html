@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Achilles — God Games</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#000; overflow:hidden; font-family: 'Trebuchet MS', serif; color:#f0e8d0; }
+canvas { display:block; }
+
+/* ── Name prompt modal ── */
+.modal-bg {
+  position:fixed; inset:0; z-index:10;
+  background:rgba(0,0,0,0.85);
+  display:none; align-items:center; justify-content:center;
+}
+.modal-bg.open { display:flex; }
+.modal {
+  background:linear-gradient(180deg, #1a0a08 0%, #050200 100%);
+  border:1px solid #D4AF37; border-radius:6px;
+  padding:32px 40px;
+  box-shadow: 0 0 50px rgba(212,175,55,0.4);
+  text-align:center; min-width:340px;
+}
+.modal h3 {
+  font-family:serif; font-size:26px; color:#D4AF37;
+  letter-spacing:0.1em; margin-bottom:6px;
+  text-shadow:0 0 14px rgba(212,175,55,0.5);
+}
+.modal p { font-style:italic; color:rgba(240,215,122,0.7); font-size:13px; margin-bottom:20px; }
+.modal input {
+  width:100%; padding:10px 14px;
+  background:rgba(10,4,2,0.7); border:1px solid rgba(212,175,55,0.5);
+  color:#f0e8d0; font-family:monospace; font-size:16px;
+  text-align:center; letter-spacing:0.1em;
+  border-radius:3px; outline:none;
+}
+.modal input:focus { border-color:#D4AF37; box-shadow:0 0 12px rgba(212,175,55,0.4); }
+.modal button {
+  margin-top:18px; padding:10px 28px;
+  background:#D4AF37; border:none; color:#1a0f00;
+  font-family:monospace; font-weight:bold; font-size:14px;
+  letter-spacing:0.1em; cursor:pointer; border-radius:3px;
+  transition:transform 0.1s, box-shadow 0.15s;
+}
+.modal button:hover { transform:translateY(-1px); box-shadow:0 4px 14px rgba(212,175,55,0.4); }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <h3>NAME OF THE WARRIOR</h3>
+    <p>Speak your name before facing the gauntlet.</p>
+    <input id="nameInput" maxlength="20" autocomplete="off" spellcheck="false" placeholder="Your name">
+    <br><button id="nameSave">TAKE THE FIELD</button>
+  </div>
+</div>
+<script src="engine.js"></script>
+<script>
+// ── Constants ─────────────────────────────────────────────────────────────
+const PLAYER_R = 26;
+const HP_MAX   = 5;
+const SPD      = 400;
+const WAVE_BASE= 2.0;
+const WAVE_MIN = 0.50;
+const RAMP     = 0.055;
+const TILE     = 72;
+
+// Layout — recomputed on boot + resize (depend on Engine.W/H).
+let PLAYER_Y, LANE_L, LANE_R;
+let archerXs, tileColors, stars;
+
+function initLayout() {
+  const W = Engine.W, H = Engine.H;
+  PLAYER_Y = H * 0.82;
+  LANE_L   = W * 0.06;
+  LANE_R   = W * 0.94;
+  archerXs = Array.from({length:10}, (_,i) => LANE_L + (LANE_R - LANE_L) * ((i + 0.5) / 10));
+  tileColors = [];
+  for (let ty = 0; ty * TILE < H; ty++) {
+    const row = [];
+    for (let tx = 0; tx * TILE < W; tx++) {
+      const v = 38 + Math.floor(Math.random() * 14);
+      row.push(`rgb(${v},${v-4},${v-10})`);
+    }
+    tileColors.push(row);
+  }
+  stars = Array.from({length:80}, () => ({
+    x: Math.random()*W, y: Math.random()*H*0.14,
+    r: Math.random()*1.4+0.2, phase: Math.random()*Math.PI*2,
+  }));
+}
+
+// ── Game state ────────────────────────────────────────────────────────────
+let player;
+let arrows = [];
+let particles = [];
+let floaters = [];
+let waveTimer = 1.8;
+let playTime = 0;
+let score = 0, xp = 0;
+let time = 0;     // mirror of Engine.time
+let canvas, ctx;
+
+// ── Hall of Mount Olympus ─────────────────────────────────────────────────
+const NAME_KEY = 'godgames_playerName';
+let hallRank = null;
+let hallStatus = null;       // 'pending' | 'ok' | 'fail'
+let submittedThisRun = false;
+
+async function submitToHall(finalScore) {
+  const name = localStorage.getItem(NAME_KEY) || 'NAMELESS MORTAL';
+  hallStatus = 'pending';
+  try {
+    const res = await fetch('/api/leaderboard', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ game: 'achilles', name, score: finalScore }),
+    });
+    if (!res.ok) { hallStatus = 'fail'; return; }
+    const json = await res.json();
+    hallRank = json.rank;
+    hallStatus = 'ok';
+  } catch {
+    hallStatus = 'fail';
+  }
+}
+
+// ── Audio (uses the engine's shared audio context) ────────────────────────
+function beep(freq, dur, type = 'square', vol = 0.18, detune = 0) {
+  const ac = Engine.audio._ctx;
+  if (!ac) return;
+  const o = ac.createOscillator(), g = ac.createGain();
+  o.type = type;
+  o.frequency.value = freq;
+  o.detune.value = detune;
+  g.gain.setValueAtTime(vol, ac.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + dur);
+  o.connect(g); g.connect(ac.destination);
+  o.start(); o.stop(ac.currentTime + dur);
+}
+const sfx = {
+  hit:    () => { beep(100, 0.28, 'sawtooth', 0.24); beep(75, 0.20, 'square', 0.14); },
+  death:  () => { beep(160, 0.6, 'sawtooth', 0.28); beep(70, 0.9, 'sawtooth', 0.18); },
+  step:   () => { beep(180 + Math.random()*40, 0.04, 'sine', 0.05); },
+  arrow:  () => { beep(700 + Math.random()*300, 0.04, 'square', 0.06); },
+  xp:     () => { beep(660, 0.07, 'sine', 0.15); beep(990, 0.10, 'sine', 0.12); },
+  impact: () => { beep(300, 0.10, 'square', 0.09); beep(200, 0.08, 'sawtooth', 0.07); },
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function burst(x, y, color, n = 14, speedMul = 1) {
+  for (let i = 0; i < n; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const spd = (60 + Math.random() * 200) * speedMul;
+    particles.push({
+      x, y,
+      vx: Math.cos(ang) * spd,
+      vy: Math.sin(ang) * spd - 40,
+      alpha: 1,
+      r: 2 + Math.random() * 4,
+      color,
+    });
+  }
+}
+function addFloater(x, y, text, color) {
+  floaters.push({ x, y, vy: -55, alpha: 1, text, color, t: 0 });
+}
+
+// ── Init / reset ──────────────────────────────────────────────────────────
+function resetGame() {
+  player = {
+    x: Engine.W * 0.5, vx: 0,
+    hp: HP_MAX, iframes: 0, hitFlash: 0,
+    walkPhase: 0, stepT: 0, facing: 1,
+  };
+  arrows = []; particles = []; floaters = [];
+  score = 0; xp = 0; playTime = 0; waveTimer = 1.8;
+  hallRank = null; hallStatus = null; submittedThisRun = false;
+}
+
+// ── Wave builder ──────────────────────────────────────────────────────────
+function spawnWave() {
+  const diff  = Math.min(1, playTime / 70);
+  const cols  = 5 + Math.floor(diff * 5);
+  const colW  = (LANE_R - LANE_L) / cols;
+  const speed = 230 + diff * 360 + Math.random() * 80;
+
+  const numSafe = Math.max(1, Math.round(3 - diff * 1.6));
+  const safe = new Set();
+  while (safe.size < numSafe) safe.add(Math.floor(Math.random() * cols));
+
+  for (let c = 0; c < cols; c++) {
+    if (safe.has(c)) continue;
+    const x = LANE_L + (c + 0.5) * colW + (Math.random() - 0.5) * colW * 0.35;
+    arrows.push({ x, y: -(20 + Math.random() * 35), speed, alive: true, landed: false });
+  }
+  sfx.arrow();
+}
+
+// ── Update ────────────────────────────────────────────────────────────────
+function update(dt) {
+  playTime += dt;
+
+  // Player movement
+  const left  = Engine.keys['ArrowLeft']  || Engine.keys['a'];
+  const right = Engine.keys['ArrowRight'] || Engine.keys['d'];
+  player.vx = right ? SPD : left ? -SPD : 0;
+  if (player.vx) {
+    player.facing = player.vx > 0 ? 1 : -1;
+    player.walkPhase += dt * 10;
+    player.stepT -= dt;
+    if (player.stepT <= 0) { sfx.step(); player.stepT = 0.16; }
+  }
+  player.x = Math.max(LANE_L + 20, Math.min(LANE_R - 20, player.x + player.vx * dt));
+
+  if (player.iframes  > 0) player.iframes  -= dt;
+  if (player.hitFlash > 0) player.hitFlash -= dt;
+
+  // Wave spawn
+  const interval = Math.max(WAVE_MIN, WAVE_BASE - playTime * RAMP);
+  waveTimer -= dt;
+  if (waveTimer <= 0) { spawnWave(); waveTimer = interval + (Math.random() - 0.5) * 0.25; }
+
+  // Arrows
+  for (const a of arrows) {
+    if (!a.alive) continue;
+    a.y += a.speed * dt;
+
+    if (a.y >= PLAYER_Y && !a.landed) {
+      a.landed = true;
+      const dist = Math.abs(a.x - player.x);
+      if (dist < PLAYER_R + 12 && player.iframes <= 0) {
+        // Hit
+        player.hp--;
+        player.iframes = 0.85;
+        player.hitFlash = 0.35;
+        sfx.hit(); Engine.shake(9);
+        burst(player.x, PLAYER_Y - 10, '#ff3300', 18);
+        burst(a.x, PLAYER_Y, '#cc2200', 8, 0.6);
+        addFloater(player.x, PLAYER_Y - 80, '-1 HP', '#ff4422');
+        if (player.hp <= 0) {
+          burst(player.x, PLAYER_Y - 10, '#ff6600', 32);
+          burst(player.x, PLAYER_Y - 10, '#ffcc00', 20);
+          sfx.death();
+          if (!submittedThisRun) {
+            submittedThisRun = true;
+            submitToHall(Math.floor(score));
+          }
+          Engine.setState('dead');
+        }
+      } else {
+        // Dodge — award XP
+        xp    += 10;
+        score += 10 + Math.floor(playTime * 0.5);
+        sfx.xp(); sfx.impact();
+        burst(a.x, PLAYER_Y + 4, '#c8c840', 7, 0.5);
+        addFloater(a.x, PLAYER_Y - 40, '+10 XP', Engine.GOLD);
+      }
+      setTimeout(() => { a.alive = false; }, 120);
+    }
+    if (a.y > Engine.H + 60) a.alive = false;
+  }
+  arrows = arrows.filter(a => a.alive);
+
+  // Particles
+  for (const p of particles) {
+    p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 320 * dt; p.alpha -= dt * 2.4;
+  }
+  particles = particles.filter(p => p.alpha > 0);
+
+  // Floaters
+  for (const f of floaters) {
+    f.y += f.vy * dt; f.t += dt; f.alpha = Math.max(0, 1 - f.t * 1.7);
+  }
+  floaters = floaters.filter(f => f.alpha > 0);
+
+  score += dt * 5;
+}
+
+// ── Draw: overhead stone battlefield ───────────────────────────────────────
+function drawGround() {
+  const W = Engine.W, H = Engine.H;
+  ctx.fillStyle = '#2e2820';
+  ctx.fillRect(0, 0, W, H);
+
+  for (let ty = 0; ty * TILE < H; ty++) {
+    for (let tx = 0; tx * TILE < W; tx++) {
+      ctx.fillStyle = (tileColors[ty] && tileColors[ty][tx]) || '#363028';
+      ctx.fillRect(tx * TILE, ty * TILE, TILE - 1, TILE - 1);
+    }
+  }
+
+  ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x <= W; x += TILE) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
+  for (let y = 0; y <= H; y += TILE) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+
+  ctx.fillStyle = 'rgba(255,240,180,0.04)';
+  ctx.fillRect(W*0.25, 0, W*0.5, H);
+
+  const edgeG = ctx.createLinearGradient(0, 0, LANE_L * 2, 0);
+  edgeG.addColorStop(0, 'rgba(0,0,0,0.55)');
+  edgeG.addColorStop(1, 'rgba(0,0,0,0.00)');
+  ctx.fillStyle = edgeG; ctx.fillRect(0, 0, LANE_L * 2, H);
+  const edgeGR = ctx.createLinearGradient(W, 0, W - LANE_L * 2, 0);
+  edgeGR.addColorStop(0, 'rgba(0,0,0,0.55)');
+  edgeGR.addColorStop(1, 'rgba(0,0,0,0.00)');
+  ctx.fillStyle = edgeGR; ctx.fillRect(W - LANE_L * 2, 0, LANE_L * 2, H);
+
+  const zoneG = ctx.createLinearGradient(0, PLAYER_Y - 60, 0, PLAYER_Y + 60);
+  zoneG.addColorStop(0, 'rgba(212,175,55,0.00)');
+  zoneG.addColorStop(0.5, 'rgba(212,175,55,0.07)');
+  zoneG.addColorStop(1, 'rgba(212,175,55,0.00)');
+  ctx.fillStyle = zoneG; ctx.fillRect(0, PLAYER_Y - 60, W, 120);
+}
+
+function drawArchers() {
+  for (const ax of archerXs) {
+    const bob = Math.sin(time * 2.2 + ax * 0.01) * 1.5;
+    ctx.save();
+    ctx.translate(ax, 28 + bob);
+    ctx.globalAlpha = 0.65;
+
+    ctx.fillStyle = '#1a1408';
+    ctx.beginPath(); ctx.ellipse(0, 0, 7, 9, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(0, -10, 5, 0, Math.PI*2); ctx.fill();
+
+    ctx.strokeStyle = '#6a5020';
+    ctx.lineWidth = 2; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(0, 6, 10, -Math.PI*0.6, Math.PI*0.6);
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(200,180,100,0.7)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-9, 0); ctx.lineTo(0, 14); ctx.lineTo(9, 0);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawLandingShadows() {
+  for (const a of arrows) {
+    if (!a.alive) continue;
+    const progress = Math.max(0, a.y / PLAYER_Y);
+    const alpha    = progress * 0.55;
+    const rw = 6 + progress * 18;
+    const rh = 3 + progress * 8;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.ellipse(a.x, PLAYER_Y, rw, rh, 0, 0, Math.PI * 2);
+    ctx.fill();
+    if (progress > 0.70) {
+      const warn = (progress - 0.70) / 0.30;
+      ctx.globalAlpha = warn * 0.45;
+      ctx.strokeStyle = '#ff4400';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(a.x, PLAYER_Y, rw * 1.6, rh * 1.6, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
+function drawArrow(a) {
+  const progress = Math.max(0.05, Math.min(1, a.y / PLAYER_Y));
+  const scale    = 0.11 + progress * 0.89;
+
+  const tipLen   = 20 * scale;
+  const shaftLen = 32 * scale;
+  const hw       = 8  * scale;
+
+  ctx.save();
+  ctx.translate(a.x, a.y);
+
+  if (progress > 0.55) {
+    const g = (progress - 0.55) / 0.45;
+    ctx.shadowColor = '#ff8800';
+    ctx.shadowBlur  = 18 * g * scale;
+  }
+
+  ctx.strokeStyle = '#8a6030';
+  ctx.lineWidth   = 2.5 * scale;
+  ctx.lineCap     = 'round';
+  ctx.beginPath();
+  ctx.moveTo(0, tipLen * 0.5);
+  ctx.lineTo(0, -shaftLen);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle   = '#d0d0e8';
+  ctx.strokeStyle = '#808090';
+  ctx.lineWidth   = 1 * scale;
+  ctx.beginPath();
+  ctx.moveTo(0, tipLen * 0.65);
+  ctx.lineTo(-hw * 0.55, tipLen * 0.05);
+  ctx.lineTo(0, -tipLen * 0.20);
+  ctx.lineTo( hw * 0.55, tipLen * 0.05);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = '#cc2222';
+  ctx.beginPath();
+  ctx.moveTo(0, -shaftLen * 0.62);
+  ctx.lineTo(-hw * 0.72, -shaftLen * 0.96);
+  ctx.lineTo(0, -shaftLen * 0.80);
+  ctx.closePath(); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(0, -shaftLen * 0.62);
+  ctx.lineTo( hw * 0.72, -shaftLen * 0.96);
+  ctx.lineTo(0, -shaftLen * 0.80);
+  ctx.closePath(); ctx.fill();
+
+  ctx.restore();
+}
+
+function drawPlayer() {
+  const x = player.x, y = PLAYER_Y;
+  const walk = player.vx !== 0 ? Math.sin(player.walkPhase) : 0;
+
+  if (player.iframes > 0 && Math.floor(player.iframes * 14) % 2 === 0) {
+    ctx.globalAlpha = 0.30;
+  }
+
+  ctx.save();
+  ctx.translate(x, y);
+
+  ctx.fillStyle = 'rgba(0,0,0,0.38)';
+  ctx.beginPath(); ctx.ellipse(0, 8, 28, 10, 0, 0, Math.PI*2); ctx.fill();
+
+  const footL = walk * 8;
+  ctx.fillStyle = '#8a6030';
+  ctx.beginPath(); ctx.ellipse(-8 - footL, 12, 5, 3.5, walk*0.3, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse( 8 + footL,  8, 5, 3.5, -walk*0.3, 0, Math.PI*2); ctx.fill();
+
+  const bodyG = ctx.createRadialGradient(-3, -4, 2, 0, 0, 22);
+  bodyG.addColorStop(0, '#d8a840');
+  bodyG.addColorStop(0.55, '#b08228');
+  bodyG.addColorStop(1, '#7a5810');
+  ctx.fillStyle = bodyG;
+  ctx.beginPath(); ctx.ellipse(0, 2, 18, 22, 0, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = '#c09030'; ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  const shOffX = -player.facing * 4 + walk * 3;
+  const shG = ctx.createRadialGradient(shOffX - 4, -22, 2, shOffX, -20, 26);
+  shG.addColorStop(0, '#f0c850');
+  shG.addColorStop(0.45, '#c89030');
+  shG.addColorStop(0.80, '#9a6c18');
+  shG.addColorStop(1, '#6a4a08');
+  ctx.fillStyle = shG;
+  ctx.beginPath(); ctx.ellipse(shOffX, -22, 22, 22, 0, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = '#d4a030'; ctx.lineWidth = 2.5;
+  ctx.stroke();
+  ctx.fillStyle = '#ffe070';
+  ctx.beginPath(); ctx.arc(shOffX, -22, 5, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = '#c89030'; ctx.lineWidth = 1; ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,220,80,0.4)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(shOffX, -22, 14, 0, Math.PI*2); ctx.stroke();
+
+  const helmG = ctx.createRadialGradient(-2, -2, 1, 0, 0, 13);
+  helmG.addColorStop(0, '#e0b040');
+  helmG.addColorStop(0.6, '#b08828');
+  helmG.addColorStop(1, '#7a6010');
+  ctx.fillStyle = helmG;
+  ctx.beginPath(); ctx.arc(0, -3, 12, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = '#c8a030'; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.strokeStyle = '#cc2222';
+  ctx.lineWidth = 4; ctx.lineCap = 'round';
+  ctx.shadowColor = '#ff2222'; ctx.shadowBlur = 6;
+  ctx.beginPath();
+  ctx.moveTo(-player.facing * 14, -3); ctx.lineTo(player.facing * 14, -3);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  ctx.restore();
+  ctx.globalAlpha = 1;
+
+  if (player.hitFlash > 0) {
+    ctx.save();
+    ctx.globalAlpha = player.hitFlash * 0.55;
+    ctx.fillStyle = '#ff3300';
+    ctx.beginPath(); ctx.ellipse(x, y - 8, 30, 32, 0, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawHUD() {
+  const W = Engine.W, H = Engine.H;
+  ctx.textAlign = 'left'; ctx.font = 'bold 24px serif';
+  ctx.shadowColor = '#ff2222'; ctx.shadowBlur = 10;
+  for (let i = 0; i < HP_MAX; i++) {
+    ctx.fillStyle = i < player.hp ? '#ff3333' : '#333';
+    ctx.fillText('♥', 22 + i * 34, 46);
+  }
+  ctx.shadowBlur = 0;
+
+  ctx.textAlign = 'right';
+  ctx.font = 'bold 20px monospace';
+  ctx.fillStyle = Engine.GOLD; ctx.shadowColor = Engine.GOLD; ctx.shadowBlur = 10;
+  ctx.fillText(`SCORE  ${Math.floor(score)}`, W - 22, 36);
+  ctx.shadowBlur = 0;
+
+  const xpW = 180, xpH = 10, xpX = W - 22 - xpW, xpY = 46;
+  const xpPct = Math.min(1, (xp % 100) / 100);
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.beginPath(); ctx.roundRect(xpX, xpY, xpW, xpH, 5); ctx.fill();
+  const xpG = ctx.createLinearGradient(xpX, 0, xpX + xpW, 0);
+  xpG.addColorStop(0, '#D4AF37'); xpG.addColorStop(1, '#ffe87c');
+  ctx.fillStyle = xpG;
+  ctx.beginPath(); ctx.roundRect(xpX, xpY, xpW * xpPct, xpH, 5); ctx.fill();
+  ctx.strokeStyle = Engine.GOLD + '88'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.roundRect(xpX, xpY, xpW, xpH, 5); ctx.stroke();
+  ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(212,175,55,0.7)';
+  ctx.font = '10px monospace';
+  ctx.fillText(`XP  ${xp}`, W - 22, xpY + xpH + 12);
+
+  ctx.textAlign = 'center'; ctx.font = '11px monospace';
+  ctx.fillStyle = 'rgba(255,255,255,0.30)';
+  ctx.fillText(`${Math.floor(playTime)}s  survived`, W / 2, H - 12);
+}
+
+// ── Compose the world frame (used by both onRender and onGameOverRender) ──
+function drawWorldFrame() {
+  const W = Engine.W, H = Engine.H;
+
+  drawGround();
+  drawArchers();
+  drawLandingShadows();
+  for (const a of arrows) drawArrow(a);
+  drawPlayer();
+
+  for (const p of particles) {
+    ctx.globalAlpha = Math.max(0, p.alpha);
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  for (const f of floaters) {
+    ctx.globalAlpha = f.alpha;
+    ctx.textAlign = 'center'; ctx.font = 'bold 16px monospace';
+    ctx.fillStyle = f.color; ctx.shadowColor = f.color; ctx.shadowBlur = 8;
+    ctx.fillText(f.text, f.x, f.y);
+    ctx.shadowBlur = 0;
+  }
+  ctx.globalAlpha = 1;
+
+  drawHUD();
+
+  // Title bar
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 22px serif';
+  ctx.fillStyle = Engine.GOLD; ctx.shadowColor = Engine.GOLD; ctx.shadowBlur = 14;
+  ctx.fillText('ACHILLES', W/2, 34);
+  ctx.shadowBlur = 0;
+  ctx.font = '11px monospace';
+  ctx.fillStyle = 'rgba(255,200,100,0.38)';
+  ctx.fillText('← → dodge the arrows', W/2, 54);
+}
+
+// ── Title screen ──────────────────────────────────────────────────────────
+function renderTitle() {
+  const W = Engine.W, H = Engine.H;
+  drawGround();
+  drawArchers();
+
+  const vig = ctx.createRadialGradient(W/2, H/2, H*0.25, W/2, H/2, H*0.85);
+  vig.addColorStop(0, 'rgba(0,0,0,0)');
+  vig.addColorStop(1, 'rgba(0,0,0,0.72)');
+  ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
+
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 76px serif';
+  ctx.fillStyle = Engine.GOLD; ctx.shadowColor = '#ff8800'; ctx.shadowBlur = 50;
+  ctx.fillText('ACHILLES', W/2, H*0.28);
+  ctx.shadowBlur = 0;
+
+  ctx.font = 'italic 22px serif';
+  ctx.fillStyle = 'rgba(255,220,150,0.85)';
+  ctx.fillText('The Arrow Gauntlet', W/2, H*0.28 + 48);
+
+  ctx.font = '15px monospace';
+  ctx.fillStyle = 'rgba(230,220,190,0.75)';
+  ctx.fillText('← → move left and right  ·  dodge every arrow', W/2, H*0.50);
+  ctx.fillStyle = 'rgba(200,200,200,0.5)';
+  ctx.fillText('Waves speed up  ·  +10 XP per dodge', W/2, H*0.50 + 26);
+
+  const pulse = 0.88 + Math.sin(time * 4.5) * 0.12;
+  const bw = 180, bh = 52, bx = W/2 - bw/2, by = H * 0.62;
+  ctx.save();
+  ctx.shadowColor = Engine.GOLD; ctx.shadowBlur = 24 * pulse;
+  ctx.fillStyle = `rgba(212,175,55,${0.9*pulse})`;
+  ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 10); ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#1a0f00'; ctx.font = 'bold 22px monospace';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('PLAY', W/2, by + bh/2);
+  ctx.textBaseline = 'alphabetic';
+  ctx.restore();
+
+  ctx.fillStyle = 'rgba(200,200,200,0.38)';
+  ctx.font = '11px monospace';
+  ctx.fillText('SPACE / ENTER  to start  ·  ESC for hub', W/2, H*0.62 + 70);
+}
+
+// ── Death screen ──────────────────────────────────────────────────────────
+function renderDead() {
+  const W = Engine.W, H = Engine.H;
+  drawWorldFrame();
+
+  const pw = Math.min(480, W*0.82), ph = 320;
+  const px = (W-pw)/2, py = (H-ph)/2;
+
+  ctx.fillStyle = 'rgba(0,0,0,0.66)'; ctx.fillRect(0, 0, W, H);
+
+  const pg = ctx.createLinearGradient(px, py, px, py+ph);
+  pg.addColorStop(0, '#1a0808'); pg.addColorStop(1, '#0c0505');
+  ctx.fillStyle = pg;
+  ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 12); ctx.fill();
+  ctx.strokeStyle = '#882200'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 12); ctx.stroke();
+
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 42px serif';
+  ctx.fillStyle = '#ff4422'; ctx.shadowColor = '#ff2200'; ctx.shadowBlur = 32;
+  ctx.fillText('ACHILLES FALLS', W/2, py + 66);
+  ctx.shadowBlur = 0;
+
+  ctx.font = '16px monospace'; ctx.fillStyle = 'rgba(230,200,150,0.85)';
+  ctx.fillText(`Score:  ${Math.floor(score)}`, W/2, py + 112);
+  ctx.fillText(`XP earned:  ${xp}`,            W/2, py + 136);
+  ctx.fillText(`Survived:  ${Math.floor(playTime)}s`, W/2, py + 160);
+
+  // Hall of Mount Olympus rank line
+  ctx.font = '14px monospace';
+  if (hallStatus === 'pending') {
+    ctx.fillStyle = 'rgba(255,220,140,0.55)';
+    ctx.fillText('inscribing your name on Olympus…', W/2, py + 192);
+  } else if (hallStatus === 'ok' && hallRank != null) {
+    ctx.fillStyle = Engine.GOLD;
+    ctx.shadowColor = Engine.GOLD; ctx.shadowBlur = 10;
+    ctx.fillText('RANK #' + hallRank + ' ON MOUNT OLYMPUS', W/2, py + 192);
+    ctx.shadowBlur = 0;
+  } else if (hallStatus === 'fail') {
+    ctx.fillStyle = 'rgba(180,140,140,0.6)';
+    ctx.fillText('the gods are silent (offline)', W/2, py + 192);
+  }
+
+  const pulse = 0.85 + Math.sin(time * 4) * 0.15;
+  const bw = 160, bh = 44, bx = W/2 - bw/2, by = py + ph - 66;
+  ctx.save();
+  ctx.shadowColor = Engine.GOLD; ctx.shadowBlur = 18 * pulse;
+  ctx.fillStyle = `rgba(212,175,55,${0.9*pulse})`;
+  ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 8); ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#1a0f00'; ctx.font = 'bold 18px monospace';
+  ctx.textBaseline = 'middle'; ctx.fillText('PLAY AGAIN', W/2, by + bh/2);
+  ctx.textBaseline = 'alphabetic';
+  ctx.restore();
+
+  ctx.fillStyle = 'rgba(180,170,140,0.45)'; ctx.font = '11px monospace';
+  ctx.fillText('ESC — hub world    ·    H — Mount Olympus', W/2, py + ph + 24);
+}
+
+// ── Name gate ─────────────────────────────────────────────────────────────
+function hasName() { return !!localStorage.getItem(NAME_KEY); }
+function modalOpen() { return document.getElementById('modalBg').classList.contains('open'); }
+function showNameModal(after) {
+  pendingStart = after || null;
+  const mb = document.getElementById('modalBg');
+  const inp = document.getElementById('nameInput');
+  inp.value = localStorage.getItem(NAME_KEY) || '';
+  mb.classList.add('open');
+  setTimeout(() => inp.focus(), 50);
+}
+function hideNameModal() { document.getElementById('modalBg').classList.remove('open'); }
+let pendingStart = null;
+function saveNameFromModal() {
+  const raw = document.getElementById('nameInput').value || '';
+  const clean = raw.replace(/[\x00-\x1f\x7f]/g, '').replace(/\s+/g,' ').trim().slice(0,20);
+  if (!clean) return false;
+  localStorage.setItem(NAME_KEY, clean);
+  hideNameModal();
+  if (pendingStart) { const fn = pendingStart; pendingStart = null; fn(); }
+  return true;
+}
+document.getElementById('nameSave').addEventListener('click', saveNameFromModal);
+document.getElementById('nameInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); saveNameFromModal(); }
+  e.stopPropagation();
+});
+
+function beginRun() {
+  Engine.audio.init();
+  Engine.setState('playing');
+}
+
+// ── Engine integration ────────────────────────────────────────────────────
+Engine.boot({
+  title: 'ACHILLES',
+  hubHref: 'index.html',
+  theme: {
+    // Background is drawn inside onRender (drawGround); engine just clears.
+    bg: (c, W, H) => { c.fillStyle = '#000'; c.fillRect(0, 0, W, H); },
+    accent: '#cc2222',
+    danger: '#882200',
+    shakeDecay: 'exp',
+    restartKey: [' ', 'Enter'],
+  },
+
+  onResize() { initLayout(); },
+
+  onInit() { resetGame(); },
+
+  onUpdate(dt) {
+    time = Engine.time;
+    update(dt);
+  },
+
+  onRender() {
+    time = Engine.time;
+    drawWorldFrame();
+  },
+
+  onTitleRender() {
+    time = Engine.time;
+    renderTitle();
+  },
+
+  onGameOverRender() {
+    time = Engine.time;
+    renderDead();
+  },
+
+  onTryStart(e) {
+    if (modalOpen()) return false;
+    if (!hasName()) { showNameModal(beginRun); return false; }
+    return true;
+  },
+
+  onKeyDown(ev, e) {
+    if (modalOpen()) return;
+    // Engine auto-handles Space on title; mirror for Enter.
+    if (e.state === 'title' && ev.key === 'Enter') {
+      if (!hasName()) { showNameModal(beginRun); return; }
+      e.audio.init();
+      e.setState('playing');
+      return;
+    }
+    if (e.state === 'dead' && (ev.key === 'h' || ev.key === 'H')) {
+      window.location.href = 'mount-olympus.html';
+    }
+  },
+});
+
+// Aliases for code that uses these globals.
+canvas = Engine.canvas;
+ctx    = Engine.ctx;
+
+// Layout depends on canvas size — compute once after boot.
+initLayout();
+
+// Click-to-play on the PLAY buttons.
+canvas.addEventListener('click', (e) => {
+  if (modalOpen()) return;
+  const r = canvas.getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+  const W = Engine.W, H = Engine.H;
+
+  if (Engine.state === 'title') {
+    const bw = 180, bh = 52, bx = W/2 - bw/2, by = H * 0.62;
+    if (mx >= bx && mx <= bx+bw && my >= by && my <= by+bh) {
+      if (!hasName()) { showNameModal(beginRun); return; }
+      beginRun();
+    }
+  } else if (Engine.state === 'dead') {
+    const ph = 320, py = (H-ph)/2;
+    const bw = 160, bh = 44, bx = W/2 - bw/2, by = py + ph - 66;
+    if (mx >= bx && mx <= bx+bw && my >= by && my <= by+bh) {
+      Engine.setState('playing');
+    }
+  }
+});
+
+// Prompt for name on first visit if not set.
+if (!hasName()) showNameModal(null);
+</script>
+</body>
+</html>
