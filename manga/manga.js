@@ -46,6 +46,8 @@
     'characters/hub-walker.js',
     'characters/orion.js',
     'characters/scorpion.js',
+    'characters/icarus.js',
+    'characters/eagle.js',
   ];
 
   // Resolve files relative to this script's URL so the library works no matter

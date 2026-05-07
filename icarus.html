@@ -58,6 +58,7 @@ canvas { display: block; }
   </div>
 </div>
 <script src="engine.js"></script>
+<script src="manga/manga.js"></script>
 <script>
 // Canvas + ctx are owned by Engine; aliased after boot.
 let canvas, ctx;
@@ -94,6 +95,13 @@ let tutorialStep = 0;
 let time = 0;     // mirror of Engine.time, synced before each frame's logic
 
 let player, feathers, fires, clouds, floaters, islands, splashes, drips, shakeAmt, shakeDecay;
+
+// ── Manga abilities (player) ──────────────────────────────────────────────
+let diveT  = 0;          // dive-bomb active (s remaining)
+let diveCD = 0;          // dive-bomb cooldown (s)
+const DIVE_DUR = 0.45;
+const DIVE_CD  = 5;
+let mangaTexts = [];     // { text, x, y, t, color, size }
 let eagles, eagleSpawnTimer;
 let orcas, orcaSpawnTimer;
 let waves, waveSpawnTimer;
@@ -326,6 +334,9 @@ function initGame() {
   stopCrackle();
   submittedThisRun = false;
   hallRank = null;
+  // Manga abilities
+  diveT = 0; diveCD = 0;
+  mangaTexts.length = 0;
   hallStatus = null;
 }
 
@@ -435,6 +446,14 @@ function addShake(amt) {
 // ── Update ─────────────────────────────────────────────────────────────────
 // `time` is synced from Engine.time before each call (see onUpdate in Engine.boot).
 function update(dt) {
+  // Manga ability cooldowns + telegraph text decay
+  diveT  = Math.max(0, diveT  - dt);
+  diveCD = Math.max(0, diveCD - dt);
+  for (let i = mangaTexts.length - 1; i >= 0; i--) {
+    mangaTexts[i].t -= dt;
+    if (mangaTexts[i].t <= 0) mangaTexts.splice(i, 1);
+  }
+
   if (state === 'playing') {
     updatePlaying(dt);
   } else if (state === 'dying') {
@@ -443,7 +462,10 @@ function update(dt) {
 }
 
 function updatePlaying(dt) {
-  const thrusting = keys['ArrowUp'] || keys[' '];
+  // During Icarian Dive (manga ability), thrust is locked off and the player
+  // accelerates straight down through any eagles in the way.
+  const diving   = diveT > 0;
+  const thrusting = !diving && (keys['ArrowUp'] || keys[' ']);
 
   // player-driven horizontal flight — no auto-scroll
   const targetVx = (keys['ArrowRight'] ? 260 : 0) - (keys['ArrowLeft'] ? 260 : 0);
@@ -461,6 +483,9 @@ function updatePlaying(dt) {
       playFlapSound();
       player.lastFlapSound = time;
     }
+  } else if (diving) {
+    player.vy += THRUST * 1.4 * dt;   // extra downward acceleration
+    player.flapPhase += dt * 14;       // wings beat fast
   } else {
     player.flapPhase += dt * 2;
   }
@@ -591,7 +616,7 @@ function updatePlaying(dt) {
   }
 
   // XP
-  const xpRate = BASE_XP + altRatio() * BONUS_XP;
+  const xpRate = (BASE_XP + altRatio() * BONUS_XP) * (diveT > 0 ? 3 : 1);
   player.xp += xpRate * dt;
   // floating xp numbers
   if (time - player.lastXPTick > 0.9) {
@@ -660,16 +685,50 @@ function updatePlaying(dt) {
         speed: 340 + Math.random() * 140 + diff * 90,
         wingPhase: Math.random() * Math.PI * 2,
         size: 0.9 + Math.random() * 0.4,
+        markT: 0, divingT: 0, diveTargetX: 0, diveTargetY: 0,
       });
     }
   }
   for (let i = eagles.length - 1; i >= 0; i--) {
     const e = eagles[i];
-    e.x -= e.speed * dt;
     e.wingPhase += dt * 5.5;
+    e.markT  = Math.max(0, e.markT  - dt);
+    e.divingT = Math.max(0, e.divingT - dt);
+    // Manga-only special — DIVING CLAW: random eagles mark + dive straight down.
+    if (Engine.manga && e.markT <= 0 && e.divingT <= 0 && !e._diveRolled
+        && e.x > 60 && e.x < canvas.width + 40) {
+      e._diveRolled = true;
+      if (Math.random() < 0.25) {
+        e.markT = 0.45;
+        e.diveTargetX = player.x;
+        e.diveTargetY = player.y;
+        mangaTexts.push({ text: 'DIVE!', x: e.x, y: e.y - 24, t: 0.45, color: '#ff2200', size: 26 });
+      }
+    }
+    if (e.markT <= 0 && e._diveRolled && e.divingT <= 0 && !e._diving && e.diveTargetY != null) {
+      e._diving = true;
+      e.divingT = 0.6;
+      // Lock dive trajectory: straight down toward last seen target X
+      e.diveDX = (e.diveTargetX - e.x) * 0.4;  // partial chase
+      e.diveDY = 700;
+    }
+    if (e._diving) {
+      e.x += e.diveDX * dt;
+      e.y += e.diveDY * dt;
+    } else {
+      e.x -= e.speed * dt;
+    }
     const edx = e.x - player.x, edy = e.y - player.y;
-    if (Math.sqrt(edx*edx + edy*edy) < 28) {
-      player.directDmg = Math.min(100, player.directDmg + 8);  // no fire visuals
+    const edist = Math.sqrt(edx * edx + edy * edy);
+    // Icarian dive (player diving) downs eagles in path.
+    if (diveT > 0 && edist < 60) {
+      spawnFeathers(8, e.x, e.y);
+      mangaTexts.push({ text: 'KNOCKED!', x: e.x, y: e.y - 18, t: 0.4, color: '#ffd54a', size: 22 });
+      eagles.splice(i, 1);
+      continue;
+    }
+    if (edist < 28) {
+      player.directDmg = Math.min(100, player.directDmg + 8);
       player.wingHealth = Math.max(0, 50 - player.burnDmg - player.wetDmg - player.directDmg);
       spawnFeathers(6, player.x - 8, player.y - 25);
       addShake(9);
@@ -677,7 +736,7 @@ function updatePlaying(dt) {
       eagles.splice(i, 1);
       continue;
     }
-    if (e.x < -90) eagles.splice(i, 1);
+    if (e.x < -90 || e.y > canvas.height + 100) eagles.splice(i, 1);
   }
 
   // ── Orcas ──
@@ -1200,7 +1259,14 @@ function render() {
   for (const e of eagles) {
     ctx.save();
     ctx.translate(e.x, e.y);
-    drawEagle(e.size, e.wingPhase);
+    if (Engine.manga && window.Manga && typeof window.Manga.characters?.eagle?.draw === 'function') {
+      Manga.characters.eagle.draw(ctx, {
+        size: e.size, wingPhase: e.wingPhase,
+        diving: !!e._diving, marked: e.markT > 0,
+      });
+    } else {
+      drawEagle(e.size, e.wingPhase);
+    }
     ctx.restore();
   }
 
@@ -1585,6 +1651,20 @@ function renderIslands(W, H) {
 
 function renderPlayer(W, H) {
   const p = player;
+  // Manga route — bold ink Icarus + halftone wings
+  if (Engine.manga && window.Manga && typeof window.Manga.characters?.icarus?.draw === 'function') {
+    Manga.characters.icarus.draw(ctx, {
+      x: p.x, y: p.y, facingRight: p.facingRight,
+      vx: p.vx, vy: p.vy,
+      flapPhase: p.flapPhase,
+      wingHealth: p.wingHealth,
+      burnDmg: p.burnDmg, wetDmg: p.wetDmg,
+      thrusting: keys['ArrowUp'] || keys[' '],
+      dying: state === 'dying', angle: p.angle,
+      diving: diveT > 0,
+    });
+    return;
+  }
   const wh       = p.wingHealth / 50;
   const burnFrac = p.burnDmg / 100;
   const wetFrac  = p.wetDmg  / 100;
@@ -2091,6 +2171,50 @@ function renderHUD(W, H) {
     ctx.fillText('⚠  TOO CLOSE TO THE SUN  ⚠', W/2, H - 30);
     ctx.restore();
   }
+
+  // Manga ability HUD — bottom-right ring icon for ↓ (Icarian Dive).
+  if (Engine.manga) {
+    drawIcarusAbilityRing(W - 32, H - 76, '↓', diveCD, DIVE_CD, diveT > 0);
+  }
+
+  // Manga telegraph + ability shouts
+  if (Engine.manga && mangaTexts.length && window.Manga && Manga.effects && Manga.effects.sfxText) {
+    for (const mt of mangaTexts) {
+      const a = Math.min(1, mt.t * 1.6);
+      Manga.effects.sfxText(ctx, mt.x, mt.y, mt.text, {
+        size: mt.size || 38, color: mt.color || '#ffd54a',
+        outline: '#0a0a0a', tilt: -8, alpha: a,
+      });
+    }
+  }
+}
+
+function drawIcarusAbilityRing(cx, cy, key, cd, cdMax, active) {
+  const r = 22;
+  ctx.save();
+  ctx.fillStyle = active ? 'rgba(255,180,80,0.55)' : 'rgba(0,0,0,0.55)';
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#0a0a0a'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+  const ready = 1 - Math.min(1, cd / cdMax);
+  if (cd > 0) {
+    ctx.strokeStyle = 'rgba(255,180,80,0.95)'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(cx, cy, r - 3, -Math.PI / 2, -Math.PI / 2 + ready * Math.PI * 2); ctx.stroke();
+  } else {
+    ctx.shadowColor = '#ffaa44'; ctx.shadowBlur = 10;
+    ctx.strokeStyle = '#ffaa44'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(cx, cy, r - 3, 0, Math.PI * 2); ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+  ctx.font = '900 22px "Impact", "Arial Black", sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.lineWidth = 4; ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#0a0a0a';
+  ctx.strokeText(key, cx, cy);
+  ctx.fillStyle = cd > 0 ? '#888' : '#fff5c0';
+  ctx.fillText(key, cx, cy);
+  ctx.textBaseline = 'alphabetic';
+  ctx.restore();
 }
 
 // ── Tutorial ───────────────────────────────────────────────────────────────
@@ -2728,6 +2852,20 @@ Engine.boot({
     // Dead — H jumps to Mount Olympus. (Engine handles Escape → hub and '1' → restart.)
     if (e.state === 'dead' && (ev.key === 'h' || ev.key === 'H')) {
       window.location.href = 'mount-olympus.html';
+    }
+
+    // Manga ability: ICARIAN DIVE (ArrowDown). Dive-bombs through eagles in path.
+    if (Engine.manga && state === 'playing' && ev.key === 'ArrowDown' && diveCD <= 0) {
+      diveT  = DIVE_DUR;
+      diveCD = DIVE_CD;
+      mangaTexts.push({ text: 'ICARIAN DIVE!', x: player.x, y: player.y - 70, t: 0.5, color: '#ffd54a', size: 36 });
+      const polish = window.Manga && Manga.characters && Manga.characters.icarus && Manga.characters.icarus.polish;
+      if (polish && polish.onDive && Engine.audio._ctx && Manga.fx && Manga.fx.sfxLayered) {
+        Manga.fx.sfxLayered(Engine.audio._ctx, polish.onDive.audioLayers);
+      }
+      // Snap player downward immediately for kinetic feel
+      player.vy = Math.max(player.vy, 220);
+      addShake(4);
     }
   },
 });
