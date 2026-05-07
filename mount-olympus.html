@@ -266,7 +266,7 @@ footer {
     <div class="sub" id="hallSub">— H A L L &nbsp; O F &nbsp; T H E &nbsp; G O D S —</div>
   </header>
 
-  <div class="hall-toggle">
+  <div class="hall-toggle" id="hallToggle">
     <button class="active" data-hall="mortal">MORTAL HALL</button>
     <button             data-hall="manga">IMMORTAL HALL</button>
   </div>
@@ -377,9 +377,16 @@ function renderList(listEl, entries, fmt) {
 
 let cachedIcarus = [], cachedOrion = [], cachedAchilles = [];
 
-// 'mortal' (default) or 'manga'. Auto-select manga if the easter egg is on.
-let currentHall = (localStorage.getItem('godgames_manga') === '1') ? 'manga' : 'mortal';
+// Manga mode unlocks the IMMORTAL HALL toggle. Mortal mode shows only the
+// mortal leaderboards with no toggle (since there's only one option).
+const _mangaUnlocked = localStorage.getItem('godgames_manga') === '1';
+let currentHall = _mangaUnlocked ? 'manga' : 'mortal';
 function gameId(base) { return currentHall === 'manga' ? base + '-manga' : base; }
+// Hide the toggle entirely when the easter egg hasn't been triggered.
+{
+  const tg = document.getElementById('hallToggle');
+  if (tg && !_mangaUnlocked) tg.style.display = 'none';
+}
 
 const HALL_SUB = {
   mortal: '— H A L L &nbsp; O F &nbsp; T H E &nbsp; G O D S —',

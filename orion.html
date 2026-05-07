@@ -58,6 +58,7 @@ canvas { display:block; }
   </div>
 </div>
 <script src="engine.js"></script>
+<script src="manga/manga.js"></script>
 <script>
 // ── Constants ─────────────────────────────────────────────────────────────
 const GRAVITY   = 640;
@@ -74,6 +75,13 @@ const MAX_SPEARS= 7;
 let orion, boss, spears, venoms;
 let lastShiftTime = -1, lastSpaceTime = -1, lastXTime = -1;
 let ctx; // bound from Engine.ctx after boot
+
+// ── Manga abilities (player) ──────────────────────────────────────────────
+let constellationT  = 0;          // charge animation duration remaining
+let constellationCD = 0;          // cooldown
+const CONSTELLATION_CHARGE = 0.35;
+const CONSTELLATION_CD     = 8;
+let mangaTexts = [];              // { text, x, y, t, color, size }
 
 // ── Hall of Mount Olympus (leaderboard) ──────────────────────────────────
 const NAME_KEY = 'godgames_playerName';
@@ -201,6 +209,9 @@ function initGame() {
   submittedThisRun = false;
   hallRank = null;
   hallStatus = null;
+  // Manga abilities
+  constellationT = 0; constellationCD = 0;
+  mangaTexts.length = 0;
 }
 
 function burst(x, y, col, n=8, spd=120) {
@@ -313,7 +324,15 @@ function updateBoss(dt) {
 
   boss.hurtFlash = Math.max(0, boss.hurtFlash-dt);
   boss.phase = boss.hp>66?1:boss.hp>33?2:3;
-  const sm = boss.phase===3?1.9:boss.phase===2?1.35:1.0;
+  // Manga sting frenzy: at low HP, attack timer decays 2× faster.
+  const frenzied = Engine.manga && boss.hp < BOSS_HP * 0.33;
+  boss._frenzyAnnounced = boss._frenzyAnnounced || false;
+  if (frenzied && !boss._frenzyAnnounced) {
+    boss._frenzyAnnounced = true;
+    mangaTexts.push({ text: 'FRENZY!', x: Engine.W / 2, y: Engine.H * 0.32, t: 1.0, color: '#ff2200', size: 64 });
+    Engine.shake(8);
+  }
+  const sm = (boss.phase===3?1.9:boss.phase===2?1.35:1.0) * (frenzied ? 2 : 1);
   boss.facing = orion.x<boss.x ? -1 : 1;
   const dist = Math.abs(orion.x-boss.x);
 
@@ -372,7 +391,20 @@ function updateBoss(dt) {
         const tx = boss.x+tip.x*boss.facing, ty = boss.y+tip.y;
         const dx = boss.stingTargetX-tx, dy = boss.stingTargetY-ty;
         const d  = Math.sqrt(dx*dx+dy*dy)||1;
-        venoms.push({x:tx, y:ty, vx:dx/d*420, vy:dy/d*420, active:true});
+        // Manga special: VENOM RAIN — fan of 4 venoms instead of one targeted.
+        if (Engine.manga && Math.random() < 0.4) {
+          mangaTexts.push({ text: 'VENOM RAIN!', x: Engine.W / 2, y: Engine.H * 0.34, t: 0.8, color: '#22ee44', size: 56 });
+          const N = 4;
+          const baseAng = Math.atan2(dy, dx);
+          for (let i = 0; i < N; i++) {
+            const off = (i - (N - 1) / 2) * 0.25;
+            const a = baseAng + off;
+            const sp = 380 + Math.random() * 60;
+            venoms.push({ x: tx, y: ty, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, active: true });
+          }
+        } else {
+          venoms.push({x:tx, y:ty, vx:dx/d*420, vy:dy/d*420, active:true});
+        }
         sfx.roar();
       }
       if(boss.stateTimer>0.9){
@@ -470,6 +502,19 @@ function updateVenoms(dt){
 
 // ── Draw: Orion ───────────────────────────────────────────────────────────
 function drawOrion() {
+  // Route through the manga library when manga mode is on.
+  if (Engine.manga && window.Manga && typeof window.Manga.characters?.orion?.draw === 'function') {
+    Manga.characters.orion.draw(ctx, {
+      x: orion.x, y: orion.y, facing: orion.facing,
+      walkPhase: orion.walkPhase, vx: orion.vx, vy: orion.vy, onGround: orion.onGround,
+      hp: orion.hp, hurtFlash: orion.hurtFlash, invincible: orion.invincible,
+      proneT: orion.proneT, proneDmg: orion.proneDmg,
+      spearCount: orion.spearCount, stabFlash: orion.stabFlash, dodgeT: orion.dodgeT,
+      constellationCharging: constellationT > 0,
+      t: Engine.time,
+    });
+    return;
+  }
   const x=orion.x, y=orion.y, f=orion.facing;
   const flash = orion.hurtFlash>0 && Math.sin(Engine.time*28)>0;
 
@@ -602,6 +647,18 @@ function drawOrion() {
 
 // ── Draw: Scorpion ────────────────────────────────────────────────────────
 function drawScorpion() {
+  // Route through the manga library when manga mode is on.
+  if (Engine.manga && window.Manga && typeof window.Manga.characters?.scorpion?.draw === 'function') {
+    const frenzied = boss.hp < BOSS_HP * 0.33;
+    Manga.characters.scorpion.draw(ctx, {
+      x: boss.x, y: boss.y, facing: boss.facing,
+      hp: boss.hp, hurtFlash: boss.hurtFlash,
+      tailCurl: boss.tailCurl, clawOpen: boss.clawOpen, stingT: boss.stingT,
+      phase: boss.phase, state: boss.state, stateTimer: boss.stateTimer,
+      t: Engine.time, frenzied,
+    });
+    return;
+  }
   const x=boss.x, y=boss.y, f=boss.facing;
   const flash = boss.hurtFlash>0 && Math.sin(Engine.time*32)>0;
   ctx.save();
@@ -772,11 +829,61 @@ function renderHUD() {
   ctx.fillStyle='rgba(220,200,150,0.55)';
   ctx.fillText('TIME', W-22, 50);
 
+  // Manga ability HUD: Q = constellation strike (bottom-right ring icon)
+  if (Engine.manga) {
+    drawAbilityRing(W - 32, H - 76, 'Q', constellationCD, CONSTELLATION_CD, constellationT > 0);
+  }
+
+  // Manga telegraph + ability shouts
+  if (Engine.manga && mangaTexts.length && window.Manga && Manga.effects && Manga.effects.sfxText) {
+    for (const mt of mangaTexts) {
+      const a = Math.min(1, mt.t * 1.6);
+      Manga.effects.sfxText(ctx, mt.x, mt.y, mt.text, {
+        size: mt.size || 38, color: mt.color || '#ffd54a',
+        outline: '#0a0a0a', tilt: -8, alpha: a,
+      });
+    }
+  }
+
+  ctx.restore();
+}
+
+// Bottom-right manga ability indicator: ring with cooldown sweep.
+function drawAbilityRing(cx, cy, key, cd, cdMax, active) {
+  const r = 22;
+  ctx.save();
+  ctx.fillStyle = active ? 'rgba(170,220,255,0.55)' : 'rgba(0,0,0,0.55)';
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#0a0a0a'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+  const ready = 1 - Math.min(1, cd / cdMax);
+  if (cd > 0) {
+    ctx.strokeStyle = 'rgba(170,220,255,0.95)'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(cx, cy, r - 3, -Math.PI / 2, -Math.PI / 2 + ready * Math.PI * 2); ctx.stroke();
+  } else {
+    ctx.shadowColor = '#aaddff'; ctx.shadowBlur = 10;
+    ctx.strokeStyle = '#aaddff'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(cx, cy, r - 3, 0, Math.PI * 2); ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+  ctx.font = '900 18px "Impact", "Arial Black", sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.lineWidth = 4; ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#0a0a0a';
+  ctx.strokeText(key, cx, cy);
+  ctx.fillStyle = cd > 0 ? '#888' : '#aaddff';
+  ctx.fillText(key, cx, cy);
+  ctx.textBaseline = 'alphabetic';
   ctx.restore();
 }
 
 // ── Background ────────────────────────────────────────────────────────────
 function drawBg(c, W, H, time) {
+  // Manga arena scene: bold flat fields, ink silhouettes, halftone shading.
+  if (Engine.manga && window.Manga && typeof window.Manga.scenes?.orionArena === 'function') {
+    Manga.scenes.orionArena(c, W, H, time);
+    return;
+  }
   const GY = H * 0.76;
   // Sky
   const sky = c.createLinearGradient(0,0,0,H);
@@ -902,6 +1009,14 @@ Engine.boot({
   onInit() { initGame(); },
 
   onUpdate(dt) {
+    // Manga ability cooldowns + telegraph text decay
+    constellationT  = Math.max(0, constellationT  - dt);
+    constellationCD = Math.max(0, constellationCD - dt);
+    for (let i = mangaTexts.length - 1; i >= 0; i--) {
+      mangaTexts[i].t -= dt;
+      if (mangaTexts[i].t <= 0) mangaTexts.splice(i, 1);
+    }
+
     updateOrion(dt);
     updateBoss(dt);
     updateSpears(dt);
@@ -1016,6 +1131,33 @@ Engine.boot({
     }
     if(Engine.state !== 'playing') return;
     const now2 = performance.now();
+
+    // Manga ability: Constellation Strike (Q) — three spears rain from the sky onto the boss.
+    if (Engine.manga && (ev.key === 'q' || ev.key === 'Q') && constellationCD <= 0) {
+      constellationT = CONSTELLATION_CHARGE;
+      constellationCD = CONSTELLATION_CD;
+      mangaTexts.push({ text: 'CONSTELLATION STRIKE!', x: Engine.W / 2, y: Engine.H * 0.30, t: 0.9, color: '#aaddff', size: 56 });
+      // Three spears spawn above the boss with random spread, falling under gravity.
+      const drop = (delay, off) => setTimeout(() => {
+        if (boss.state === 'dead') return;
+        spears.push({
+          x: boss.x + off + (Math.random() - 0.5) * 20,
+          y: -50,
+          vx: 0, vy: 200,
+          gravity: true, active: true, constellation: true,
+        });
+      }, delay);
+      drop(0,   -60);
+      drop(160,   0);
+      drop(320,  60);
+      Engine.shake(6);
+      // Polish audio
+      const polish = window.Manga && Manga.characters && Manga.characters.orion && Manga.characters.orion.polish;
+      if (polish && polish.onConstellation && Engine.audio._ctx && Manga.fx && Manga.fx.sfxLayered) {
+        Manga.fx.sfxLayered(Engine.audio._ctx, polish.onConstellation.audioLayers);
+      }
+    }
+
     if(ev.key==='z' || ev.key==='Z'){ orion.spearQueued = true; }
     if(ev.key===' '){
       if(orion.dodgeT>0){

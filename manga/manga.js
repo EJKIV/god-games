@@ -40,9 +40,12 @@
     'fx/zeusstrike.js',
     // Scenes (environmental drawables — portals, mountains, columns)
     'scenes/hub.js',
+    'scenes/orion-arena.js',
     // Characters
     'characters/achilles.js',
     'characters/hub-walker.js',
+    'characters/orion.js',
+    'characters/scorpion.js',
   ];
 
   // Resolve files relative to this script's URL so the library works no matter
