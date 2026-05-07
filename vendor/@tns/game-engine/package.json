@@ -1,0 +1,48 @@
+{
+  "name": "@tellandshow/game-engine",
+  "version": "0.0.1",
+  "description": "Canvas game engine for Tell and Show's Game Studio. Lifecycle hooks, audio synth, particles, screen shake, mobile shell, manga visual library, optional Upstash leaderboard.",
+  "type": "module",
+  "main": "./core/engine.js",
+  "exports": {
+    ".": "./core/engine.js",
+    "./engine": "./core/engine.js",
+    "./manga": "./manga/manga.js",
+    "./manga/*": "./manga/*",
+    "./physics": "./physics/index.js",
+    "./animation": "./animation/index.js",
+    "./save": "./save/index.js",
+    "./audio": "./audio/index.js",
+    "./dialogue": "./dialogue/index.js",
+    "./level": "./level/index.js",
+    "./api/leaderboard": "./api/leaderboard.js"
+  },
+  "files": [
+    "core/",
+    "manga/",
+    "physics/",
+    "animation/",
+    "save/",
+    "audio/",
+    "dialogue/",
+    "level/",
+    "api/",
+    "CLAUDE.md"
+  ],
+  "keywords": [
+    "tellandshow",
+    "game-engine",
+    "canvas",
+    "kids",
+    "education"
+  ],
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/EJKIV/tellandshow",
+    "directory": "game-studio/packages/game-engine"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

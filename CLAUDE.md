@@ -21,31 +21,40 @@ god-games used to ship `engine.js` and `manga/` directly at the repo root. As of
 
 ```
 god-games/
-├── package.json              # depends on "@tns/game-engine": "file:../tellandshow/game-studio/packages/game-engine"
-└── node_modules/
-    └── @tns/
-        └── game-engine -> ../../../tellandshow/game-studio/packages/game-engine   (symlinked by `npm install`)
+├── package.json                                       # @tns/game-engine: file:../tellandshow/game-studio/packages/game-engine
+├── node_modules/@tns/game-engine -> sibling tellandshow…   # symlink set up by `npm install` (local dev only)
+└── vendor/@tns/game-engine/                                # real copy committed to git, served by Vercel
 ```
 
-HTML files load engine + manga via:
+HTML files load engine + manga via the `vendor/` path:
 ```html
-<script src="node_modules/@tns/game-engine/core/engine.js"></script>
-<script src="node_modules/@tns/game-engine/manga/manga.js"></script>
+<script src="vendor/@tns/game-engine/core/engine.js"></script>
+<script src="vendor/@tns/game-engine/manga/manga.js"></script>
 ```
+
+`vendor/` exists because **Vercel excludes `node_modules` from static output**. Two paths, two purposes:
+- `node_modules/@tns/game-engine` — symlinked by `npm install`, used by tooling (LSPs, type hints) and as the source for `vendor/` syncs. Engine edits in tellandshow flow here instantly.
+- `vendor/@tns/game-engine/` — committed snapshot. The browser loads from here, locally and in production. Refreshed via `npm run sync-engine`.
+
+**Engine edit workflow**:
+1. Edit `tellandshow/game-studio/packages/game-engine/...`
+2. Reload the game — the symlink means your change is already visible locally because the engine source is also resolvable from the running browser via `vendor/` only after a sync. Until you sync, your local browser sees the *old* vendor copy. So: keep `npm run sync-engine` handy.
+
+  Practical loop: `npm run sync-engine && python3 -m http.server 8765` and reload. Or for tight iteration, edit the engine *inside* `vendor/` and copy back to tellandshow when you're happy.
+
+**Before deploy**: always `npm run sync-engine && git status` to verify the committed engine matches what you've been testing locally.
+
+When `@tns/game-engine` is published to npm, both the `file:` dep and the `vendor/` mirror go away — Vercel resolves the package normally and the symlink approach Just Works.
 
 **Dev requirement**: clone `tellandshow` next to `god-games` (sibling directories under `~/projects/`), then run `npm install` in god-games. The `file:` link makes the symlink; `npm install` is a one-time download, not a build step.
 
-**To make engine changes**: edit `tellandshow/game-studio/packages/game-engine/core/engine.js` (or `manga/...`). The symlink means your edits are immediately visible to god-games on next page reload — no rebuild, no republish.
-
-When `@tns/game-engine` is published to npm, swap the `file:` dep for a real semver. Same workflow for kids' games — they'll just `tns update`.
-
 ## Core Architecture Patterns
 
-- **Each game = one HTML file** that loads `node_modules/@tns/game-engine/core/engine.js` + (optionally) `node_modules/@tns/game-engine/manga/manga.js` and calls `Engine.boot({...})` with its theme + lifecycle hooks (`onInit`, `onUpdate`, `onRender`, `onTitleRender`, `onGameOverRender`, `onKeyDown`, `onTryStart`).
+- **Each game = one HTML file** that loads `vendor/@tns/game-engine/core/engine.js` + (optionally) `vendor/@tns/game-engine/manga/manga.js` and calls `Engine.boot({...})` with its theme + lifecycle hooks (`onInit`, `onUpdate`, `onRender`, `onTitleRender`, `onGameOverRender`, `onKeyDown`, `onTryStart`).
 - **Adding a new game**: copy `template.html` → `<name>.html`, fill in mechanics, register in `api/leaderboard.js` `GAMES` table, add a portal entry to `index.html` `portals` array, add a tablet to `mount-olympus.html` (matches existing pattern).
 - **Hub & Mt. Olympus do *not* use the engine** — they have their own loops. They duplicate the landscape-overlay CSS inline (single source not feasible without a build step).
 - **Mobile contract**: each game declares `mobile: { movement, actions }` in its `Engine.boot` config. Engine renders translucent on-screen buttons that synthesize keydown/keyup, so existing keyboard branches run unchanged. Modes per action: `'tap'` (default), `'hold'` (sustained), `'doubleTap'` (fires two presses ~80ms apart for double-tap detectors).
-- **Manga easter egg**: typing `'shankle'` on the hub sets `localStorage.godgames_manga='1'`; `'normal'` clears. The engine reads at boot and exposes `Engine.manga`. Game render branches on it. The manga library is portable — see `node_modules/@tns/game-engine/manga/CLAUDE.md`.
+- **Manga easter egg**: typing `'shankle'` on the hub sets `localStorage.godgames_manga='1'`; `'normal'` clears. The engine reads at boot and exposes `Engine.manga`. Game render branches on it. The manga library is portable — see `vendor/@tns/game-engine/manga/CLAUDE.md`.
 - **Score submission contract**: each game submits to `/api/leaderboard` POST `{ game, name, score }` on death/victory. Game must be registered in `api/leaderboard.js` `GAMES` table — see `api/CLAUDE.md`.
 - **Name modal pattern**: every interactive page reads `localStorage.godgames_playerName`; if missing, opens a modal that sanitizes (`replace(/[\x00-\x1f\x7f]/g, '')`, clamp to 20) and stores. Sanitization regex must match `api/leaderboard.js` exactly.
 
@@ -59,8 +68,11 @@ npm install
 python3 -m http.server 8765
 # then open http://localhost:8765
 
-# Deploy to production
-vercel --prod --yes
+# Refresh the vendored engine from the symlinked node_modules copy
+npm run sync-engine
+
+# Deploy to production (sync-engine first, then commit vendor/ if changed)
+npm run sync-engine && vercel --prod --yes
 # alias: https://god-games.vercel.app
 
 # Inspect a leaderboard
@@ -145,6 +157,7 @@ god-games/
 
 | Date       | Change                                                                                     | Author |
 |------------|--------------------------------------------------------------------------------------------|--------|
+| 2026-05-07 | Added `vendor/@tns/game-engine/` for Vercel deploys (Vercel excludes `node_modules` from static output). HTMLs now load from `vendor/`. `npm run sync-engine` refreshes from `node_modules`. | jim    |
 | 2026-05-07 | Engine + manga moved out to `@tns/game-engine` (consumed via npm link). god-games is now a *consumer* of the published engine. | jim    |
 | 2026-05-07 | Restructured to cascading router pattern. Subtree files under `manga/` and `api/`. Polish library v2. | jim    |
 | 2026-05-06 | Added mobile/landscape support and manga easter egg (`shankle`/`normal`).                  | jim    |
