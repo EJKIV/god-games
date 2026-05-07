@@ -473,7 +473,11 @@ function drawPortal(p) {
 
 function drawPlayer() {
   // Manga path uses the portable hub-walker character module.
-  if (localStorage.getItem(MANGA_KEY) === '1' && window.Manga && Manga.characters && Manga.characters.hubWalker) {
+  if (localStorage.getItem(MANGA_KEY) === '1'
+      && window.Manga
+      && Manga.characters
+      && Manga.characters.hubWalker
+      && typeof Manga.characters.hubWalker.draw === 'function') {
     Manga.characters.hubWalker.draw(ctx, {
       x: player.x, y: player.y, facing: player.facing,
       walkPhase: player.walkPhase, vx: player.vx,
@@ -753,7 +757,14 @@ function render() {
     leftX * 0.25, leftX * 0.65,
     rightX + (W - rightX) * 0.30, rightX + (W - rightX) * 0.72,
   ];
-  const _mangaActive = localStorage.getItem(MANGA_KEY) === '1' && window.Manga && Manga.scenes;
+  // Only activate manga rendering once the actual scene functions have loaded.
+  // The loader is async, so on the very first frame the namespace may exist
+  // but its draw functions don't yet — fall back to normal draws until ready.
+  const _mangaActive = localStorage.getItem(MANGA_KEY) === '1'
+    && window.Manga
+    && typeof Manga.scenes?.column === 'function'
+    && typeof Manga.scenes?.archPortal === 'function'
+    && typeof Manga.scenes?.olympus === 'function';
   for (const cx of colXs) {
     if (_mangaActive) Manga.scenes.column(ctx, { x: cx, gy: GY });
     else drawColumn(cx);
@@ -792,7 +803,11 @@ function render() {
   // Manga atmosphere — bold overlay so the screen unmistakably reads "manga".
   // Drawn on top of the world but below the Zeus cinematic + title + toast.
   const _mangaOn = localStorage.getItem(MANGA_KEY) === '1';
-  if (_mangaOn && window.Manga && Manga.effects) {
+  if (_mangaOn
+      && window.Manga
+      && typeof Manga.effects?.halftone  === 'function'
+      && typeof Manga.effects?.scanlines === 'function'
+      && typeof Manga.effects?.vignette  === 'function') {
     // The manga *art* (scenes + characters) carries most of the look now;
     // these overlays only add atmosphere, not replace it.
     Manga.effects.halftone(ctx, 0, 0,  W, GY,    { density: 7, dotSize: 1.7, alpha: 0.10, color: '#000' });
