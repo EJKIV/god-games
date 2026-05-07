@@ -75,6 +75,7 @@ const GOLD           = '#D4AF37';
 const FLIGHT_SPEED   = 130;   // px/s auto-rightward world scroll
 const ISLAND_XP_BONUS  = 100;
 const ISLAND_SINK_TIME = 1.1; // s for island to sink after claiming
+const WING_MAX         = 50;  // wing HP cap; subtracted by burn/wet/direct damage
 
 // ── Tutorial dialogue ──────────────────────────────────────────────────────
 const TUTORIAL_LINES = [
@@ -449,6 +450,13 @@ function addShake(amt) {
   Engine.shake(amt); // engine owns the shake transform
 }
 
+// Single source of truth for wing HP. Any change to a damage source
+// (burnDmg/wetDmg/directDmg) should be followed by recomputeWingHealth() so
+// the player health bar and the death threshold stay in sync.
+function recomputeWingHealth() {
+  player.wingHealth = Math.max(0, WING_MAX - player.burnDmg - player.wetDmg - player.directDmg);
+}
+
 // ── Update ─────────────────────────────────────────────────────────────────
 // `time` is synced from Engine.time before each call (see onUpdate in Engine.boot).
 function update(dt) {
@@ -592,13 +600,13 @@ function updatePlaying(dt) {
     // burst damage on first contact each entry
     if (!player.inWater) {
       player.wetDmg = Math.min(100, player.wetDmg + 18);
-      player.wingHealth = Math.max(0, 50 - player.burnDmg - player.wetDmg - player.directDmg);
+      recomputeWingHealth();
     }
     player.inWater = true;
     const oceanDmg = 80 * dt;
     player.wetDmg  = Math.min(100, player.wetDmg  + oceanDmg);
     player.burnDmg = Math.max(player.eagleDmg, player.burnDmg - oceanDmg * 0.625); // water heals only 25% as effectively; eagle damage permanent
-    player.wingHealth = Math.max(0, 50 - player.burnDmg - player.wetDmg - player.directDmg);
+    recomputeWingHealth();
     player.y = oY - 14;
     if (player.vy > 40) {
       playSplash();
@@ -627,7 +635,7 @@ function updatePlaying(dt) {
   player.burnDmg = Math.min(100, player.burnDmg + sunDmg);
   player.wetDmg  = Math.max(player.orcaDmg, player.wetDmg  - sunDmg * 0.625); // sun heals only 25% as effectively; orca damage permanent
   const prev = player.wingHealth;
-  player.wingHealth = Math.max(0, 50 - player.burnDmg - player.wetDmg - player.directDmg);
+  recomputeWingHealth();
 
   // feather threshold events — only when near the sun
   if (heat > 0) {
@@ -756,7 +764,7 @@ function updatePlaying(dt) {
     }
     if (edist < 28) {
       player.directDmg = Math.min(100, player.directDmg + 8);
-      player.wingHealth = Math.max(0, 50 - player.burnDmg - player.wetDmg - player.directDmg);
+      recomputeWingHealth();
       spawnFeathers(6, player.x - 8, player.y - 25);
       addShake(9);
       playEagleScreech();
@@ -818,7 +826,7 @@ function updatePlaying(dt) {
       const odx = o.x - player.x, ody = o.y - player.y;
       if (Math.sqrt(odx*odx + ody*ody) < 38) {
         player.directDmg = Math.min(100, player.directDmg + 8);  // no water visuals
-        player.wingHealth = Math.max(0, 50 - player.burnDmg - player.wetDmg - player.directDmg);
+        recomputeWingHealth();
         addShake(11);
         playSplash();
         orcas.splice(i, 1);
@@ -898,7 +906,7 @@ function updatePlaying(dt) {
       if (!wv.inWave) {
         // burst on first contact
         player.wetDmg = Math.min(100, player.wetDmg + 9);
-        player.wingHealth = Math.max(0, 50 - player.burnDmg - player.wetDmg - player.directDmg);
+        recomputeWingHealth();
         // knock Icarus downward
         player.vy = Math.max(player.vy + 60, 60);
         playSplash(); playSplash(); addShake(10);
@@ -934,7 +942,7 @@ function updatePlaying(dt) {
       const waveDmg = 40 * dt;
       player.wetDmg = Math.min(100, player.wetDmg + waveDmg);
       player.burnDmg = Math.max(player.eagleDmg, player.burnDmg - waveDmg * 0.625);
-      player.wingHealth = Math.max(0, 50 - player.burnDmg - player.wetDmg - player.directDmg);
+      recomputeWingHealth();
     } else {
       wv.inWave = false;
     }
@@ -978,17 +986,18 @@ function triggerDaedalusRescue() {
   player.directDmg = 0;
   player.burnDmg = Math.max(player.eagleDmg, player.burnDmg * 0.5);
   player.wetDmg  = Math.max(player.orcaDmg,  player.wetDmg  * 0.5);
-  player.wingHealth = Math.max(0, 50 - player.burnDmg - player.wetDmg - player.directDmg);
+  recomputeWingHealth();
   // Floor the heal so the rescue is always meaningful (≥ 25 health restored)
-  if (player.wingHealth < 25) {
-    const need = 25 - player.wingHealth;
+  const RESCUE_FLOOR = WING_MAX / 2;
+  if (player.wingHealth < RESCUE_FLOOR) {
+    const need = RESCUE_FLOOR - player.wingHealth;
     const burnRoom = player.burnDmg - player.eagleDmg;
     const wetRoom  = player.wetDmg  - player.orcaDmg;
     const burnGive = Math.min(burnRoom, need * (burnRoom / Math.max(0.01, burnRoom + wetRoom)));
     const wetGive  = Math.min(wetRoom,  need - burnGive);
     player.burnDmg -= burnGive;
     player.wetDmg  -= wetGive;
-    player.wingHealth = Math.max(0, 50 - player.burnDmg - player.wetDmg - player.directDmg);
+    recomputeWingHealth();
   }
   player.vy = -55;
   // Manga banner + audio polish from the character's profile
@@ -1809,7 +1818,7 @@ function renderPlayer(W, H) {
     });
     return;
   }
-  const wh       = p.wingHealth / 50;
+  const wh       = p.wingHealth / WING_MAX;
   const burnFrac = p.burnDmg / 100;
   const wetFrac  = p.wetDmg  / 100;
   const thrusting = keys['ArrowUp'] || keys[' '];
@@ -2244,7 +2253,7 @@ function renderHUD(W, H) {
   ctx.fillStyle = 'rgba(0,0,0,0.45)';
   ctx.fillRect(bx, by, bw, bh);
   // fill
-  const barFrac = wh / 50;
+  const barFrac = wh / WING_MAX;
   const barColor = wh > 15 ? '#44dd66' :
                    wh > 9  ? '#ddcc00' :
                    wh > 4  ? '#ff8800' : '#ff2200';

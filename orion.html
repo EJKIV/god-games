@@ -868,6 +868,45 @@ function drawClaw(open){
   ctx.restore();
 }
 
+// Manga-only Phantom Claw projectile — violet spectral pincer with bold ink
+// silhouette and trailing speed lines. Caller passes one entry from the
+// `phantoms` array; this draws it in screen space at p.x/p.y.
+function drawPhantomClaw(p) {
+  const a = Math.min(1, p.life / 0.4);
+  const wobble = Math.sin(p.t * 18) * 0.05;
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.rotate(p.angle + wobble);
+  ctx.globalAlpha = 0.85 * a;
+  ctx.shadowColor = '#cc88ff'; ctx.shadowBlur = 22;
+  // Filled silhouette of a curling claw
+  ctx.fillStyle = '#16081e';
+  ctx.beginPath();
+  ctx.moveTo(-4, -16);
+  ctx.bezierCurveTo(18, -22, 36, -10, 42, 0);
+  ctx.bezierCurveTo(36, 10, 18, 22, -4, 16);
+  ctx.bezierCurveTo(-2, 8, -2, -8, -4, -16);
+  ctx.closePath(); ctx.fill();
+  ctx.lineWidth = 3.5; ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#cc88ff';
+  ctx.stroke();
+  // Inner pincer cleft + claw tips
+  ctx.strokeStyle = '#7a3ad4'; ctx.lineWidth = 2.4; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(8, 0); ctx.lineTo(34, 0); ctx.stroke();
+  ctx.strokeStyle = '#0a0a0a'; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.moveTo(40, -3); ctx.lineTo(48, -1); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(40,  3); ctx.lineTo(48,  1); ctx.stroke();
+  // Manga speed lines streaming behind the claw
+  if (window.Manga && Manga.effects && Manga.effects.speedLines) {
+    Manga.effects.speedLines(ctx, -10, 0, {
+      count: 5, innerR: 16, outerR: 38,
+      color: 'rgba(204,136,255,0.7)', width: 1.6, jitter: 0.6,
+    });
+  }
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
 // ── HUD ───────────────────────────────────────────────────────────────────
 function renderHUD() {
   const W = Engine.W, H = Engine.H, time = Engine.time;
@@ -1211,41 +1250,7 @@ Engine.boot({
       ctx.restore();
     }
     // Phantom Claw — spectral pincer streaking toward Orion (manga only)
-    for(const p of phantoms){
-      const a = Math.min(1, p.life / 0.4);
-      const wobble = Math.sin(p.t * 18) * 0.05;
-      ctx.save();
-      ctx.translate(p.x, p.y);
-      ctx.rotate(p.angle + wobble);
-      ctx.globalAlpha = 0.85 * a;
-      ctx.shadowColor = '#cc88ff'; ctx.shadowBlur = 22;
-      // Filled silhouette of a curling claw — bold ink with violet glow
-      ctx.fillStyle = '#16081e';
-      ctx.beginPath();
-      ctx.moveTo(-4, -16);
-      ctx.bezierCurveTo(18, -22, 36, -10, 42, 0);
-      ctx.bezierCurveTo(36, 10, 18, 22, -4, 16);
-      ctx.bezierCurveTo(-2, 8, -2, -8, -4, -16);
-      ctx.closePath(); ctx.fill();
-      ctx.lineWidth = 3.5; ctx.lineJoin = 'round';
-      ctx.strokeStyle = '#cc88ff';
-      ctx.stroke();
-      // Inner pincer cleft + claw tips
-      ctx.strokeStyle = '#7a3ad4'; ctx.lineWidth = 2.4; ctx.lineCap = 'round';
-      ctx.beginPath(); ctx.moveTo(8, 0); ctx.lineTo(34, 0); ctx.stroke();
-      ctx.strokeStyle = '#0a0a0a'; ctx.lineWidth = 2.5;
-      ctx.beginPath(); ctx.moveTo(40, -3); ctx.lineTo(48, -1); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(40,  3); ctx.lineTo(48,  1); ctx.stroke();
-      // Manga speed lines streaming behind it
-      if (window.Manga && Manga.effects && Manga.effects.speedLines) {
-        Manga.effects.speedLines(ctx, -10, 0, {
-          count: 5, innerR: 16, outerR: 38,
-          color: 'rgba(204,136,255,0.7)', width: 1.6, jitter: 0.6,
-        });
-      }
-      ctx.shadowBlur = 0;
-      ctx.restore();
-    }
+    for(const p of phantoms) drawPhantomClaw(p);
     drawScorpion();
     drawOrion();
     renderHUD();   // inside shake transform — matches original orion feel
