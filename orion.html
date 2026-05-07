@@ -6,80 +6,170 @@
 <title>Orion — God Games</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
-body { background:#000; overflow:hidden; }
+body { background:#000; overflow:hidden; font-family: 'Trebuchet MS', serif; color:#f0e8d0; }
 canvas { display:block; }
+
+/* ── Name prompt modal ── */
+.modal-bg {
+  position:fixed; inset:0; z-index:10;
+  background:rgba(0,0,0,0.85);
+  display:none; align-items:center; justify-content:center;
+}
+.modal-bg.open { display:flex; }
+.modal {
+  background:linear-gradient(180deg, #1a0a14 0%, #04020a 100%);
+  border:1px solid #D4AF37; border-radius:6px;
+  padding:32px 40px;
+  box-shadow: 0 0 50px rgba(212,175,55,0.4);
+  text-align:center; min-width:340px;
+}
+.modal h3 {
+  font-family:serif; font-size:26px; color:#D4AF37;
+  letter-spacing:0.1em; margin-bottom:6px;
+  text-shadow:0 0 14px rgba(212,175,55,0.5);
+}
+.modal p { font-style:italic; color:rgba(240,215,122,0.7); font-size:13px; margin-bottom:20px; }
+.modal input {
+  width:100%; padding:10px 14px;
+  background:rgba(10,4,8,0.7); border:1px solid rgba(212,175,55,0.5);
+  color:#f0e8d0; font-family:monospace; font-size:16px;
+  text-align:center; letter-spacing:0.1em;
+  border-radius:3px; outline:none;
+}
+.modal input:focus { border-color:#D4AF37; box-shadow:0 0 12px rgba(212,175,55,0.4); }
+.modal button {
+  margin-top:18px; padding:10px 28px;
+  background:#D4AF37; border:none; color:#1a0f00;
+  font-family:monospace; font-weight:bold; font-size:14px;
+  letter-spacing:0.1em; cursor:pointer; border-radius:3px;
+  transition:transform 0.1s, box-shadow 0.15s;
+}
+.modal button:hover { transform:translateY(-1px); box-shadow:0 4px 14px rgba(212,175,55,0.4); }
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <h3>NAME OF THE HUNTER</h3>
+    <p>Speak your name before you face the scorpion.</p>
+    <input id="nameInput" maxlength="20" autocomplete="off" spellcheck="false" placeholder="Your name">
+    <br><button id="nameSave">BEGIN THE HUNT</button>
+  </div>
+</div>
+<script src="engine.js"></script>
 <script>
-const canvas = document.getElementById('c');
-const ctx    = canvas.getContext('2d');
-canvas.width  = window.innerWidth;
-canvas.height = window.innerHeight;
-const W = canvas.width, H = canvas.height;
-const GOLD = '#D4AF37';
-
-function groundY() { return H * 0.76; }
-
 // ── Constants ─────────────────────────────────────────────────────────────
 const GRAVITY   = 640;
 const JUMP_V    = -440;
 const P_SPEED   = 215;
-const SPEAR_SPD  = 540;
-const SPEAR_DMG  = 14;
-const STAB_DMG   = 22;
-const ORION_HP   = 3;
-const BOSS_HP    = 200;
-const MAX_SPEARS = 7;
+const SPEAR_SPD = 540;
+const SPEAR_DMG = 14;
+const STAB_DMG  = 22;
+const ORION_HP  = 3;
+const BOSS_HP   = 200;
+const MAX_SPEARS= 7;
 
-// ── State ─────────────────────────────────────────────────────────────────
-let gameState = 'title';
-let time = 0, keys = {}, shakeAmt = 0;
-let orion, boss, spears, venoms, particles;
+// ── Game state ────────────────────────────────────────────────────────────
+let orion, boss, spears, venoms;
 let lastShiftTime = -1, lastSpaceTime = -1, lastXTime = -1;
+let ctx; // bound from Engine.ctx after boot
 
-// ── Audio ─────────────────────────────────────────────────────────────────
-let audioCtx;
-function initAudio() {
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-}
-function tone(freq, type, dur, vol=0.4, slide=null) {
-  if (!audioCtx) return;
-  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
-  o.type=type; o.frequency.value=freq;
-  if (slide) o.frequency.linearRampToValueAtTime(slide, audioCtx.currentTime+dur);
-  g.gain.setValueAtTime(vol, audioCtx.currentTime);
-  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime+dur);
-  o.connect(g); g.connect(audioCtx.destination);
-  o.start(); o.stop(audioCtx.currentTime+dur);
-}
-function sndSpear()   { tone(300,'sawtooth',0.1,0.25,180); }
-function sndHitBoss() { tone(90,'square',0.22,0.55,60); }
-function sndHitOrion(){ tone(230,'triangle',0.3,0.5,110); }
-function sndRoar()    { tone(55,'sawtooth',0.5,0.7,40); }
-function sndVictory() {
-  [440,550,660,880].forEach((f,i)=>setTimeout(()=>tone(f,'sine',0.45,0.4),i*130));
+// ── Hall of Mount Olympus (leaderboard) ──────────────────────────────────
+const NAME_KEY = 'godgames_playerName';
+let runStartMs = 0;
+let runEndMs = null;
+let submittedThisRun = false;
+let hallRank = null;
+let hallStatus = null; // 'pending' | 'ok' | 'fail'
+
+function fmtRunTime(ms) {
+  const total = Math.max(0, Math.floor(ms));
+  const m = Math.floor(total / 60000);
+  const s = Math.floor((total % 60000) / 1000);
+  const mmm = total % 1000;
+  return `${m}:${String(s).padStart(2,'0')}.${String(mmm).padStart(3,'0')}`;
 }
 
-// ── Stars + Orion constellation ───────────────────────────────────────────
-const stars = Array.from({length:200},()=>({
-  x:Math.random()*W, y:Math.random()*H*0.72,
-  r:Math.random()*1.5+0.2, ph:Math.random()*Math.PI*2,
+async function submitToHall(timeMs) {
+  const name = localStorage.getItem(NAME_KEY) || 'NAMELESS MORTAL';
+  hallStatus = 'pending';
+  try {
+    const res = await fetch('/api/leaderboard', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ game: 'orion', name, score: timeMs }),
+    });
+    if (!res.ok) { hallStatus = 'fail'; return; }
+    const json = await res.json();
+    hallRank = json.rank;
+    hallStatus = 'ok';
+  } catch {
+    hallStatus = 'fail';
+  }
+}
+
+// ── Name gate ──────────────────────────────────────────────────────────────
+function hasName() { return !!localStorage.getItem(NAME_KEY); }
+function showNameModal() {
+  const mb = document.getElementById('modalBg');
+  const inp = document.getElementById('nameInput');
+  inp.value = localStorage.getItem(NAME_KEY) || '';
+  mb.classList.add('open');
+  setTimeout(() => inp.focus(), 50);
+}
+function hideNameModal() { document.getElementById('modalBg').classList.remove('open'); }
+function saveNameFromModal() {
+  const raw = document.getElementById('nameInput').value || '';
+  const clean = raw.replace(/[\x00-\x1f\x7f]/g, '').replace(/\s+/g,' ').trim().slice(0,20);
+  if (!clean) return false;
+  localStorage.setItem(NAME_KEY, clean);
+  hideNameModal();
+  // Auto-start once they've named themselves.
+  if (Engine.state === 'title' || Engine.state === 'dead' || Engine.state === 'victory') {
+    Engine.audio.init();
+    Engine.setState('playing');
+  }
+  return true;
+}
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('nameSave').addEventListener('click', saveNameFromModal);
+  document.getElementById('nameInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); saveNameFromModal(); }
+    e.stopPropagation();
+  });
+  if (!hasName()) showNameModal();
+});
+
+function groundY() { return Engine.H * 0.76; }
+
+// ── Audio (thematic SFX wrap Engine.audio.tone — bit-identical to original) ─
+const sfx = {
+  spear:    () => Engine.audio.tone(300, 'sawtooth', 0.10, 0.25, 180),
+  hitBoss:  () => Engine.audio.tone( 90, 'square',   0.22, 0.55,  60),
+  hitOrion: () => Engine.audio.tone(230, 'triangle', 0.30, 0.50, 110),
+  roar:     () => Engine.audio.tone( 55, 'sawtooth', 0.50, 0.70,  40),
+  victory:  () => [440,550,660,880].forEach((f,i)=>setTimeout(()=>Engine.audio.tone(f,'sine',0.45,0.4), i*130)),
+};
+
+// ── Background data (resolution-independent — scaled at render time) ──────
+const stars = Array.from({length:200}, () => ({
+  rx: Math.random(),
+  ry: Math.random()*0.72,
+  r:  Math.random()*1.5+0.2,
+  ph: Math.random()*Math.PI*2,
 }));
-
-// Orion constellation (normalized, scaled in render)
 const OC = [
-  {x:0.50,y:0.22},              // head
-  {x:0.38,y:0.34},{x:0.62,y:0.32}, // shoulders
-  {x:0.45,y:0.46},{x:0.50,y:0.45},{x:0.55,y:0.46}, // belt
-  {x:0.36,y:0.62},{x:0.64,y:0.60}, // feet
+  {x:0.50,y:0.22},
+  {x:0.38,y:0.34},{x:0.62,y:0.32},
+  {x:0.45,y:0.46},{x:0.50,y:0.45},{x:0.55,y:0.46},
+  {x:0.36,y:0.62},{x:0.64,y:0.60},
 ];
-const OL=[[0,1],[0,2],[1,3],[2,5],[3,4],[4,5],[3,6],[5,7]];
+const OL = [[0,1],[0,2],[1,3],[2,5],[3,4],[4,5],[3,6],[5,7]];
 
 // ── Init ──────────────────────────────────────────────────────────────────
 function initGame() {
-  const GY = groundY();
+  const W = Engine.W, GY = groundY();
   orion = {
     x:W*0.18, y:GY, vx:0, vy:0,
     hp:ORION_HP, facing:1,
@@ -93,333 +183,317 @@ function initGame() {
   boss = {
     x:W*0.74, y:GY, hp:BOSS_HP,
     facing:-1,
-    state:'idle',      // idle | walk | claw | sting | charge | hurt | dead
+    state:'idle',
     stateTimer:0, attackTimer:2.8,
     phase:1,
     hurtFlash:0, deadTimer:0,
     tailCurl:0.38,
-    clawOpen:0,        // 0=closed 1=open
-    stingT:0,          // 0..1 charge-up glow
+    clawOpen:0,
+    stingT:0,
     stingTargetX:0, stingTargetY:0,
     stingFired:false,
     chargeVx:0,
   };
-  spears=[]; venoms=[]; particles=[];
+  spears=[]; venoms=[];
+  runStartMs = performance.now();
+  runEndMs = null;
+  submittedThisRun = false;
+  hallRank = null;
+  hallStatus = null;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────
-function addShake(a){ shakeAmt=Math.max(shakeAmt,a); }
-
-function burst(x,y,col,n=8,spd=120){
-  for(let i=0;i<n;i++){
-    const a=Math.random()*Math.PI*2, s=spd*(0.5+Math.random());
-    particles.push({x,y, vx:Math.cos(a)*s, vy:Math.sin(a)*s-50, col, alpha:1, r:3+Math.random()*4});
-  }
+function burst(x, y, col, n=8, spd=120) {
+  Engine.particles.emit({
+    x, y,
+    color: col,
+    count: n,
+    speed: [spd*0.5, spd*1.5],
+    size:  [3, 7],
+    upBias: 50,
+    gravity: 420,
+    lifetime: 0.5,
+  });
 }
 
 // ── Update ────────────────────────────────────────────────────────────────
-function update(dt) {
-  time += dt;
-  shakeAmt = Math.max(0, shakeAmt - dt*20);
-  if (gameState==='playing') {
-    updateOrion(dt);
-    updateBoss(dt);
-    updateSpears(dt);
-    updateVenoms(dt);
-    for(let i=particles.length-1;i>=0;i--){
-      const p=particles[i];
-      p.x+=p.vx*dt; p.y+=p.vy*dt; p.vy+=420*dt; p.alpha-=dt*2;
-      if(p.alpha<=0) particles.splice(i,1);
-    }
-  }
-}
-
 function updateOrion(dt) {
-  const GY=groundY();
+  const GY = groundY(), W = Engine.W;
+  const keys = Engine.keys;
+
   // Prone recovery — locked for 2 seconds, can't do anything
   if(orion.proneT>0){
-    const wasPositive=orion.proneT>0;
-    orion.proneT=Math.max(0,orion.proneT-dt);
-    orion.vx=0;
-    orion.vy+=GRAVITY*dt;
-    orion.y=Math.min(GY,orion.y+orion.vy*dt);
+    const wasPositive = orion.proneT>0;
+    orion.proneT = Math.max(0, orion.proneT-dt);
+    orion.vx = 0;
+    orion.vy += GRAVITY*dt;
+    orion.y = Math.min(GY, orion.y+orion.vy*dt);
     if(orion.y>=GY){ orion.y=GY; orion.vy=0; orion.onGround=true; }
-    orion.invincible=Math.max(orion.invincible,orion.proneT);
-    orion.hurtFlash=Math.max(0,orion.hurtFlash-dt);
-    orion.spearQueued=false; orion.stabQueued=false;
-    // When prone ends, make the scorpion back up
-    if(wasPositive&&orion.proneT===0&&boss.state!=='dead'){
+    orion.invincible = Math.max(orion.invincible, orion.proneT);
+    orion.hurtFlash = Math.max(0, orion.hurtFlash-dt);
+    orion.spearQueued = false; orion.stabQueued = false;
+    if(wasPositive && orion.proneT===0 && boss.state!=='dead'){
       boss.state='backup'; boss.stateTimer=0;
     }
     return;
   }
   // Dodge decay
   if(orion.dodgeT>0){
-    orion.dodgeT=Math.max(0,orion.dodgeT-dt);
-    orion.dodgeVx*=Math.pow(0.04,dt); // fast deceleration
+    orion.dodgeT = Math.max(0, orion.dodgeT-dt);
+    orion.dodgeVx *= Math.pow(0.04, dt);
   }
   // Move
-  const isDodging=orion.dodgeT>0;
+  const isDodging = orion.dodgeT>0;
   const goLeft  = keys['ArrowLeft']  || keys['a'];
   const goRight = keys['ArrowRight'] || keys['d'];
   orion.vx = isDodging ? orion.dodgeVx : (goRight ? P_SPEED : goLeft ? -P_SPEED : 0);
-  if(!isDodging&&orion.vx!==0){ orion.facing=orion.vx>0?1:-1; orion.walkPhase+=dt*7; }
+  if(!isDodging && orion.vx!==0){ orion.facing = orion.vx>0?1:-1; orion.walkPhase += dt*7; }
   // Jump
-  if ((keys['ArrowUp']||keys['w'])&&orion.onGround){
-    orion.vy=JUMP_V; orion.onGround=false;
+  if((keys['ArrowUp']||keys['w']) && orion.onGround){
+    orion.vy = JUMP_V; orion.onGround = false;
   }
   // Physics
   orion.vy += GRAVITY*dt;
   orion.y  += orion.vy*dt;
   orion.x  += orion.vx*dt;
-  orion.x   = Math.max(30,Math.min(W-30,orion.x));
+  orion.x   = Math.max(30, Math.min(W-30, orion.x));
   if(orion.y>=GY){ orion.y=GY; orion.vy=0; orion.onGround=true; }
   else orion.onGround=false;
+
   // Throw spear
-  orion.attackCD = Math.max(0,orion.attackCD-dt);
+  orion.attackCD = Math.max(0, orion.attackCD-dt);
   if(orion.spearQueued){
     if(orion.attackCD<=0 && orion.spearCount>0){
       spears.push({x:orion.x+orion.facing*22, y:orion.y-38, vx:orion.facing*SPEAR_SPD, vy:orion.onGround?0:orion.vy*0.5, gravity:!orion.onGround, active:true});
       orion.spearCount--;
-      orion.attackCD=0.62;
-      sndSpear();
-      burst(orion.x+orion.facing*22,orion.y-38,'#e8d090',3,50);
+      orion.attackCD = 0.62;
+      sfx.spear();
+      burst(orion.x+orion.facing*22, orion.y-38, '#e8d090', 3, 50);
     }
-    orion.spearQueued=false;
+    orion.spearQueued = false;
   }
   // Stab
-  orion.stabCD    = Math.max(0,orion.stabCD-dt);
-  orion.stabFlash = Math.max(0,orion.stabFlash-dt);
+  orion.stabCD    = Math.max(0, orion.stabCD-dt);
+  orion.stabFlash = Math.max(0, orion.stabFlash-dt);
   if(orion.stabQueued){
     if(orion.stabCD<=0 && !orion.onGround){
-      orion.stabFlash=0.22; orion.stabCD=0.5;
-      const sx=orion.x+orion.facing*65, sy=orion.y-35;
-      burst(sx,sy,'#ffeeaa',5,75);
-      if(boss.state!=='dead'&&Math.abs(orion.x-boss.x)<115){
-        boss.hp=Math.max(0,boss.hp-STAB_DMG);
-        boss.hurtFlash=0.14; addShake(5); sndHitBoss();
-        burst(sx,sy,'#ff8800',8,110);
-        if(boss.state!=='hurt'&&boss.state!=='claw'&&boss.state!=='sting'){
+      orion.stabFlash = 0.22; orion.stabCD = 0.5;
+      const sx = orion.x+orion.facing*65, sy = orion.y-35;
+      burst(sx, sy, '#ffeeaa', 5, 75);
+      if(boss.state!=='dead' && Math.abs(orion.x-boss.x)<115){
+        boss.hp = Math.max(0, boss.hp-STAB_DMG);
+        boss.hurtFlash = 0.14; Engine.shake(5); sfx.hitBoss();
+        burst(sx, sy, '#ff8800', 8, 110);
+        if(boss.state!=='hurt' && boss.state!=='claw' && boss.state!=='sting'){
           boss.state='hurt'; boss.stateTimer=0;
         }
       }
     }
-    orion.stabQueued=false;
+    orion.stabQueued = false;
   }
-  orion.invincible = Math.max(0,orion.invincible-dt);
-  orion.hurtFlash  = Math.max(0,orion.hurtFlash -dt);
+  orion.invincible = Math.max(0, orion.invincible-dt);
+  orion.hurtFlash  = Math.max(0, orion.hurtFlash -dt);
 }
 
 function updateBoss(dt) {
+  const W = Engine.W;
   if(boss.state==='dead'){
-    boss.deadTimer+=dt;
-    if(boss.deadTimer>3.2) gameState='victory';
+    boss.deadTimer += dt;
+    if(boss.deadTimer>3.2) Engine.setState('victory');
     return;
   }
   if(boss.hp<=0){
     boss.state='dead'; boss.deadTimer=0;
-    addShake(18);
-    burst(boss.x,boss.y-55,'#ff7700',28,220);
-    burst(boss.x,boss.y-55,'#ffcc00',18,160);
-    sndVictory(); return;
+    if(runEndMs == null) runEndMs = performance.now();
+    Engine.shake(18);
+    burst(boss.x, boss.y-55, '#ff7700', 28, 220);
+    burst(boss.x, boss.y-55, '#ffcc00', 18, 160);
+    sfx.victory(); return;
   }
 
-  boss.hurtFlash=Math.max(0,boss.hurtFlash-dt);
+  boss.hurtFlash = Math.max(0, boss.hurtFlash-dt);
   boss.phase = boss.hp>66?1:boss.hp>33?2:3;
-  const sm = boss.phase===3?1.9:boss.phase===2?1.35:1.0; // speed multiplier
+  const sm = boss.phase===3?1.9:boss.phase===2?1.35:1.0;
   boss.facing = orion.x<boss.x ? -1 : 1;
-  const dist  = Math.abs(orion.x - boss.x);
+  const dist = Math.abs(orion.x-boss.x);
 
   switch(boss.state){
     case 'idle':
       boss.tailCurl += (0.38-boss.tailCurl)*dt*3;
-      boss.clawOpen += (0  -boss.clawOpen )*dt*6;
-      boss.stingT   += (0  -boss.stingT   )*dt*6;
+      boss.clawOpen += (0   -boss.clawOpen)*dt*6;
+      boss.stingT   += (0   -boss.stingT  )*dt*6;
       boss.attackTimer -= dt*sm;
-      // Always pursue Orion aggressively between attacks
       boss.x += (orion.x<boss.x?-1:1)*90*dt;
       if(boss.attackTimer<=0){
-        const r=Math.random();
-        if(dist<220 && r<0.22){ boss.state='claw'; boss.stateTimer=0; sndRoar(); }
-        else if(r<0.60){ boss.state='sting'; boss.stateTimer=0; boss.stingFired=false; boss.stingTargetX=orion.x; boss.stingTargetY=orion.y-18; sndRoar(); }
-        else { boss.state='charge'; boss.stateTimer=0; boss.chargeVx=(orion.x<boss.x?-1:1)*(280+boss.phase*50); sndRoar(); }
-        boss.attackTimer=(1.8-boss.phase*0.3)+Math.random()*1.0;
+        const r = Math.random();
+        if(dist<220 && r<0.22){ boss.state='claw'; boss.stateTimer=0; sfx.roar(); }
+        else if(r<0.60){ boss.state='sting'; boss.stateTimer=0; boss.stingFired=false; boss.stingTargetX=orion.x; boss.stingTargetY=orion.y-18; sfx.roar(); }
+        else { boss.state='charge'; boss.stateTimer=0; boss.chargeVx=(orion.x<boss.x?-1:1)*(280+boss.phase*50); sfx.roar(); }
+        boss.attackTimer = (1.8-boss.phase*0.3)+Math.random()*1.0;
       }
       break;
 
     case 'walk':
-      boss.stateTimer+=dt;
+      boss.stateTimer += dt;
       boss.x += (orion.x<boss.x?-1:1)*boss.phase===3?160:110 *dt;
-      if(boss.stateTimer>1.4||dist<200) boss.state='idle';
+      if(boss.stateTimer>1.4 || dist<200) boss.state='idle';
       break;
 
     case 'claw':
-      boss.stateTimer+=dt;
-      // 0-0.35: raise; 0.35-0.55: slam; 0.55+: recover
-      if(boss.stateTimer<0.35)       boss.clawOpen+=(1-boss.clawOpen)*dt*12;
-      else if(boss.stateTimer<0.55){ boss.clawOpen+=(0-boss.clawOpen)*dt*22;
+      boss.stateTimer += dt;
+      if(boss.stateTimer<0.35)        boss.clawOpen += (1-boss.clawOpen)*dt*12;
+      else if(boss.stateTimer<0.55){ boss.clawOpen += (0-boss.clawOpen)*dt*22;
         if(boss.stateTimer>0.38 && boss.stateTimer<0.54 && orion.invincible<=0){
-          const cx=boss.x+boss.facing*115, cy=groundY()-15;
-          if(Math.abs(orion.x-cx)<90&&Math.abs(orion.y-cy)<65) hurtOrion();
+          const cx = boss.x+boss.facing*115, cy = groundY()-15;
+          if(Math.abs(orion.x-cx)<90 && Math.abs(orion.y-cy)<65) hurtOrion();
         }
       } else {
-        boss.clawOpen+=(0-boss.clawOpen)*dt*5;
+        boss.clawOpen += (0-boss.clawOpen)*dt*5;
         if(boss.stateTimer>1.0) boss.state='idle';
       }
       break;
 
     case 'sting':
-      boss.stateTimer+=dt;
-      // Fire venom immediately on first frame; tail animates as visual flourish
-      boss.tailCurl+=(1-boss.tailCurl)*dt*18;
-      boss.stingT+=(1-boss.stingT)*dt*18;
+      boss.stateTimer += dt;
+      boss.tailCurl += (1-boss.tailCurl)*dt*18;
+      boss.stingT   += (1-boss.stingT  )*dt*18;
       if(!boss.stingFired){
-        boss.stingFired=true;
-        const segs=5, curl=1.0;
-        const pts=[{x:-42,y:-18}];
+        boss.stingFired = true;
+        const segs = 5, curl = 1.0;
+        const pts = [{x:-42,y:-18}];
         for(let i=0;i<segs;i++){
-          const t=(i+1)/segs;
-          const angle=-0.25+curl*(Math.PI*1.05)*t-0.08;
-          const len=28*(1-t*0.08);
-          const prev=pts[pts.length-1];
+          const t = (i+1)/segs;
+          const angle = -0.25 + curl*(Math.PI*1.05)*t - 0.08;
+          const len = 28*(1-t*0.08);
+          const prev = pts[pts.length-1];
           pts.push({x:prev.x-Math.cos(angle)*len, y:prev.y-Math.sin(angle)*len});
         }
-        const tip=pts[segs];
-        const tx=boss.x+tip.x*boss.facing, ty=boss.y+tip.y;
-        const dx=boss.stingTargetX-tx, dy=boss.stingTargetY-ty;
-        const dist=Math.sqrt(dx*dx+dy*dy)||1;
-        venoms.push({x:tx,y:ty,vx:dx/dist*420,vy:dy/dist*420,active:true});
-        sndRoar();
+        const tip = pts[segs];
+        const tx = boss.x+tip.x*boss.facing, ty = boss.y+tip.y;
+        const dx = boss.stingTargetX-tx, dy = boss.stingTargetY-ty;
+        const d  = Math.sqrt(dx*dx+dy*dy)||1;
+        venoms.push({x:tx, y:ty, vx:dx/d*420, vy:dy/d*420, active:true});
+        sfx.roar();
       }
       if(boss.stateTimer>0.9){
-        boss.stingT+=(0-boss.stingT)*dt*7;
-        boss.tailCurl+=(0.38-boss.tailCurl)*dt*5;
+        boss.stingT   += (0   -boss.stingT  )*dt*7;
+        boss.tailCurl += (0.38-boss.tailCurl)*dt*5;
       }
       if(boss.stateTimer>1.2) boss.state='idle';
       break;
 
     case 'charge':
-      boss.stateTimer+=dt;
+      boss.stateTimer += dt;
       boss.x += boss.chargeVx*dt;
-      boss.x  = Math.max(80,Math.min(W-80,boss.x));
-      if(orion.invincible<=0&&orion.proneT<=0&&Math.abs(orion.x-boss.x)<75&&Math.abs(orion.y-boss.y)<80) proneOrion();
-      if(boss.stateTimer>1.2||boss.x<=80||boss.x>=W-80) boss.state='idle';
+      boss.x  = Math.max(80, Math.min(W-80, boss.x));
+      if(orion.invincible<=0 && orion.proneT<=0 && Math.abs(orion.x-boss.x)<75 && Math.abs(orion.y-boss.y)<80) proneOrion();
+      if(boss.stateTimer>1.2 || boss.x<=80 || boss.x>=W-80) boss.state='idle';
       break;
 
     case 'backup':
-      boss.stateTimer+=dt;
-      // Scuttle away from Orion for 1.2 seconds
+      boss.stateTimer += dt;
       boss.x += (orion.x<boss.x?1:-1)*140*dt;
-      boss.x=Math.max(100,Math.min(W-100,boss.x));
-      boss.tailCurl+=(0.38-boss.tailCurl)*dt*4;
-      boss.clawOpen+=(0-boss.clawOpen)*dt*5;
+      boss.x = Math.max(100, Math.min(W-100, boss.x));
+      boss.tailCurl += (0.38-boss.tailCurl)*dt*4;
+      boss.clawOpen += (0   -boss.clawOpen)*dt*5;
       if(boss.stateTimer>1.2){ boss.state='idle'; boss.attackTimer=1.2; }
       break;
 
     case 'hurt':
-      boss.stateTimer+=dt;
+      boss.stateTimer += dt;
       if(boss.stateTimer>0.32) boss.state='idle';
       break;
   }
-  boss.x=Math.max(100,Math.min(W-100,boss.x));
+  boss.x = Math.max(100, Math.min(W-100, boss.x));
 }
-
 
 function hurtOrion(){
   if(orion.proneT>0){
-    // Quarter damage while prone — accumulate; every 4 hits = 1 heart
-    orion.proneDmg+=0.25;
-    orion.invincible=0.45; orion.hurtFlash=0.3;
-    addShake(4); sndHitOrion();
-    burst(orion.x,orion.y-20,'#ff4400',5,70);
-    if(orion.proneDmg>=1.0){ orion.hp--; orion.proneDmg-=1.0; }
-    if(orion.hp<=0) gameState='dead';
+    orion.proneDmg += 0.25;
+    orion.invincible = 0.45; orion.hurtFlash = 0.3;
+    Engine.shake(4); sfx.hitOrion();
+    burst(orion.x, orion.y-20, '#ff4400', 5, 70);
+    if(orion.proneDmg>=1.0){ orion.hp--; orion.proneDmg -= 1.0; }
+    if(orion.hp<=0) Engine.setState('dead');
     return;
   }
-  orion.hp--; orion.invincible=1.5; orion.hurtFlash=0.7;
-  orion.vy=-200; orion.vx=orion.facing*-200;
-  addShake(9); sndHitOrion();
-  burst(orion.x,orion.y-40,'#ff2200',10,150);
-  if(orion.hp<=0) gameState='dead';
+  orion.hp--; orion.invincible = 1.5; orion.hurtFlash = 0.7;
+  orion.vy = -200; orion.vx = orion.facing*-200;
+  Engine.shake(9); sfx.hitOrion();
+  burst(orion.x, orion.y-40, '#ff2200', 10, 150);
+  if(orion.hp<=0) Engine.setState('dead');
 }
 function proneOrion(){
-  orion.hp--; orion.proneT=2.0; orion.invincible=2.1; orion.hurtFlash=2.0;
-  orion.vy=0; orion.vx=0;
-  addShake(14); sndHitOrion();
-  burst(orion.x,orion.y-30,'#ff2200',14,180);
-  if(orion.hp<=0) gameState='dead';
+  orion.hp--; orion.proneT = 2.0; orion.invincible = 2.1; orion.hurtFlash = 2.0;
+  orion.vy = 0; orion.vx = 0;
+  Engine.shake(14); sfx.hitOrion();
+  burst(orion.x, orion.y-30, '#ff2200', 14, 180);
+  if(orion.hp<=0) Engine.setState('dead');
 }
 
 function updateSpears(dt){
-  for(let i=spears.length-1;i>=0;i--){
-    const s=spears[i];
-    s.x+=s.vx*dt;
-    if(s.gravity){ s.vy+=GRAVITY*dt; s.y+=s.vy*dt; }
-    if(s.active&&boss.state!=='dead'){
-      if(Math.abs(s.x-boss.x)<95&&s.y>boss.y-140&&s.y<boss.y+5){
-        boss.hp=Math.max(0,boss.hp-SPEAR_DMG);
-        boss.hurtFlash=0.14; addShake(4); sndHitBoss();
-        burst(s.x,s.y,'#ff8800',7,100);
-        if(boss.state!=='hurt'&&boss.state!=='claw'&&boss.state!=='sting'){
+  const W = Engine.W;
+  for(let i=spears.length-1; i>=0; i--){
+    const s = spears[i];
+    s.x += s.vx*dt;
+    if(s.gravity){ s.vy += GRAVITY*dt; s.y += s.vy*dt; }
+    if(s.active && boss.state!=='dead'){
+      if(Math.abs(s.x-boss.x)<95 && s.y>boss.y-140 && s.y<boss.y+5){
+        boss.hp = Math.max(0, boss.hp-SPEAR_DMG);
+        boss.hurtFlash = 0.14; Engine.shake(4); sfx.hitBoss();
+        burst(s.x, s.y, '#ff8800', 7, 100);
+        if(boss.state!=='hurt' && boss.state!=='claw' && boss.state!=='sting'){
           boss.state='hurt'; boss.stateTimer=0;
         }
         spears.splice(i,1); continue;
       }
     }
-    if(s.x<-60||s.x>W+60||s.y>groundY()+20) spears.splice(i,1);
+    if(s.x<-60 || s.x>W+60 || s.y>groundY()+20) spears.splice(i,1);
   }
 }
 
 function updateVenoms(dt){
-  for(let i=venoms.length-1;i>=0;i--){
-    const v=venoms[i];
-    v.x+=v.vx*dt; v.y+=v.vy*dt;
-    if(v.active&&orion.invincible<=0){
-      if(Math.abs(v.x-orion.x)<22&&Math.abs(v.y-orion.y)<34){
-        hurtOrion(); burst(v.x,v.y,'#00ff44',8,90);
+  const W = Engine.W, GY = groundY();
+  for(let i=venoms.length-1; i>=0; i--){
+    const v = venoms[i];
+    v.x += v.vx*dt; v.y += v.vy*dt;
+    if(v.active && orion.invincible<=0){
+      if(Math.abs(v.x-orion.x)<22 && Math.abs(v.y-orion.y)<34){
+        hurtOrion();
+        burst(v.x, v.y, '#00ff44', 8, 90);
         venoms.splice(i,1); continue;
       }
     }
-    if(v.x<-80||v.x>W+80||v.y>GY+60) venoms.splice(i,1);
+    if(v.x<-80 || v.x>W+80 || v.y>GY+60) venoms.splice(i,1);
   }
 }
 
-// ── Draw: Orion character ─────────────────────────────────────────────────
+// ── Draw: Orion ───────────────────────────────────────────────────────────
 function drawOrion() {
   const x=orion.x, y=orion.y, f=orion.facing;
-  const flash=orion.hurtFlash>0&&Math.sin(time*28)>0;
+  const flash = orion.hurtFlash>0 && Math.sin(Engine.time*28)>0;
 
-  // Prone pose — lying flat on the ground
   if(orion.proneT>0){
     ctx.save();
     ctx.translate(x,y);
     if(flash) ctx.filter='brightness(3)';
-    // Body lying sideways (rotated 90° toward facing direction)
     ctx.rotate(orion.facing*Math.PI/2);
-    // Shadow
     ctx.fillStyle='rgba(0,0,0,0.28)';
     ctx.beginPath(); ctx.ellipse(0,4,32,5,0,0,Math.PI*2); ctx.fill();
-    // Legs
     ctx.strokeStyle='#c09050'; ctx.lineWidth=6; ctx.lineCap='round';
     ctx.beginPath(); ctx.moveTo(-5,0); ctx.lineTo(-18,-8); ctx.stroke();
     ctx.beginPath(); ctx.moveTo( 5,0); ctx.lineTo( 18,-4); ctx.stroke();
-    // Tunic
-    ctx.fillStyle=flash?'#fff':'#d0c8a8';
+    ctx.fillStyle = flash?'#fff':'#d0c8a8';
     ctx.beginPath(); ctx.roundRect(-14,-12,28,16,4); ctx.fill();
-    // Belt
     ctx.strokeStyle='#7a5020'; ctx.lineWidth=4;
     ctx.beginPath(); ctx.moveTo(-14,-4); ctx.lineTo(14,-4); ctx.stroke();
-    // Arms splayed
     ctx.strokeStyle='#c09050'; ctx.lineWidth=5;
     ctx.beginPath(); ctx.moveTo(-8,-12); ctx.lineTo(-20,-22); ctx.stroke();
     ctx.beginPath(); ctx.moveTo( 8,-12); ctx.lineTo( 20,-18); ctx.stroke();
-    // Head
     ctx.fillStyle='#c09050';
     ctx.beginPath(); ctx.arc(0,-22,11,0,Math.PI*2); ctx.fill();
     ctx.fillStyle='#8a7040';
     ctx.beginPath(); ctx.ellipse(0,-25,11,7,0,Math.PI,0); ctx.fill();
-    // Recovery timer arc
-    const prog=1-orion.proneT/2.0;
+    const prog = 1 - orion.proneT/2.0;
     ctx.strokeStyle='rgba(255,220,80,0.7)'; ctx.lineWidth=3;
     ctx.beginPath(); ctx.arc(0,-22,16,-Math.PI/2,-Math.PI/2+prog*Math.PI*2); ctx.stroke();
     ctx.filter='none';
@@ -427,36 +501,30 @@ function drawOrion() {
     return;
   }
 
-  const walk=orion.onGround&&orion.vx!==0?Math.sin(orion.walkPhase)*0.9:0;
+  const walk = orion.onGround && orion.vx!==0 ? Math.sin(orion.walkPhase)*0.9 : 0;
   ctx.save();
   ctx.translate(x,y); ctx.scale(f,1);
   if(flash) ctx.filter='brightness(3)';
 
-  // Shadow
   ctx.fillStyle='rgba(0,0,0,0.28)';
   ctx.beginPath(); ctx.ellipse(0,0,20,5,0,0,Math.PI*2); ctx.fill();
 
-  // Legs
   ctx.lineCap='round'; ctx.lineWidth=6; ctx.strokeStyle='#c09050';
   ctx.beginPath(); ctx.moveTo(-5,-18); ctx.lineTo(-9+walk*11,0); ctx.stroke();
   ctx.beginPath(); ctx.moveTo( 5,-18); ctx.lineTo( 9-walk*11,0); ctx.stroke();
 
-  // Tunic
-  ctx.fillStyle=flash?'#fff':'#d0c8a8';
+  ctx.fillStyle = flash?'#fff':'#d0c8a8';
   ctx.beginPath();
   ctx.moveTo(-12,-18); ctx.lineTo(-14,-52); ctx.lineTo(14,-52); ctx.lineTo(12,-18);
   ctx.closePath(); ctx.fill();
-  // tunic folds
   ctx.strokeStyle='rgba(0,0,0,0.12)'; ctx.lineWidth=1;
   ctx.beginPath(); ctx.moveTo(-3,-52); ctx.lineTo(-4,-18); ctx.stroke();
   ctx.beginPath(); ctx.moveTo( 3,-52); ctx.lineTo( 4,-18); ctx.stroke();
 
-  // Belt
   ctx.strokeStyle='#7a5020'; ctx.lineWidth=4;
   ctx.beginPath(); ctx.moveTo(-12,-28); ctx.lineTo(12,-28); ctx.stroke();
 
-  // Mini spears on belt (left side, up to MAX_SPEARS shown as small sticks)
-  const beltSpears=Math.min(orion.spearCount,7);
+  const beltSpears = Math.min(orion.spearCount, 7);
   for(let i=0;i<beltSpears;i++){
     const bx=-10+i*3, by=-28;
     ctx.save(); ctx.translate(bx,by); ctx.rotate(0.15);
@@ -467,46 +535,37 @@ function drawOrion() {
     ctx.restore();
   }
 
-  // Arms
   ctx.lineWidth=5; ctx.strokeStyle='#c09050';
   ctx.beginPath(); ctx.moveTo(12,-46); ctx.lineTo(18+walk*5,-30); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(-12,-46); ctx.lineTo(-16-walk*4,-32); ctx.stroke();
 
-  // Held weapon — spear if has ammo, knife if out
   ctx.save(); ctx.translate(18+walk*5,-30); ctx.rotate(0.18-walk*0.12);
   if(orion.spearCount>0){
-    // Spear
     ctx.strokeStyle='#7a5028'; ctx.lineWidth=3; ctx.lineCap='round';
     ctx.beginPath(); ctx.moveTo(0,-32); ctx.lineTo(0,18); ctx.stroke();
     ctx.fillStyle='#b8b8b8';
     ctx.beginPath(); ctx.moveTo(0,-32); ctx.lineTo(-4,-20); ctx.lineTo(4,-20); ctx.closePath(); ctx.fill();
   } else {
-    // Knife
     ctx.strokeStyle='#7a5028'; ctx.lineWidth=2.5; ctx.lineCap='round';
     ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0,-16); ctx.stroke();
     ctx.fillStyle='#d0d0d0';
     ctx.beginPath(); ctx.moveTo(0,-16); ctx.lineTo(-3,-8); ctx.lineTo(3,-11); ctx.closePath(); ctx.fill();
     ctx.strokeStyle='rgba(0,0,0,0.2)'; ctx.lineWidth=0.8;
     ctx.stroke();
-    // Handle wrap
     ctx.strokeStyle='#5a3010'; ctx.lineWidth=3;
     ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0,6); ctx.stroke();
   }
   ctx.restore();
 
-  // Neck + Head
   ctx.fillStyle='#c09050';
   ctx.fillRect(-4,-58,8,8);
   ctx.beginPath(); ctx.arc(0,-66,12,0,Math.PI*2); ctx.fill();
-  // Helmet
   ctx.fillStyle='#8a7040';
   ctx.beginPath(); ctx.ellipse(0,-69,12,8,0,Math.PI,0); ctx.fill();
   ctx.fillStyle='#6a5020';
   ctx.beginPath(); ctx.arc(0,-66,4.5,Math.PI,0); ctx.fill();
-  // Crest
   ctx.fillStyle='#cc1800';
   ctx.beginPath(); ctx.moveTo(-3,-77); ctx.lineTo(0,-94); ctx.lineTo(3,-77); ctx.closePath(); ctx.fill();
-  // Eye
   ctx.fillStyle='#1a1008';
   ctx.beginPath(); ctx.arc(5.5,-66,2.2,0,Math.PI*2); ctx.fill();
   ctx.fillStyle='rgba(255,255,255,0.5)';
@@ -515,29 +574,24 @@ function drawOrion() {
   ctx.filter='none';
   ctx.restore();
 
-  // Stab — knife lunging forward
   if(orion.stabFlash>0){
-    const sf=orion.stabFlash/0.22;
-    const reach=orion.facing*55*sf;
-    const kx=orion.x+orion.facing*20+reach;
-    const ky=orion.y-36;
-    const ang=orion.facing===1?-0.5:Math.PI+0.5;
+    const sf = orion.stabFlash/0.22;
+    const reach = orion.facing*55*sf;
+    const kx = orion.x+orion.facing*20+reach;
+    const ky = orion.y-36;
+    const ang = orion.facing===1?-0.5:Math.PI+0.5;
     ctx.save();
     ctx.translate(kx,ky); ctx.rotate(ang);
-    ctx.globalAlpha=Math.min(1,sf*1.2);
-    // Blade
+    ctx.globalAlpha = Math.min(1, sf*1.2);
     ctx.fillStyle='#d8d8d8';
     ctx.shadowColor='#ffffff'; ctx.shadowBlur=10*sf;
     ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(-4,18); ctx.lineTo(4,14); ctx.closePath(); ctx.fill();
     ctx.strokeStyle='rgba(0,0,0,0.25)'; ctx.lineWidth=0.8; ctx.stroke();
-    // Glint
     ctx.strokeStyle=`rgba(255,255,255,${sf*0.9})`; ctx.lineWidth=1.5; ctx.lineCap='round';
     ctx.beginPath(); ctx.moveTo(-1,4); ctx.lineTo(2,12); ctx.stroke();
-    // Handle
     ctx.fillStyle='#5a3010';
     ctx.beginPath(); ctx.roundRect(-3,-8,6,10,1); ctx.fill();
-    // Slash arc behind blade
-    ctx.globalAlpha=sf*0.5;
+    ctx.globalAlpha = sf*0.5;
     ctx.strokeStyle='rgba(255,240,200,0.8)'; ctx.lineWidth=3; ctx.lineCap='round';
     ctx.shadowColor='#ffee88'; ctx.shadowBlur=8*sf;
     ctx.beginPath(); ctx.arc(0,8,26,-1.1,0.1); ctx.stroke();
@@ -548,59 +602,49 @@ function drawOrion() {
 // ── Draw: Scorpion ────────────────────────────────────────────────────────
 function drawScorpion() {
   const x=boss.x, y=boss.y, f=boss.facing;
-  const flash=boss.hurtFlash>0&&Math.sin(time*32)>0;
+  const flash = boss.hurtFlash>0 && Math.sin(Engine.time*32)>0;
   ctx.save();
   ctx.translate(x,y); ctx.scale(f,1);
   if(flash) ctx.filter='brightness(2.8) saturate(0)';
 
-  // Shadow
   ctx.fillStyle='rgba(0,0,0,0.38)';
   ctx.beginPath(); ctx.ellipse(0,2,92,12,0,0,Math.PI*2); ctx.fill();
 
-  // Tail (drawn behind body)
   drawTail();
 
-  // Legs — 4 per side
   for(const side of [-1,1]){
     for(let i=0;i<4;i++){
       const lx=-38+i*22, lBase=-22+i*3;
-      const phase=time*4.5+i*0.9+(side<0?1.6:0);
-      const sway=Math.sin(phase)*(boss.state==='walk'||boss.state==='charge'?1:0.2)*8;
-      const kneeX=lx+side*(38+sway), kneeY=lBase-26;
-      const footX=lx+side*(52+sway*0.5), footY=-2;
-      ctx.strokeStyle=i%2===0?'#8a4e1a':'#a06028';
+      const phase = Engine.time*4.5+i*0.9+(side<0?1.6:0);
+      const sway = Math.sin(phase)*(boss.state==='walk'||boss.state==='charge'?1:0.2)*8;
+      const kneeX = lx+side*(38+sway), kneeY = lBase-26;
+      const footX = lx+side*(52+sway*0.5), footY = -2;
+      ctx.strokeStyle = i%2===0?'#8a4e1a':'#a06028';
       ctx.lineWidth=6; ctx.lineCap='round';
       ctx.beginPath(); ctx.moveTo(lx,lBase); ctx.lineTo(kneeX,kneeY); ctx.lineTo(footX,footY); ctx.stroke();
-      // claw tip
       ctx.lineWidth=3;
       ctx.beginPath(); ctx.moveTo(footX,footY); ctx.lineTo(footX+side*6,footY+4); ctx.stroke();
     }
   }
 
-  // Main carapace
-  const bodyG=ctx.createRadialGradient(8,-28,6,0,-20,65);
+  const bodyG = ctx.createRadialGradient(8,-28,6,0,-20,65);
   bodyG.addColorStop(0,'#d08030'); bodyG.addColorStop(0.5,'#9a4e1a'); bodyG.addColorStop(1,'#5a1e04');
   ctx.fillStyle=bodyG;
   ctx.beginPath(); ctx.ellipse(0,-26,60,38,0,0,Math.PI*2); ctx.fill();
-  // Segments
   ctx.strokeStyle='rgba(0,0,0,0.22)'; ctx.lineWidth=1.5;
   for(let i=-2;i<=2;i++){
     ctx.beginPath(); ctx.ellipse(i*11,-26,5,36,0,0,Math.PI*2); ctx.stroke();
   }
-  // Spine ridges
   ctx.strokeStyle='rgba(255,180,60,0.18)'; ctx.lineWidth=2;
   ctx.beginPath(); ctx.moveTo(-50,-26); ctx.lineTo(50,-26); ctx.stroke();
 
-  // Head
-  const hG=ctx.createRadialGradient(68,-20,4,68,-20,28);
+  const hG = ctx.createRadialGradient(68,-20,4,68,-20,28);
   hG.addColorStop(0,'#d88840'); hG.addColorStop(1,'#6a2c08');
   ctx.fillStyle=hG;
   ctx.beginPath(); ctx.ellipse(66,-20,27,20,0.12,0,Math.PI*2); ctx.fill();
-  // Chelicerae (mouthparts)
   ctx.strokeStyle='#8a4020'; ctx.lineWidth=4; ctx.lineCap='round';
   ctx.beginPath(); ctx.moveTo(88,-18); ctx.lineTo(98,-24); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(88,-22); ctx.lineTo(98,-14); ctx.stroke();
-  // Eyes
   ctx.fillStyle='#0a0a0a';
   ctx.beginPath(); ctx.arc(78,-14,4.5,0,Math.PI*2); ctx.fill();
   ctx.beginPath(); ctx.arc(70,-11,3,0,Math.PI*2); ctx.fill();
@@ -608,7 +652,6 @@ function drawScorpion() {
   ctx.beginPath(); ctx.arc(79,-15,1.8,0,Math.PI*2); ctx.fill();
   ctx.beginPath(); ctx.arc(71,-12,1.2,0,Math.PI*2); ctx.fill();
 
-  // Pedipalp (claw)
   drawClaw(boss.clawOpen);
 
   ctx.filter='none';
@@ -616,30 +659,27 @@ function drawScorpion() {
 }
 
 function drawTail(){
-  // 5 segments curving up and over from the rear of the body
   const segs=5;
   const curl=boss.tailCurl;
   const pts=[{x:-42,y:-18}];
   for(let i=0;i<segs;i++){
-    const t=(i+1)/segs;
-    const angle=-0.25 + curl*(Math.PI*1.05)*t - 0.08;
-    const len=28*(1-t*0.08);
-    const prev=pts[pts.length-1];
+    const t = (i+1)/segs;
+    const angle = -0.25 + curl*(Math.PI*1.05)*t - 0.08;
+    const len = 28*(1-t*0.08);
+    const prev = pts[pts.length-1];
     pts.push({x:prev.x-Math.cos(angle)*len, y:prev.y-Math.sin(angle)*len});
   }
-  // Draw segments
   for(let i=0;i<segs;i++){
-    const p1=pts[i],p2=pts[i+1];
-    const w=20-i*2.8;
-    ctx.strokeStyle=i%2===0?'#9a5020':'#7a3810';
-    ctx.lineWidth=Math.max(5,w); ctx.lineCap='round';
+    const p1=pts[i], p2=pts[i+1];
+    const w = 20-i*2.8;
+    ctx.strokeStyle = i%2===0?'#9a5020':'#7a3810';
+    ctx.lineWidth = Math.max(5,w); ctx.lineCap='round';
     ctx.beginPath(); ctx.moveTo(p1.x,p1.y); ctx.lineTo(p2.x,p2.y); ctx.stroke();
     ctx.strokeStyle='rgba(0,0,0,0.15)'; ctx.lineWidth=1.5;
     ctx.beginPath(); ctx.moveTo(p1.x,p1.y); ctx.lineTo(p2.x,p2.y); ctx.stroke();
   }
-  // Stinger at tip
   const tip=pts[segs], pre=pts[segs-1];
-  const ang=Math.atan2(tip.y-pre.y, tip.x-pre.x);
+  const ang = Math.atan2(tip.y-pre.y, tip.x-pre.x);
   ctx.save(); ctx.translate(tip.x,tip.y); ctx.rotate(ang-Math.PI/2);
   ctx.fillStyle='#c8a000';
   ctx.beginPath();
@@ -647,11 +687,10 @@ function drawTail(){
   ctx.bezierCurveTo(7,-6,9,-18,2,-30);
   ctx.bezierCurveTo(-2,-18,-2,-6,0,0);
   ctx.fill();
-  // Venom glow
-  const vg=boss.stingT;
+  const vg = boss.stingT;
   if(vg>0.4){
     ctx.shadowColor='#00ff44'; ctx.shadowBlur=12*vg;
-    ctx.fillStyle=`rgba(40,220,20,${vg*0.9})`;
+    ctx.fillStyle = `rgba(40,220,20,${vg*0.9})`;
     ctx.beginPath(); ctx.arc(2,-30,5,0,Math.PI*2); ctx.fill();
     ctx.shadowBlur=0;
   }
@@ -661,25 +700,20 @@ function drawTail(){
 function drawClaw(open){
   ctx.save();
   ctx.translate(86,-20);
-  // Arm
   ctx.strokeStyle='#8a4018'; ctx.lineWidth=12; ctx.lineCap='round';
   ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(34,2); ctx.stroke();
-  // Palm
   ctx.fillStyle='#9a4c1c';
   ctx.beginPath(); ctx.ellipse(42,2,16,10,0.1,0,Math.PI*2); ctx.fill();
-  // Upper finger
-  const uf=open*22;
+  const uf = open*22;
   ctx.strokeStyle='#b85c24'; ctx.lineWidth=7; ctx.lineCap='round';
   ctx.beginPath();
   ctx.moveTo(50,-4);
   ctx.quadraticCurveTo(64,-10-uf,70,-3+uf*0.3);
   ctx.stroke();
-  // Lower finger
   ctx.beginPath();
   ctx.moveTo(50,8);
   ctx.quadraticCurveTo(64,14+uf*0.5,68,8);
   ctx.stroke();
-  // Claw tips (dark)
   ctx.strokeStyle='#3a1808'; ctx.lineWidth=3;
   ctx.beginPath(); ctx.moveTo(68,-2+uf*0.3); ctx.lineTo(72,-4+uf*0.2); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(66,8); ctx.lineTo(70,10); ctx.stroke();
@@ -687,195 +721,256 @@ function drawClaw(open){
 }
 
 // ── HUD ───────────────────────────────────────────────────────────────────
-function renderHUD(){
-  // Boss HP bar
+function renderHUD() {
+  const W = Engine.W, H = Engine.H, time = Engine.time;
   ctx.save();
+  // Boss HP bar
   ctx.fillStyle='rgba(0,0,0,0.55)';
   ctx.beginPath(); ctx.roundRect(W/2-155,14,310,26,4); ctx.fill();
-  const bfrac=Math.max(0,boss.hp/BOSS_HP);
-  const bc=bfrac>0.6?'#44dd44':bfrac>0.3?'#ffcc00':'#ff2200';
-  ctx.fillStyle=bc;
+  const bfrac = Math.max(0, boss.hp/BOSS_HP);
+  const bc = bfrac>0.6?'#44dd44':bfrac>0.3?'#ffcc00':'#ff2200';
+  ctx.fillStyle = bc;
   ctx.beginPath(); ctx.roundRect(W/2-155,14,310*bfrac,26,4); ctx.fill();
   ctx.strokeStyle='rgba(255,255,255,0.3)'; ctx.lineWidth=1.5;
   ctx.beginPath(); ctx.roundRect(W/2-155,14,310,26,4); ctx.stroke();
   ctx.fillStyle='#fff'; ctx.font='bold 12px monospace'; ctx.textAlign='center';
   ctx.fillText('GIANT SCORPION', W/2, 31);
 
-  // Phase badge
   if(boss.phase>1){
     ctx.font='bold 11px monospace';
-    ctx.fillStyle=boss.phase===3?'#ff4400':'#ff9900';
+    ctx.fillStyle = boss.phase===3?'#ff4400':'#ff9900';
     ctx.fillText(boss.phase===3?'⚡ ENRAGED':'⚡ FRENZIED', W/2, 50);
   }
 
-  // Orion hearts
   ctx.textAlign='left'; ctx.font='24px serif';
   for(let i=0;i<ORION_HP;i++){
-    const alive=i<orion.hp;
-    ctx.fillStyle=alive?'#ff2244':'rgba(80,30,30,0.4)';
-    ctx.shadowColor=alive?'#ff2244':'transparent'; ctx.shadowBlur=alive?10:0;
+    const alive = i<orion.hp;
+    ctx.fillStyle = alive?'#ff2244':'rgba(80,30,30,0.4)';
+    ctx.shadowColor = alive?'#ff2244':'transparent'; ctx.shadowBlur = alive?10:0;
     ctx.fillText('♥', 18+i*32, 44);
   }
   ctx.shadowBlur=0;
 
-  // Controls hint
   if(time<9){
-    ctx.globalAlpha=Math.min(1,(9-time)*0.5);
+    ctx.globalAlpha = Math.min(1, (9-time)*0.5);
     ctx.fillStyle='rgba(255,255,200,0.7)'; ctx.font='11px monospace'; ctx.textAlign='center';
     ctx.fillText('Z throw spear   X stab   Shift×2 dodge   (while dodging: double-tap to attack)', W/2, H-18);
     ctx.globalAlpha=1;
   }
+
+  // Run timer (top-right) — frozen at runEndMs once boss is defeated
+  const elapsed = (runEndMs != null ? runEndMs : performance.now()) - runStartMs;
+  ctx.textAlign='right';
+  ctx.font='bold 18px monospace';
+  ctx.fillStyle = boss.state==='dead' ? Engine.GOLD : 'rgba(240,215,140,0.85)';
+  ctx.shadowColor = Engine.GOLD;
+  ctx.shadowBlur = boss.state==='dead' ? 10 : 0;
+  ctx.fillText(fmtRunTime(elapsed), W-22, 36);
+  ctx.shadowBlur = 0;
+  ctx.font='10px monospace';
+  ctx.fillStyle='rgba(220,200,150,0.55)';
+  ctx.fillText('TIME', W-22, 50);
+
   ctx.restore();
 }
 
 // ── Background ────────────────────────────────────────────────────────────
-function renderBg(){
-  const GY=groundY();
+function drawBg(c, W, H, time) {
+  const GY = H * 0.76;
   // Sky
-  const sky=ctx.createLinearGradient(0,0,0,H);
+  const sky = c.createLinearGradient(0,0,0,H);
   sky.addColorStop(0,'#06021a'); sky.addColorStop(0.55,'#130828'); sky.addColorStop(1,'#220e10');
-  ctx.fillStyle=sky; ctx.fillRect(0,0,W,H);
+  c.fillStyle=sky; c.fillRect(0,0,W,H);
   // Stars
   for(const s of stars){
-    const b=Math.sin(time*1.7+s.ph)*0.3+0.7;
-    ctx.globalAlpha=b*0.85; ctx.fillStyle='#fff';
-    ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,Math.PI*2); ctx.fill();
+    const b = Math.sin(time*1.7+s.ph)*0.3+0.7;
+    c.globalAlpha = b*0.85; c.fillStyle='#fff';
+    c.beginPath(); c.arc(s.rx*W, s.ry*H, s.r, 0, Math.PI*2); c.fill();
   }
-  ctx.globalAlpha=1;
-  // Orion constellation (top-left sky)
-  ctx.save();
-  const cx=W*0.11,cy=H*0.32,cs=160;
-  ctx.strokeStyle='rgba(140,190,255,0.22)'; ctx.lineWidth=1;
+  c.globalAlpha=1;
+  // Orion constellation
+  c.save();
+  const cx=W*0.11, cy=H*0.32, cs=160;
+  c.strokeStyle='rgba(140,190,255,0.22)'; c.lineWidth=1;
   for(const [a,b] of OL){
-    ctx.beginPath();
-    ctx.moveTo(cx+OC[a].x*cs,cy+OC[a].y*cs);
-    ctx.lineTo(cx+OC[b].x*cs,cy+OC[b].y*cs);
-    ctx.stroke();
+    c.beginPath();
+    c.moveTo(cx+OC[a].x*cs, cy+OC[a].y*cs);
+    c.lineTo(cx+OC[b].x*cs, cy+OC[b].y*cs);
+    c.stroke();
   }
   for(const s of OC){
-    ctx.fillStyle='rgba(170,215,255,0.9)'; ctx.shadowColor='rgba(140,200,255,0.7)'; ctx.shadowBlur=7;
-    ctx.beginPath(); ctx.arc(cx+s.x*cs,cy+s.y*cs,2.8,0,Math.PI*2); ctx.fill();
+    c.fillStyle='rgba(170,215,255,0.9)'; c.shadowColor='rgba(140,200,255,0.7)'; c.shadowBlur=7;
+    c.beginPath(); c.arc(cx+s.x*cs, cy+s.y*cs, 2.8, 0, Math.PI*2); c.fill();
   }
-  ctx.shadowBlur=0; ctx.restore();
+  c.shadowBlur=0; c.restore();
   // Moon
-  ctx.save();
-  ctx.shadowColor='rgba(255,200,80,0.35)'; ctx.shadowBlur=22;
-  ctx.fillStyle='#f5e8c0'; ctx.beginPath(); ctx.arc(W*0.87,H*0.08,26,0,Math.PI*2); ctx.fill();
-  ctx.fillStyle='#130828'; ctx.beginPath(); ctx.arc(W*0.87+8,H*0.08,22,0,Math.PI*2); ctx.fill();
-  ctx.restore();
-  // Distant dune silhouettes
-  ctx.fillStyle='#1e0e06';
-  ctx.beginPath(); ctx.moveTo(0,GY);
+  c.save();
+  c.shadowColor='rgba(255,200,80,0.35)'; c.shadowBlur=22;
+  c.fillStyle='#f5e8c0'; c.beginPath(); c.arc(W*0.87,H*0.08,26,0,Math.PI*2); c.fill();
+  c.fillStyle='#130828'; c.beginPath(); c.arc(W*0.87+8,H*0.08,22,0,Math.PI*2); c.fill();
+  c.restore();
+  // Distant dunes
+  c.fillStyle='#1e0e06';
+  c.beginPath(); c.moveTo(0,GY);
   const dx=[0,.10,.22,.35,.46,.58,.70,.82,.93,1];
   const dh=[.14,.09,.22,.10,.18,.07,.20,.11,.08,.12];
-  for(let i=0;i<dx.length;i++) ctx.lineTo(dx[i]*W, GY-dh[i]*H*0.52);
-  ctx.lineTo(W,GY); ctx.closePath(); ctx.fill();
+  for(let i=0;i<dx.length;i++) c.lineTo(dx[i]*W, GY-dh[i]*H*0.52);
+  c.lineTo(W,GY); c.closePath(); c.fill();
   // Ground sand
-  const gnd=ctx.createLinearGradient(0,GY,0,H);
+  const gnd = c.createLinearGradient(0,GY,0,H);
   gnd.addColorStop(0,'#c87820'); gnd.addColorStop(0.07,'#9a5c10'); gnd.addColorStop(1,'#2a1004');
-  ctx.fillStyle=gnd; ctx.fillRect(0,GY,W,H-GY);
-  // Sand ripples
-  ctx.strokeStyle='rgba(255,180,70,0.10)'; ctx.lineWidth=1;
+  c.fillStyle=gnd; c.fillRect(0,GY,W,H-GY);
+  // Ripples
+  c.strokeStyle='rgba(255,180,70,0.10)'; c.lineWidth=1;
   for(let i=0;i<9;i++){
-    const ry=GY+10+i*12;
-    ctx.beginPath(); ctx.moveTo(0,ry);
-    for(let x=0;x<=W;x+=18) ctx.lineTo(x,ry+Math.sin(x*0.045+i*1.2)*2.5);
-    ctx.stroke();
+    const ry = GY+10+i*12;
+    c.beginPath(); c.moveTo(0,ry);
+    for(let x=0;x<=W;x+=18) c.lineTo(x, ry+Math.sin(x*0.045+i*1.2)*2.5);
+    c.stroke();
   }
-  ctx.strokeStyle='rgba(255,210,100,0.3)'; ctx.lineWidth=2;
-  ctx.beginPath(); ctx.moveTo(0,GY); ctx.lineTo(W,GY); ctx.stroke();
+  c.strokeStyle='rgba(255,210,100,0.3)'; c.lineWidth=2;
+  c.beginPath(); c.moveTo(0,GY); c.lineTo(W,GY); c.stroke();
   // Rocks
-  const rockXs=[W*.07,W*.22,W*.45,W*.62,W*.80,W*.91];
+  const rockXs = [W*.07,W*.22,W*.45,W*.62,W*.80,W*.91];
   for(let i=0;i<rockXs.length;i++){
     const rx=rockXs[i], rw=14+i*5, rh=9+i*2;
-    ctx.fillStyle='#3a2010';
-    ctx.beginPath(); ctx.ellipse(rx,GY-3,rw,rh,0,0,Math.PI*2); ctx.fill();
-    ctx.strokeStyle='rgba(255,180,60,0.15)'; ctx.lineWidth=1;
-    ctx.beginPath(); ctx.ellipse(rx-2,GY-5,rw*0.6,rh*0.45,0,0,Math.PI*2); ctx.stroke();
+    c.fillStyle='#3a2010';
+    c.beginPath(); c.ellipse(rx,GY-3,rw,rh,0,0,Math.PI*2); c.fill();
+    c.strokeStyle='rgba(255,180,60,0.15)'; c.lineWidth=1;
+    c.beginPath(); c.ellipse(rx-2,GY-5,rw*0.6,rh*0.45,0,0,Math.PI*2); c.stroke();
   }
-  // Torches on arena walls
-  drawTorch(W*0.04, GY-50);
-  drawTorch(W*0.96, GY-50);
+  // Torches
+  drawTorch(c, W*0.04, GY-50, time);
+  drawTorch(c, W*0.96, GY-50, time);
 }
 
-function drawTorch(x,y){
-  ctx.save(); ctx.translate(x,y);
-  // Pole
-  ctx.strokeStyle='#5a3810'; ctx.lineWidth=4; ctx.lineCap='round';
-  ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0,-30); ctx.stroke();
-  // Cup
-  ctx.fillStyle='#7a4820';
-  ctx.beginPath(); ctx.moveTo(-7,-30); ctx.lineTo(7,-30); ctx.lineTo(5,-20); ctx.lineTo(-5,-20); ctx.closePath(); ctx.fill();
-  // Flame
-  const fl=0.7+Math.sin(time*8+x)*0.3;
-  ctx.shadowColor='#ff8800'; ctx.shadowBlur=20*fl;
-  ctx.fillStyle=`rgba(255,${120+fl*80|0},20,${fl*0.95})`;
-  ctx.beginPath(); ctx.arc(0,-36,7*fl,0,Math.PI*2); ctx.fill();
-  ctx.fillStyle=`rgba(255,220,80,${fl*0.7})`;
-  ctx.beginPath(); ctx.arc(0,-38,4*fl,0,Math.PI*2); ctx.fill();
-  ctx.shadowBlur=0; ctx.restore();
+function drawTorch(c, x, y, time){
+  c.save(); c.translate(x,y);
+  c.strokeStyle='#5a3810'; c.lineWidth=4; c.lineCap='round';
+  c.beginPath(); c.moveTo(0,0); c.lineTo(0,-30); c.stroke();
+  c.fillStyle='#7a4820';
+  c.beginPath(); c.moveTo(-7,-30); c.lineTo(7,-30); c.lineTo(5,-20); c.lineTo(-5,-20); c.closePath(); c.fill();
+  const fl = 0.7 + Math.sin(time*8+x)*0.3;
+  c.shadowColor='#ff8800'; c.shadowBlur = 20*fl;
+  c.fillStyle = `rgba(255,${120+fl*80|0},20,${fl*0.95})`;
+  c.beginPath(); c.arc(0,-36,7*fl,0,Math.PI*2); c.fill();
+  c.fillStyle = `rgba(255,220,80,${fl*0.7})`;
+  c.beginPath(); c.arc(0,-38,4*fl,0,Math.PI*2); c.fill();
+  c.shadowBlur=0; c.restore();
 }
 
-// ── Overlay screens ───────────────────────────────────────────────────────
-function renderTitle(){
-  ctx.fillStyle='rgba(0,0,0,0.62)'; ctx.fillRect(0,0,W,H);
-  ctx.save(); ctx.textAlign='center';
-  ctx.font='bold 62px serif'; ctx.fillStyle='#c87030'; ctx.shadowColor='#ff6600'; ctx.shadowBlur=28;
-  ctx.fillText('ORION', W/2, H*0.28);
-  ctx.shadowBlur=0;
-  ctx.font='italic 27px serif'; ctx.fillStyle='rgba(225,205,160,0.9)';
-  ctx.fillText('& The Giant Scorpion', W/2, H*0.37);
-  ctx.font='13px monospace'; ctx.fillStyle='rgba(220,200,155,0.65)';
-  ['← → keys: move','↑ to jump','Z: throw spear   X: stab','Shift × 2: dodge — then double-tap X or Space to attack','Defeat the scorpion before it kills you'].forEach((l,i)=>ctx.fillText(l,W/2,H*0.50+i*23));
-  if(Math.sin(time*3)>0){
-    ctx.font='bold 18px monospace'; ctx.fillStyle=GOLD; ctx.shadowColor=GOLD; ctx.shadowBlur=12;
-    ctx.fillText('PRESS SPACE TO BEGIN', W/2, H*0.72);
-  }
-  ctx.shadowBlur=0; ctx.font='12px monospace'; ctx.fillStyle='rgba(170,170,170,0.45)';
-  ctx.fillText('ESC — Return to World', W/2, H*0.88);
-  ctx.restore();
-}
+// ── Boot ──────────────────────────────────────────────────────────────────
+Engine.boot({
+  title:    'ORION',
+  subtitle: '& The Giant Scorpion',
+  instructions: [
+    '← → keys: move',
+    '↑ to jump',
+    'Z: throw spear   X: stab',
+    'Shift × 2: dodge — then double-tap X or Space to attack',
+    'Defeat the scorpion before it kills you',
+  ],
+  deadTitle:       'ORION HAS FALLEN',
+  deadSubtitle:    'The scorpion claims another hunter.',
+  victoryTitle:    'THE SCORPION IS SLAIN',
+  victorySubtitle: 'Orion stands victorious — his name written in the stars forever.',
 
-function renderDead(){
-  ctx.fillStyle='rgba(0,0,0,0.78)'; ctx.fillRect(0,0,W,H);
-  ctx.save(); ctx.textAlign='center';
-  ctx.font='bold 52px serif'; ctx.fillStyle='#cc2200'; ctx.shadowColor='#ff4400'; ctx.shadowBlur=22;
-  ctx.fillText('ORION HAS FALLEN', W/2, H*0.37);
-  ctx.shadowBlur=0; ctx.font='italic 15px serif'; ctx.fillStyle='rgba(220,200,155,0.7)';
-  ctx.fillText('The scorpion claims another hunter.', W/2, H*0.45);
-  if(Math.sin(time*3)>0){
-    ctx.font='bold 19px monospace'; ctx.fillStyle=GOLD; ctx.shadowColor=GOLD; ctx.shadowBlur=9;
-    ctx.fillText('PRESS  1  TO TRY AGAIN', W/2, H*0.60);
-  }
-  ctx.shadowBlur=0; ctx.font='12px monospace'; ctx.fillStyle='rgba(170,170,170,0.5)';
-  ctx.fillText('ESC — Return to World', W/2, H*0.70);
-  ctx.restore();
-}
+  theme: {
+    bg:     drawBg,
+    accent: '#c87030',
+    danger: '#cc2200',
+    shakeDecay: 'linear', // matches original orion feel
+    restartKey: '1',
+  },
 
-function renderVictory(){
-  ctx.fillStyle='rgba(0,0,0,0.72)'; ctx.fillRect(0,0,W,H);
-  ctx.save(); ctx.textAlign='center';
-  ctx.font='bold 50px serif'; ctx.fillStyle=GOLD; ctx.shadowColor=GOLD; ctx.shadowBlur=28;
-  ctx.fillText('THE SCORPION IS SLAIN', W/2, H*0.35);
-  ctx.shadowBlur=0; ctx.font='italic 15px serif'; ctx.fillStyle='rgba(220,205,155,0.8)';
-  ctx.fillText('Orion stands victorious — his name written in the stars forever.', W/2, H*0.44);
-  if(Math.sin(time*3)>0){
-    ctx.font='bold 19px monospace'; ctx.fillStyle='#44ff88'; ctx.shadowColor='#44ff88'; ctx.shadowBlur=9;
-    ctx.fillText('PRESS  1  TO PLAY AGAIN', W/2, H*0.60);
-  }
-  ctx.shadowBlur=0; ctx.font='12px monospace'; ctx.fillStyle='rgba(170,170,170,0.5)';
-  ctx.fillText('ESC — Return to World', W/2, H*0.70);
-  ctx.restore();
-}
+  onTryStart() {
+    if (!hasName()) { showNameModal(); return false; }
+    return true;
+  },
 
-// ── Render ────────────────────────────────────────────────────────────────
-function render(){
-  ctx.save();
-  if(shakeAmt>0.5){ ctx.translate((Math.random()-0.5)*shakeAmt*2.5,(Math.random()-0.5)*shakeAmt*2.5); }
+  onInit() { initGame(); },
 
-  renderBg();
+  onUpdate(dt) {
+    updateOrion(dt);
+    updateBoss(dt);
+    updateSpears(dt);
+    updateVenoms(dt);
 
-  if(gameState==='playing'){
+    // Submit on the first frame of victory. runEndMs was snapshotted the
+    // moment the scorpion's HP hit 0 (see updateBoss).
+    if (Engine.state === 'victory' && !submittedThisRun) {
+      submittedThisRun = true;
+      if (runEndMs == null) runEndMs = performance.now();
+      submitToHall(Math.floor(runEndMs - runStartMs));
+    }
+  },
+
+  onGameOverRender(ctx2, eng) {
+    const W = eng.W, H = eng.H, time = eng.time;
+    const isVictory = eng.state === 'victory';
+    ctx2.fillStyle = isVictory ? 'rgba(0,0,0,0.72)' : 'rgba(0,0,0,0.78)';
+    ctx2.fillRect(0, 0, W, H);
+    ctx2.save();
+    ctx2.textAlign = 'center';
+    const titleColor = isVictory ? eng.GOLD : '#cc2200';
+    ctx2.font = 'bold 52px serif';
+    ctx2.fillStyle = titleColor;
+    ctx2.shadowColor = titleColor;
+    ctx2.shadowBlur = 22;
+    ctx2.fillText(isVictory ? 'THE SCORPION IS SLAIN' : 'ORION HAS FALLEN', W/2, H*0.32);
+    ctx2.shadowBlur = 0;
+    ctx2.font = 'italic 15px serif';
+    ctx2.fillStyle = 'rgba(220,200,155,0.7)';
+    ctx2.fillText(
+      isVictory
+        ? 'Orion stands victorious — his name written in the stars forever.'
+        : 'The scorpion claims another hunter.',
+      W/2, H*0.40
+    );
+
+    if (isVictory) {
+      const finalMs = (runEndMs != null ? runEndMs : performance.now()) - runStartMs;
+      ctx2.font = '16px monospace';
+      ctx2.fillStyle = 'rgba(255,200,100,0.7)';
+      ctx2.fillText('FINAL TIME', W/2, H*0.50);
+      ctx2.font = 'bold 56px monospace';
+      ctx2.fillStyle = eng.GOLD;
+      ctx2.shadowColor = eng.GOLD;
+      ctx2.shadowBlur = 16;
+      ctx2.fillText(fmtRunTime(finalMs), W/2, H*0.60);
+      ctx2.shadowBlur = 0;
+
+      ctx2.font = '14px monospace';
+      if (hallStatus === 'pending') {
+        ctx2.fillStyle = 'rgba(255,220,140,0.55)';
+        ctx2.fillText('inscribing your name on Olympus…', W/2, H*0.66);
+      } else if (hallStatus === 'ok' && hallRank != null) {
+        ctx2.fillStyle = eng.GOLD;
+        ctx2.shadowColor = eng.GOLD; ctx2.shadowBlur = 10;
+        ctx2.fillText('RANK #' + hallRank + ' ON MOUNT OLYMPUS', W/2, H*0.66);
+        ctx2.shadowBlur = 0;
+      } else if (hallStatus === 'fail') {
+        ctx2.fillStyle = 'rgba(180,140,140,0.6)';
+        ctx2.fillText('the gods are silent (offline)', W/2, H*0.66);
+      }
+    }
+
+    if (Math.sin(time * 3) > 0) {
+      const promptColor = isVictory ? '#44ff88' : eng.GOLD;
+      ctx2.font = 'bold 19px monospace';
+      ctx2.fillStyle = promptColor;
+      ctx2.shadowColor = promptColor;
+      ctx2.shadowBlur = 9;
+      ctx2.fillText(`PRESS  1  TO ${isVictory ? 'PLAY AGAIN' : 'TRY AGAIN'}`, W/2, H*0.76);
+    }
+    ctx2.shadowBlur = 0;
+    ctx2.font = '12px monospace';
+    ctx2.fillStyle = 'rgba(170,170,170,0.5)';
+    ctx2.fillText('ESC — Return to World    ·    H — Mount Olympus', W/2, H*0.84);
+    ctx2.restore();
+  },
+
+  onRender() {
     // Spears
     for(const s of spears){
       ctx.save(); ctx.translate(s.x,s.y); ctx.rotate(s.gravity?Math.atan2(s.vy,s.vx):(s.vx>0?0:Math.PI));
@@ -896,80 +991,50 @@ function render(){
       ctx.shadowBlur=0;
       ctx.restore();
     }
-    // Particles
-    for(const p of particles){
-      ctx.globalAlpha=Math.max(0,p.alpha); ctx.fillStyle=p.col;
-      ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fill();
-    }
-    ctx.globalAlpha=1;
     drawScorpion();
     drawOrion();
-    renderHUD();
-  }
+    renderHUD();   // inside shake transform — matches original orion feel
+  },
 
-  ctx.restore();
-  if(gameState==='title')   renderTitle();
-  if(gameState==='dead')    renderDead();
-  if(gameState==='victory') renderVictory();
-}
-
-// ── Loop ──────────────────────────────────────────────────────────────────
-let lastTime=null;
-function loop(ts){
-  if(!lastTime) lastTime=ts;
-  const dt=Math.min((ts-lastTime)/1000,0.05);
-  lastTime=ts;
-  update(dt); render();
-  requestAnimationFrame(loop);
-}
-requestAnimationFrame(loop);
-
-// ── Input ─────────────────────────────────────────────────────────────────
-window.addEventListener('keydown', e=>{
-  if(keys[e.key]) return; // ignore key-repeat
-  keys[e.key]=true;
-  if(e.key==='Escape'){ window.location.href='index.html'; return; }
-  if(!audioCtx&&e.key===' ') initAudio();
-  if(gameState==='title'&&e.key===' '){ initAudio(); initGame(); gameState='playing'; }
-  if((gameState==='dead'||gameState==='victory')&&e.key==='1'){ initGame(); gameState='playing'; }
-  // Attack inputs
-  if(gameState==='playing'){
-    const now2=performance.now();
-    // Z: always throw spear (no dodge restriction)
-    if(e.key==='z'||e.key==='Z'){ orion.spearQueued=true; }
-    // Space: throw spear — single when not dodging, double-tap when dodging
-    if(e.key===' '){
+  onKeyDown(ev) {
+    // H jumps to Mount Olympus from any non-playing screen
+    if((Engine.state === 'dead' || Engine.state === 'victory' || Engine.state === 'title') &&
+       (ev.key === 'h' || ev.key === 'H')) {
+      window.location.href = 'mount-olympus.html';
+      return;
+    }
+    if(Engine.state !== 'playing') return;
+    const now2 = performance.now();
+    if(ev.key==='z' || ev.key==='Z'){ orion.spearQueued = true; }
+    if(ev.key===' '){
       if(orion.dodgeT>0){
-        if(now2-lastSpaceTime<300){ orion.spearQueued=true; lastSpaceTime=-1; }
-        else lastSpaceTime=now2;
-      } else { orion.spearQueued=true; }
+        if(now2-lastSpaceTime<300){ orion.spearQueued = true; lastSpaceTime = -1; }
+        else lastSpaceTime = now2;
+      } else { orion.spearQueued = true; }
     }
-    // X: stab — single when not dodging, double-tap when dodging
-    if(e.key==='x'||e.key==='X'){
+    if(ev.key==='x' || ev.key==='X'){
       if(orion.dodgeT>0){
-        if(now2-lastXTime<300){ orion.stabQueued=true; lastXTime=-1; }
-        else lastXTime=now2;
-      } else { orion.stabQueued=true; }
+        if(now2-lastXTime<300){ orion.stabQueued = true; lastXTime = -1; }
+        else lastXTime = now2;
+      } else { orion.stabQueued = true; }
     }
-  }
-  // Double-tap Shift to dodge
-  if(gameState==='playing'&&e.key==='Shift'){
-    const now=performance.now();
-    if(now-lastShiftTime<300&&orion.dodgeT<=0){
-      const DODGE_SPD=520, DODGE_DUR=0.28;
-      orion.dodgeVx=orion.facing*DODGE_SPD;
-      orion.dodgeT=DODGE_DUR;
-      orion.invincible=Math.max(orion.invincible,DODGE_DUR+0.05);
-      burst(orion.x,orion.y-30,'#aaddff',6,80);
-      tone(320,'sine',0.15,0.18,280);
-      lastShiftTime=-1;
-    } else {
-      lastShiftTime=now;
+    if(ev.key==='Shift'){
+      const now = performance.now();
+      if(now-lastShiftTime<300 && orion.dodgeT<=0){
+        const DODGE_SPD=520, DODGE_DUR=0.28;
+        orion.dodgeVx = orion.facing*DODGE_SPD;
+        orion.dodgeT  = DODGE_DUR;
+        orion.invincible = Math.max(orion.invincible, DODGE_DUR+0.05);
+        burst(orion.x, orion.y-30, '#aaddff', 6, 80);
+        Engine.audio.tone(320,'sine',0.15,0.18,280);
+        lastShiftTime = -1;
+      } else {
+        lastShiftTime = now;
+      }
     }
-  }
-  e.preventDefault();
+  },
 });
-window.addEventListener('keyup', e=>{ keys[e.key]=false; });
+ctx = Engine.ctx;
 </script>
 </body>
 </html>

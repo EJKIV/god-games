@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mount Olympus — Hall of the Gods</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root { --gold:#D4AF37; --gold-soft:#f0d77a; --ink:#0a0e1c; }
+html, body { height:100%; }
+body {
+  background:#04071a;
+  color:#f0e8d0;
+  font-family: 'Trebuchet MS', serif;
+  overflow:hidden;
+}
+canvas#bg {
+  position:fixed; inset:0; z-index:0; display:block;
+}
+.frame {
+  position:relative; z-index:1;
+  height:100vh;
+  display:flex; flex-direction:column;
+  padding:28px 36px 20px;
+  pointer-events:none;
+}
+.frame > * { pointer-events:auto; }
+
+header {
+  text-align:center;
+  margin-bottom:18px;
+  text-shadow:0 0 22px rgba(212,175,55,0.55);
+}
+header h1 {
+  font-family: serif;
+  font-size: clamp(36px, 5.5vw, 68px);
+  font-weight:bold;
+  letter-spacing:0.08em;
+  color:var(--gold);
+  text-shadow:0 0 24px rgba(212,175,55,0.6), 0 0 4px rgba(255,255,255,0.5);
+}
+header .sub {
+  font-family: 'Georgia', serif;
+  font-style:italic;
+  font-size:clamp(13px, 1.4vw, 18px);
+  color:rgba(240,215,122,0.8);
+  margin-top:4px;
+  letter-spacing:0.18em;
+}
+
+nav.topbar {
+  position:fixed; top:24px; left:32px; right:32px; z-index:5;
+  display:flex; justify-content:space-between; align-items:center;
+  font-family: monospace; font-size:13px;
+  color:rgba(240,215,122,0.85);
+}
+nav.topbar a {
+  color:var(--gold-soft); text-decoration:none;
+  border:1px solid rgba(212,175,55,0.4);
+  padding:6px 14px; border-radius:3px;
+  background:rgba(10,14,28,0.55);
+  transition:all 0.18s;
+}
+nav.topbar a:hover { background:rgba(212,175,55,0.15); border-color:var(--gold); }
+nav.topbar .who { background:rgba(10,14,28,0.55); padding:6px 14px; border-radius:3px; border:1px solid rgba(212,175,55,0.25); }
+nav.topbar .who b { color:var(--gold); }
+nav.topbar .who button {
+  background:none; border:none; color:rgba(240,215,122,0.7);
+  cursor:pointer; font-family:monospace; font-size:12px;
+  margin-left:10px; text-decoration:underline;
+}
+nav.topbar .who button:hover { color:var(--gold); }
+
+main {
+  flex:1; display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap:34px;
+  min-height:0;
+}
+.tablet {
+  background: linear-gradient(180deg, rgba(20,28,52,0.78) 0%, rgba(10,14,28,0.85) 100%);
+  border:1px solid rgba(212,175,55,0.35);
+  border-radius:6px;
+  box-shadow: 0 0 40px rgba(212,175,55,0.12), inset 0 0 60px rgba(0,0,0,0.4);
+  display:flex; flex-direction:column;
+  overflow:hidden;
+}
+.tablet header.thead {
+  text-align:center; padding:16px 12px 12px;
+  background:linear-gradient(180deg, rgba(212,175,55,0.18), transparent);
+  border-bottom:1px solid rgba(212,175,55,0.3);
+  margin:0;
+}
+.tablet h2 {
+  font-family: serif; font-size:26px;
+  color:var(--gold); letter-spacing:0.12em;
+  text-shadow:0 0 14px rgba(212,175,55,0.5);
+}
+.tablet .label {
+  font-family: 'Georgia', serif; font-style:italic;
+  color:rgba(240,215,122,0.7); font-size:13px; margin-top:2px;
+  letter-spacing:0.08em;
+}
+.tablet ol {
+  list-style:none; padding:6px 4px; margin:0;
+  flex:1; overflow-y:auto;
+  font-family:monospace;
+}
+.tablet ol::-webkit-scrollbar { width:8px; }
+.tablet ol::-webkit-scrollbar-thumb { background:rgba(212,175,55,0.3); border-radius:4px; }
+.row {
+  display:grid;
+  grid-template-columns: 60px 1fr auto;
+  align-items:center;
+  padding:9px 18px;
+  border-bottom:1px solid rgba(212,175,55,0.08);
+  font-size:15px;
+  transition:background 0.15s;
+}
+.row:hover { background:rgba(212,175,55,0.05); }
+.row .rank { color:rgba(240,215,122,0.55); font-weight:bold; }
+.row .name { color:#e8e0c8; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding-right:10px; }
+.row .score { color:var(--gold); font-weight:bold; text-align:right; }
+.row.r1 .rank { color:#fff8c0; text-shadow:0 0 8px #ffd84a; font-size:18px; }
+.row.r2 .rank { color:#dcdcdc; text-shadow:0 0 6px #ffffff; font-size:17px; }
+.row.r3 .rank { color:#cd9a5a; text-shadow:0 0 6px #ffaa44; font-size:16px; }
+.row.me {
+  background:rgba(212,175,55,0.13);
+  border-left:3px solid var(--gold);
+  padding-left:15px;
+}
+.row.me .name { color:var(--gold-soft); }
+.empty, .loading, .errmsg {
+  padding:30px 20px; text-align:center;
+  font-family:monospace; font-style:italic;
+  color:rgba(240,215,122,0.55);
+}
+.errmsg { color:#d56a6a; }
+
+footer {
+  text-align:center; padding-top:14px;
+  font-family:monospace; font-size:12px;
+  color:rgba(240,215,122,0.4);
+}
+
+/* ── Modal (name change) ── */
+.modal-bg {
+  position:fixed; inset:0; z-index:10;
+  background:rgba(0,0,0,0.78);
+  display:none; align-items:center; justify-content:center;
+}
+.modal-bg.open { display:flex; }
+.modal {
+  background:linear-gradient(180deg, #131d40 0%, #04071a 100%);
+  border:1px solid var(--gold);
+  border-radius:6px;
+  padding:30px 36px;
+  box-shadow: 0 0 50px rgba(212,175,55,0.4);
+  text-align:center;
+  min-width:340px;
+}
+.modal h3 {
+  font-family:serif; font-size:24px; color:var(--gold);
+  letter-spacing:0.1em; margin-bottom:6px;
+}
+.modal p { font-style:italic; color:rgba(240,215,122,0.7); font-size:13px; margin-bottom:20px; }
+.modal input {
+  width:100%; padding:10px 14px;
+  background:rgba(10,14,28,0.6); border:1px solid rgba(212,175,55,0.5);
+  color:#f0e8d0; font-family:monospace; font-size:16px;
+  text-align:center; letter-spacing:0.1em;
+  border-radius:3px; outline:none;
+}
+.modal input:focus { border-color:var(--gold); box-shadow:0 0 12px rgba(212,175,55,0.4); }
+.modal button {
+  margin-top:16px; padding:10px 28px;
+  background:var(--gold); border:none; color:#1a0f00;
+  font-family:monospace; font-weight:bold; font-size:14px;
+  letter-spacing:0.1em; cursor:pointer; border-radius:3px;
+  transition:transform 0.1s, box-shadow 0.15s;
+}
+.modal button:hover { transform:translateY(-1px); box-shadow:0 4px 14px rgba(212,175,55,0.4); }
+
+@media (max-width: 720px) {
+  main { grid-template-columns: 1fr; gap:18px; }
+  nav.topbar { font-size:11px; }
+  .frame { padding:20px 14px; }
+}
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+
+<nav class="topbar">
+  <a href="index.html">← Return to the World</a>
+  <span class="who">Playing as: <b id="whoName">…</b><button id="changeNameBtn">change</button></span>
+</nav>
+
+<div class="frame">
+  <header>
+    <h1>MOUNT OLYMPUS</h1>
+    <div class="sub">— H A L L &nbsp; O F &nbsp; T H E &nbsp; G O D S —</div>
+  </header>
+
+  <main>
+    <section class="tablet" id="tablet-icarus">
+      <header class="thead">
+        <h2>ICARUS</h2>
+        <div class="label">Highest Flights · by XP</div>
+      </header>
+      <ol id="list-icarus"><li class="loading">Consulting the Fates…</li></ol>
+    </section>
+
+    <section class="tablet" id="tablet-orion">
+      <header class="thead">
+        <h2>ORION</h2>
+        <div class="label">Swiftest Hunts · by Time</div>
+      </header>
+      <ol id="list-orion"><li class="loading">Consulting the Fates…</li></ol>
+    </section>
+  </main>
+
+  <footer>The names of the worthy are inscribed in stone, eternal.</footer>
+</div>
+
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <h3>NAME OF THE MORTAL</h3>
+    <p>Inscribe yourself in the Hall of the Gods.</p>
+    <input id="nameInput" maxlength="20" autocomplete="off" spellcheck="false" placeholder="Your name">
+    <br><button id="nameSave">ENTER OLYMPUS</button>
+  </div>
+</div>
+
+<script>
+const NAME_KEY = 'godgames_playerName';
+const $ = (id) => document.getElementById(id);
+
+// ─── Name handling ──────────────────────────────────────────────────────
+function getName() { return localStorage.getItem(NAME_KEY) || ''; }
+function setName(n) {
+  const clean = (n || '').replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 20);
+  if (!clean) return false;
+  localStorage.setItem(NAME_KEY, clean);
+  $('whoName').textContent = clean;
+  return true;
+}
+function showModal(initial = '') {
+  $('nameInput').value = initial || getName();
+  $('modalBg').classList.add('open');
+  setTimeout(() => $('nameInput').focus(), 50);
+}
+function hideModal() { $('modalBg').classList.remove('open'); }
+
+$('changeNameBtn').addEventListener('click', () => showModal());
+$('nameSave').addEventListener('click', () => {
+  if (setName($('nameInput').value)) { hideModal(); refreshHighlights(); }
+});
+$('nameInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && setName($('nameInput').value)) { hideModal(); refreshHighlights(); }
+});
+
+(function initName() {
+  const n = getName();
+  if (!n) showModal();
+  else $('whoName').textContent = n;
+})();
+
+// ─── Leaderboard fetching ───────────────────────────────────────────────
+function fmtIcarus(score) { return Math.floor(score).toLocaleString() + ' XP'; }
+function fmtOrion(ms) {
+  const total = Math.max(0, Math.floor(ms));
+  const m = Math.floor(total / 60000);
+  const s = Math.floor((total % 60000) / 1000);
+  const mmm = total % 1000;
+  return `${m}:${String(s).padStart(2,'0')}.${String(mmm).padStart(3,'0')}`;
+}
+
+function renderList(listEl, entries, fmt) {
+  if (!entries.length) {
+    listEl.innerHTML = '<li class="empty">No mortals have yet been named.</li>';
+    return;
+  }
+  const me = getName();
+  listEl.innerHTML = '';
+  entries.forEach((e, i) => {
+    const rank = i + 1;
+    const li = document.createElement('li');
+    li.className = 'row r' + rank;
+    if (e.name === me) li.classList.add('me');
+    li.innerHTML =
+      `<span class="rank">${rank <= 3 ? ['I','II','III'][rank-1] : '#' + rank}</span>` +
+      `<span class="name"></span>` +
+      `<span class="score">${fmt(e.score)}</span>`;
+    li.querySelector('.name').textContent = e.name;
+    listEl.appendChild(li);
+  });
+}
+
+let cachedIcarus = [], cachedOrion = [];
+
+async function load() {
+  const icarusList = $('list-icarus');
+  const orionList  = $('list-orion');
+  try {
+    const [iRes, oRes] = await Promise.all([
+      fetch('/api/leaderboard?game=icarus').then(r => r.json()),
+      fetch('/api/leaderboard?game=orion').then(r => r.json()),
+    ]);
+    cachedIcarus = iRes.entries || [];
+    cachedOrion  = oRes.entries || [];
+    renderList(icarusList, cachedIcarus, fmtIcarus);
+    renderList(orionList,  cachedOrion,  fmtOrion);
+  } catch (err) {
+    icarusList.innerHTML = '<li class="errmsg">The Fates are silent. (offline)</li>';
+    orionList.innerHTML  = '<li class="errmsg">The Fates are silent. (offline)</li>';
+  }
+}
+function refreshHighlights() {
+  renderList($('list-icarus'), cachedIcarus, fmtIcarus);
+  renderList($('list-orion'),  cachedOrion,  fmtOrion);
+}
+load();
+
+// ─── Background canvas: Mount Olympus ──────────────────────────────────
+const bg = $('bg');
+const bx = bg.getContext('2d');
+let BW = bg.width = window.innerWidth;
+let BH = bg.height = window.innerHeight;
+window.addEventListener('resize', () => { BW = bg.width = window.innerWidth; BH = bg.height = window.innerHeight; });
+
+const stars = Array.from({length: 220}, () => ({
+  x: Math.random(), y: Math.random()*0.6,
+  r: Math.random()*1.4 + 0.2,
+  ph: Math.random() * Math.PI * 2,
+}));
+const clouds = Array.from({length: 12}, () => ({
+  x: Math.random(),
+  y: 0.18 + Math.random()*0.30,
+  vx: 0.004 + Math.random()*0.012,
+  scale: 0.6 + Math.random()*1.4,
+  alpha: 0.18 + Math.random()*0.25,
+}));
+let lightning = 0; // brightness flash
+let nextStrike = 4 + Math.random()*8;
+
+function drawMountains(t) {
+  // Far back range — soft purple, distant
+  const skyTop = '#04071a', skyMid = '#0e1438', skyBot = '#1a2654';
+  const sky = bx.createLinearGradient(0, 0, 0, BH);
+  sky.addColorStop(0, skyTop);
+  sky.addColorStop(0.55, skyMid);
+  sky.addColorStop(1, skyBot);
+  bx.fillStyle = sky;
+  bx.fillRect(0, 0, BW, BH);
+
+  // Stars
+  for (const s of stars) {
+    const b = Math.sin(t*1.6 + s.ph) * 0.35 + 0.65;
+    bx.globalAlpha = b * 0.85;
+    bx.fillStyle = '#ffffff';
+    bx.beginPath();
+    bx.arc(s.x*BW, s.y*BH, s.r, 0, Math.PI*2);
+    bx.fill();
+  }
+  bx.globalAlpha = 1;
+
+  // Lightning glow on the central peak
+  if (lightning > 0) {
+    const flash = bx.createRadialGradient(BW*0.5, BH*0.30, 20, BW*0.5, BH*0.30, BH*0.85);
+    flash.addColorStop(0, `rgba(220,220,255,${0.35*lightning})`);
+    flash.addColorStop(0.5, `rgba(180,160,240,${0.18*lightning})`);
+    flash.addColorStop(1, `rgba(180,160,240,0)`);
+    bx.fillStyle = flash;
+    bx.fillRect(0, 0, BW, BH);
+  }
+
+  // Distant range (back peaks)
+  bx.fillStyle = 'rgba(20,26,58,0.85)';
+  bx.beginPath();
+  bx.moveTo(0, BH*0.78);
+  const back = [[0,0.78],[0.08,0.62],[0.16,0.70],[0.24,0.55],[0.34,0.65],[0.44,0.58],[0.55,0.66],[0.66,0.54],[0.76,0.66],[0.86,0.60],[0.94,0.70],[1,0.66],[1,1],[0,1]];
+  for (const [px,py] of back) bx.lineTo(px*BW, py*BH);
+  bx.closePath(); bx.fill();
+
+  // Mid peaks (Mount Olympus — dominant central peak)
+  const grad = bx.createLinearGradient(0, BH*0.20, 0, BH*0.95);
+  grad.addColorStop(0, '#5b6694');
+  grad.addColorStop(0.4, '#2e375f');
+  grad.addColorStop(1, '#0d1126');
+  bx.fillStyle = grad;
+  bx.beginPath();
+  bx.moveTo(0, BH*0.95);
+  const mid = [
+    [0.00, 0.80], [0.10, 0.72], [0.18, 0.78],
+    [0.28, 0.60],
+    [0.38, 0.52],
+    [0.48, 0.28],   // peak left shoulder
+    [0.50, 0.20],   // SUMMIT
+    [0.54, 0.30],
+    [0.62, 0.50],
+    [0.72, 0.58],
+    [0.82, 0.66],
+    [0.90, 0.62],
+    [1.00, 0.78],
+  ];
+  for (const [px,py] of mid) bx.lineTo(px*BW, py*BH);
+  bx.lineTo(BW, BH); bx.lineTo(0, BH);
+  bx.closePath(); bx.fill();
+
+  // Snowcap on the central summit
+  bx.fillStyle = 'rgba(245,248,255,0.92)';
+  bx.beginPath();
+  bx.moveTo(BW*0.45, BH*0.34);
+  bx.lineTo(BW*0.46, BH*0.32);
+  bx.lineTo(BW*0.475, BH*0.30);
+  bx.lineTo(BW*0.49, BH*0.25);
+  bx.lineTo(BW*0.50, BH*0.20);
+  bx.lineTo(BW*0.51, BH*0.24);
+  bx.lineTo(BW*0.525, BH*0.28);
+  bx.lineTo(BW*0.54, BH*0.32);
+  bx.lineTo(BW*0.55, BH*0.36);
+  bx.lineTo(BW*0.535, BH*0.36);
+  bx.lineTo(BW*0.515, BH*0.30);
+  bx.lineTo(BW*0.50, BH*0.27);
+  bx.lineTo(BW*0.485, BH*0.30);
+  bx.lineTo(BW*0.465, BH*0.36);
+  bx.closePath(); bx.fill();
+
+  // Snowcap rim glow
+  bx.strokeStyle = 'rgba(255,255,255,0.4)';
+  bx.lineWidth = 1.5;
+  bx.beginPath();
+  bx.moveTo(BW*0.46, BH*0.32);
+  bx.lineTo(BW*0.49, BH*0.25);
+  bx.lineTo(BW*0.50, BH*0.20);
+  bx.lineTo(BW*0.51, BH*0.24);
+  bx.lineTo(BW*0.54, BH*0.32);
+  bx.stroke();
+
+  // Divine aura at the summit
+  const aura = bx.createRadialGradient(BW*0.5, BH*0.20, 4, BW*0.5, BH*0.20, BH*0.18);
+  aura.addColorStop(0, `rgba(255,240,180,${0.55 + lightning*0.3})`);
+  aura.addColorStop(0.4, `rgba(212,175,55,${0.20 + lightning*0.2})`);
+  aura.addColorStop(1, 'rgba(212,175,55,0)');
+  bx.fillStyle = aura;
+  bx.fillRect(0, 0, BW, BH);
+
+  // Front-most ridge — silhouette
+  bx.fillStyle = 'rgba(6,8,18,0.92)';
+  bx.beginPath();
+  bx.moveTo(0, BH);
+  bx.lineTo(0, BH*0.92);
+  const front = [[0.05, 0.86],[0.12, 0.88],[0.22, 0.82],[0.30, 0.86],[0.42, 0.78],[0.55, 0.80],[0.66, 0.74],[0.78, 0.82],[0.88, 0.78],[0.95, 0.84],[1, 0.86]];
+  for (const [px,py] of front) bx.lineTo(px*BW, py*BH);
+  bx.lineTo(BW, BH);
+  bx.closePath(); bx.fill();
+}
+
+function drawCloud(c) {
+  const x = c.x * BW, y = c.y * BH, s = c.scale;
+  bx.save();
+  bx.globalAlpha = c.alpha;
+  bx.fillStyle = '#dde4f5';
+  bx.beginPath();
+  bx.ellipse(x, y, 60*s, 14*s, 0, 0, Math.PI*2);
+  bx.fill();
+  bx.beginPath();
+  bx.ellipse(x - 30*s, y + 4*s, 32*s, 10*s, 0, 0, Math.PI*2);
+  bx.fill();
+  bx.beginPath();
+  bx.ellipse(x + 28*s, y + 3*s, 36*s, 11*s, 0, 0, Math.PI*2);
+  bx.fill();
+  bx.restore();
+}
+
+let lastT = null;
+function frame(ts) {
+  if (lastT === null) lastT = ts;
+  const dt = Math.min((ts - lastT)/1000, 0.05);
+  lastT = ts;
+  const t = ts/1000;
+
+  drawMountains(t);
+
+  // clouds drift
+  for (const c of clouds) {
+    c.x += c.vx * dt * 0.25;
+    if (c.x > 1.15) c.x = -0.15;
+    drawCloud(c);
+  }
+
+  // lightning logic
+  nextStrike -= dt;
+  if (nextStrike <= 0) {
+    lightning = 1;
+    nextStrike = 6 + Math.random()*10;
+  }
+  lightning = Math.max(0, lightning - dt*2.2);
+
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

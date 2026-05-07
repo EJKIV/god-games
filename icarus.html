@@ -6,22 +6,61 @@
 <title>ICARUS</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { background: #000; overflow: hidden; }
+body { background: #000; overflow: hidden; font-family: 'Trebuchet MS', serif; color: #f0e8d0; }
 canvas { display: block; }
+
+/* ── Name prompt modal ── */
+.modal-bg {
+  position:fixed; inset:0; z-index:10;
+  background:rgba(0,0,0,0.85);
+  display:none; align-items:center; justify-content:center;
+}
+.modal-bg.open { display:flex; }
+.modal {
+  background:linear-gradient(180deg, #2a1a08 0%, #0a0500 100%);
+  border:1px solid #D4AF37; border-radius:6px;
+  padding:32px 40px;
+  box-shadow: 0 0 50px rgba(212,175,55,0.4);
+  text-align:center; min-width:340px;
+}
+.modal h3 {
+  font-family:serif; font-size:26px; color:#D4AF37;
+  letter-spacing:0.1em; margin-bottom:6px;
+  text-shadow:0 0 14px rgba(212,175,55,0.5);
+}
+.modal p { font-style:italic; color:rgba(240,215,122,0.7); font-size:13px; margin-bottom:20px; }
+.modal input {
+  width:100%; padding:10px 14px;
+  background:rgba(10,8,4,0.7); border:1px solid rgba(212,175,55,0.5);
+  color:#f0e8d0; font-family:monospace; font-size:16px;
+  text-align:center; letter-spacing:0.1em;
+  border-radius:3px; outline:none;
+}
+.modal input:focus { border-color:#D4AF37; box-shadow:0 0 12px rgba(212,175,55,0.4); }
+.modal button {
+  margin-top:18px; padding:10px 28px;
+  background:#D4AF37; border:none; color:#1a0f00;
+  font-family:monospace; font-weight:bold; font-size:14px;
+  letter-spacing:0.1em; cursor:pointer; border-radius:3px;
+  transition:transform 0.1s, box-shadow 0.15s;
+}
+.modal button:hover { transform:translateY(-1px); box-shadow:0 4px 14px rgba(212,175,55,0.4); }
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <h3>NAME OF THE MORTAL</h3>
+    <p>Daedalus must know the name of his son to launch him to the skies.</p>
+    <input id="nameInput" maxlength="20" autocomplete="off" spellcheck="false" placeholder="Your name">
+    <br><button id="nameSave">TAKE FLIGHT</button>
+  </div>
+</div>
+<script src="engine.js"></script>
 <script>
-const canvas = document.getElementById('c');
-const ctx = canvas.getContext('2d');
-
-function resize() {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-}
-resize();
-window.addEventListener('resize', resize);
+// Canvas + ctx are owned by Engine; aliased after boot.
+let canvas, ctx;
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const GRAVITY        = 400;
@@ -47,17 +86,19 @@ const TUTORIAL_LINES = [
 ];
 
 // ── State ──────────────────────────────────────────────────────────────────
-let state = 'title'; // 'title' | 'tutorial' | 'playing' | 'dying' | 'dead'
+// `state` is the game phase ('title' | 'tutorial' | 'playing' | 'dying' | 'dead').
+// Engine's own state ('title' | 'playing' | 'dead') is kept in sync at transitions:
+// tutorial → engine stays 'title'; dying → engine stays 'playing'.
+let state = 'title';
 let tutorialStep = 0;
-let time  = 0;
-let lastTime = null;
+let time = 0;     // mirror of Engine.time, synced before each frame's logic
 
 let player, feathers, fires, clouds, floaters, islands, splashes, drips, shakeAmt, shakeDecay;
 let eagles, eagleSpawnTimer;
 let orcas, orcaSpawnTimer;
 let waves, waveSpawnTimer;
 let cameraX = 0;
-let keys = {};
+let keys;        // alias for Engine.keys, assigned after boot
 
 // ── Audio ──────────────────────────────────────────────────────────────────
 let audioCtx = null;
@@ -67,7 +108,8 @@ let noiseBuffer = null;
 
 function initAudio() {
   if (audioCtx) return;
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  Engine.audio.init();
+  audioCtx = Engine.audio._ctx; // share the engine's context
   // white noise buffer for crackle
   const len = audioCtx.sampleRate * 2;
   noiseBuffer = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
@@ -282,6 +324,9 @@ function initGame() {
   shakeDecay = 0;
   cameraX = player.worldX - canvas.width * 0.42;
   stopCrackle();
+  submittedThisRun = false;
+  hallRank = null;
+  hallStatus = null;
 }
 
 function initClouds() {
@@ -384,13 +429,12 @@ function spawnFire(x, y, count) {
 }
 
 function addShake(amt) {
-  shakeAmt = Math.max(shakeAmt, amt);
+  Engine.shake(amt); // engine owns the shake transform
 }
 
 // ── Update ─────────────────────────────────────────────────────────────────
+// `time` is synced from Engine.time before each call (see onUpdate in Engine.boot).
 function update(dt) {
-  time += dt;
-
   if (state === 'playing') {
     updatePlaying(dt);
   } else if (state === 'dying') {
@@ -591,7 +635,7 @@ function updatePlaying(dt) {
     // screen shake
     if (player.burnDmg > 70) {
       const intensity = (player.burnDmg - 70) / 30;
-      shakeAmt = Math.max(shakeAmt, intensity * MAX_SHAKE * (0.3 + 0.7*Math.random()));
+      Engine.shake(intensity * MAX_SHAKE * (0.3 + 0.7*Math.random()));
     }
   }
 
@@ -815,7 +859,7 @@ function updatePlaying(dt) {
   updateClouds(dt);
   updateFloaters(dt);
   updateSounds(heat, player.vy);
-  shakeAmt *= Math.pow(0.85, dt * 60);
+  // shake decay is handled by the engine
 
   if (player.wingHealth <= 0) {
     state = 'dying';
@@ -840,7 +884,7 @@ function updateDying(dt) {
   }
   spawnFeathers(Math.ceil(dt*8), player.x - 8, player.y - 25);
   addShake(MAX_SHAKE);
-  shakeAmt *= Math.pow(0.9, dt * 60);
+  // shake decay is handled by the engine
 
   updateParticles(dt);
   updateClouds(dt);
@@ -869,8 +913,13 @@ function updateDying(dt) {
   }
   if (player._splashed && Math.abs(player.vy) < 5) {
     state = 'dead';
+    Engine.setState('dead');
     stopCrackle();
     if (windGain) windGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.5);
+    if (!submittedThisRun) {
+      submittedThisRun = true;
+      submitToHall(Math.floor(player.xp));
+    }
   }
 }
 
@@ -926,30 +975,13 @@ function updateFloaters(dt) {
 }
 
 // ── Render ─────────────────────────────────────────────────────────────────
+// Engine drives the loop. It calls onRender only when state==='playing' (which
+// covers our 'playing' and 'dying' phases). Title/tutorial/dead screens are
+// routed through onTitleRender / onGameOverRender (see Engine.boot below).
+// Engine wraps onRender with its own shake transform — so we no longer apply
+// our own translate here.
 function render() {
   const W = canvas.width, H = canvas.height;
-
-  if (state === 'title') {
-    renderTitle(W, H);
-    return;
-  }
-  if (state === 'tutorial') {
-    renderTutorial(W, H);
-    return;
-  }
-  if (state === 'dead') {
-    renderDead(W, H);
-    return;
-  }
-
-  // screen shake
-  ctx.save();
-  if (shakeAmt > 0.5) {
-    ctx.translate(
-      (Math.random()-0.5)*shakeAmt*2,
-      (Math.random()-0.5)*shakeAmt*2
-    );
-  }
 
   // background
   renderBackground(W, H);
@@ -1193,8 +1225,6 @@ function render() {
 
   // HUD
   renderHUD(W, H);
-
-  ctx.restore();
 }
 
 function renderBackground(W, H) {
@@ -2471,6 +2501,22 @@ function renderDead(W, H) {
   ctx.shadowBlur=18;
   ctx.fillText(Math.floor(player.xp).toLocaleString()+' POINTS', W/2, H*0.66);
 
+  // Hall of Mount Olympus rank line
+  ctx.shadowBlur=0;
+  ctx.font='14px monospace';
+  if (hallStatus === 'pending') {
+    ctx.fillStyle='rgba(255,220,140,0.55)';
+    ctx.fillText('inscribing your name on Olympus…', W/2, H*0.72);
+  } else if (hallStatus === 'ok' && hallRank != null) {
+    ctx.fillStyle=GOLD;
+    ctx.shadowColor=GOLD; ctx.shadowBlur=10;
+    ctx.fillText('RANK #' + hallRank + ' ON MOUNT OLYMPUS', W/2, H*0.72);
+    ctx.shadowBlur=0;
+  } else if (hallStatus === 'fail') {
+    ctx.fillStyle='rgba(180,140,140,0.6)';
+    ctx.fillText('the gods are silent (offline)', W/2, H*0.72);
+  }
+
   const blink = Math.sin(time*3) > 0;
   if (blink) {
     ctx.font='bold 20px monospace';
@@ -2482,8 +2528,32 @@ function renderDead(W, H) {
   ctx.shadowBlur=0;
   ctx.font='13px monospace';
   ctx.fillStyle='rgba(180,180,180,0.55)';
-  ctx.fillText('ESC — Return to World', W/2, H*0.87);
+  ctx.fillText('ESC — Return to World    ·    H — Mount Olympus', W/2, H*0.87);
   ctx.restore();
+}
+
+// ── Hall of Mount Olympus (leaderboard) ───────────────────────────────────
+const NAME_KEY = 'godgames_playerName';
+let hallRank = null;
+let hallStatus = null; // 'pending' | 'ok' | 'fail'
+let submittedThisRun = false;
+
+async function submitToHall(score) {
+  const name = localStorage.getItem(NAME_KEY) || 'NAMELESS MORTAL';
+  hallStatus = 'pending';
+  try {
+    const res = await fetch('/api/leaderboard', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ game: 'icarus', name, score }),
+    });
+    if (!res.ok) { hallStatus = 'fail'; return; }
+    const json = await res.json();
+    hallRank = json.rank;
+    hallStatus = 'ok';
+  } catch {
+    hallStatus = 'fail';
+  }
 }
 
 // ── Session helpers ────────────────────────────────────────────────────────
@@ -2501,58 +2571,166 @@ function recordPlay() {
 }
 
 function startGame() {
-  initGame();
   recordPlay();
-  state = 'playing';
+  // Engine.setState('playing') triggers onInit, which calls initAudio + initGame
+  // and sets `state = 'playing'`.
+  Engine.setState('playing');
 }
 
-// ── Input ──────────────────────────────────────────────────────────────────
-window.addEventListener('keydown', e => {
-  keys[e.key] = true;
-  if (state === 'title' && (e.key === 'ArrowUp' || e.key === ' ')) {
-    initAudio();
-    if (recentlyPlayed()) {
-      startGame();
-    } else {
-      tutorialStep = 0;
-      state = 'tutorial';
-    }
-  }
-  if (state === 'tutorial' && (e.key === 'ArrowUp' || e.key === ' ')) {
-    tutorialStep++;
-    if (tutorialStep >= TUTORIAL_LINES.length) {
-      startGame();
-    }
-  }
-  if (state === 'dead' && e.key === '1') {
-    if (recentlyPlayed()) {
-      startGame();
-    } else {
-      tutorialStep = 0;
-      state = 'tutorial';
-    }
-  }
-  if (state === 'dead' && e.key === 'Escape') {
-    window.location.href = 'index.html';
-  }
-  e.preventDefault();
+// ── Name gate ──────────────────────────────────────────────────────────────
+function hasName() { return !!localStorage.getItem(NAME_KEY); }
+let pendingStart = null; // function to run once name is provided
+
+function showNameModal(after) {
+  pendingStart = after || null;
+  const mb = document.getElementById('modalBg');
+  const inp = document.getElementById('nameInput');
+  inp.value = localStorage.getItem(NAME_KEY) || '';
+  mb.classList.add('open');
+  setTimeout(() => inp.focus(), 50);
+}
+function hideNameModal() {
+  document.getElementById('modalBg').classList.remove('open');
+}
+function saveNameFromModal() {
+  const raw = document.getElementById('nameInput').value || '';
+  const clean = raw.replace(/[\x00-\x1f\x7f]/g, '').replace(/\s+/g,' ').trim().slice(0,20);
+  if (!clean) return false;
+  localStorage.setItem(NAME_KEY, clean);
+  hideNameModal();
+  if (pendingStart) { const fn = pendingStart; pendingStart = null; fn(); }
+  return true;
+}
+document.getElementById('nameSave').addEventListener('click', saveNameFromModal);
+document.getElementById('nameInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); saveNameFromModal(); }
+  e.stopPropagation();
 });
-window.addEventListener('keyup', e => { keys[e.key] = false; });
 
-// ── Loop ───────────────────────────────────────────────────────────────────
-function loop(ts) {
-  if (lastTime === null) lastTime = ts;
-  const dt = Math.min((ts - lastTime) / 1000, 0.05);
-  lastTime = ts;
-
-  update(dt);
-  render();
-
-  requestAnimationFrame(loop);
+// Functions that begin a run — wrapped so they can be queued behind the modal.
+function beginFromTitle() {
+  if (recentlyPlayed()) {
+    startGame();
+  } else {
+    tutorialStep = 0;
+    state = 'tutorial';
+    // engine state is already 'title' here; tutorial renders via onTitleRender.
+  }
+}
+function beginFromDead() {
+  if (recentlyPlayed()) {
+    startGame();
+  } else {
+    tutorialStep = 0;
+    state = 'tutorial';
+    Engine.setState('title');  // from 'dead' back to 'title' so tutorial renders
+  }
 }
 
-initGame();
-requestAnimationFrame(loop);
+// ── Engine integration ────────────────────────────────────────────────────
+function modalOpen() { return document.getElementById('modalBg').classList.contains('open'); }
+
+Engine.boot({
+  title: 'ICARUS',
+  hubHref: 'index.html',
+  theme: {
+    // The world background is drawn inside onRender (renderBackground); engine
+    // just needs to clear the frame here.
+    bg: (c, W, H) => { c.fillStyle = '#000'; c.fillRect(0, 0, W, H); },
+    accent: '#ff8800',
+    danger: '#cc2200',
+    shakeDecay: 'exp',
+    restartKey: '1',
+  },
+
+  onInit() {
+    initAudio();
+    initGame();
+    state = 'playing';
+  },
+
+  onUpdate(dt) {
+    time = Engine.time;
+    update(dt);
+  },
+
+  onRender() {
+    time = Engine.time;
+    render();
+  },
+
+  onTitleRender() {
+    time = Engine.time;
+    if (state === 'tutorial') renderTutorial(Engine.W, Engine.H);
+    else                       renderTitle(Engine.W, Engine.H);
+  },
+
+  onGameOverRender() {
+    time = Engine.time;
+    renderDead(Engine.W, Engine.H);
+  },
+
+  // Called when the engine is about to auto-transition (Space on title, '1' on
+  // dead). Return false to gate the transition (modal, name prompt, tutorial).
+  onTryStart(e) {
+    if (modalOpen()) return false;
+    if (e.state === 'title') {
+      if (state === 'tutorial') return false;  // tutorial advances via onKeyDown
+      if (!hasName()) { showNameModal(beginFromTitle); return false; }
+      if (recentlyPlayed()) return true;       // skip tutorial → engine sets 'playing'
+      tutorialStep = 0;
+      state = 'tutorial';
+      return false;
+    }
+    if (e.state === 'dead') {
+      if (!hasName()) { showNameModal(beginFromDead); return false; }
+      if (recentlyPlayed()) return true;
+      tutorialStep = 0;
+      state = 'tutorial';
+      Engine.setState('title');  // route tutorial render via onTitleRender
+      return false;
+    }
+    return true;
+  },
+
+  onKeyDown(ev, e) {
+    if (modalOpen()) return;
+
+    // Title — engine only auto-handles Space, so mirror it for ArrowUp.
+    if (e.state === 'title' && state === 'title' && ev.key === 'ArrowUp') {
+      if (e.config.onTryStart(e)) {
+        e.audio.init();
+        initAudio();
+        e.setState('playing');
+      }
+      return;
+    }
+
+    // Tutorial — advance with ArrowUp or Space; on the last line, start the game.
+    if (e.state === 'title' && state === 'tutorial' && (ev.key === 'ArrowUp' || ev.key === ' ')) {
+      tutorialStep++;
+      if (tutorialStep >= TUTORIAL_LINES.length) {
+        e.audio.init();
+        initAudio();
+        e.setState('playing');
+      }
+      return;
+    }
+
+    // Dead — H jumps to Mount Olympus. (Engine handles Escape → hub and '1' → restart.)
+    if (e.state === 'dead' && (ev.key === 'h' || ev.key === 'H')) {
+      window.location.href = 'mount-olympus.html';
+    }
+  },
+});
+
+// Aliases for code that references these globals.
+canvas = Engine.canvas;
+ctx    = Engine.ctx;
+keys   = Engine.keys;
+
+// Prompt for name on first visit if not set.
+if (!hasName()) showNameModal(null);
 </script>
 </body>
 </html>

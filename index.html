@@ -6,12 +6,76 @@
 <title>God Games</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
-body { background:#000; overflow:hidden; }
+body { background:#000; overflow:hidden; font-family: 'Trebuchet MS', serif; color:#f0e8d0; }
 canvas { display:block; cursor:default; }
+
+/* ── Top-right HUD: player name ── */
+#whoBar {
+  position:fixed; top:18px; right:22px; z-index:5;
+  font-family: monospace; font-size:13px;
+  background:rgba(10,14,28,0.6); border:1px solid rgba(212,175,55,0.35);
+  padding:6px 14px; border-radius:3px;
+  color:rgba(240,215,122,0.85);
+  pointer-events:auto;
+}
+#whoBar b { color:#D4AF37; }
+#whoBar button {
+  background:none; border:none; color:rgba(240,215,122,0.6);
+  cursor:pointer; font:inherit; margin-left:10px; text-decoration:underline;
+}
+#whoBar button:hover { color:#D4AF37; }
+
+/* ── Modal (name prompt) ── */
+.modal-bg {
+  position:fixed; inset:0; z-index:10;
+  background:rgba(0,0,0,0.82);
+  display:none; align-items:center; justify-content:center;
+}
+.modal-bg.open { display:flex; }
+.modal {
+  background:linear-gradient(180deg, #131d40 0%, #04071a 100%);
+  border:1px solid #D4AF37; border-radius:6px;
+  padding:32px 40px;
+  box-shadow: 0 0 50px rgba(212,175,55,0.4);
+  text-align:center; min-width:340px;
+}
+.modal h3 {
+  font-family:serif; font-size:26px; color:#D4AF37;
+  letter-spacing:0.1em; margin-bottom:6px;
+  text-shadow:0 0 14px rgba(212,175,55,0.5);
+}
+.modal p { font-style:italic; color:rgba(240,215,122,0.7); font-size:13px; margin-bottom:20px; }
+.modal input {
+  width:100%; padding:10px 14px;
+  background:rgba(10,14,28,0.6); border:1px solid rgba(212,175,55,0.5);
+  color:#f0e8d0; font-family:monospace; font-size:16px;
+  text-align:center; letter-spacing:0.1em;
+  border-radius:3px; outline:none;
+}
+.modal input:focus { border-color:#D4AF37; box-shadow:0 0 12px rgba(212,175,55,0.4); }
+.modal button {
+  margin-top:18px; padding:10px 28px;
+  background:#D4AF37; border:none; color:#1a0f00;
+  font-family:monospace; font-weight:bold; font-size:14px;
+  letter-spacing:0.1em; cursor:pointer; border-radius:3px;
+  transition:transform 0.1s, box-shadow 0.15s;
+}
+.modal button:hover { transform:translateY(-1px); box-shadow:0 4px 14px rgba(212,175,55,0.4); }
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
+
+<div id="whoBar">Playing as: <b id="whoName">…</b><button id="changeNameBtn">change</button></div>
+
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <h3>NAME OF THE MORTAL</h3>
+    <p>Speak your name, that the gods might know you.</p>
+    <input id="nameInput" maxlength="20" autocomplete="off" spellcheck="false" placeholder="Your name">
+    <br><button id="nameSave">ENTER OLYMPUS</button>
+  </div>
+</div>
 <script>
 const canvas = document.getElementById('c');
 const ctx    = canvas.getContext('2d');
@@ -29,26 +93,15 @@ const stars = Array.from({length:160}, () => ({
 }));
 
 // ── Portals ───────────────────────────────────────────────────────────────
+// To add a new game: append an entry. x is auto-distributed across the screen.
+// kind: 'arch' (default) draws an archway portal; 'mountain' draws a snow-capped peak.
 const portals = [
-  {
-    x: W*0.38,
-    name: 'ORION',
-    sub:  'The Giant Scorpion',
-    hue:  '#8844ff',
-    glow: '#6622cc',
-    href: 'orion.html',
-    _btn: null,
-  },
-  {
-    x: W*0.65,
-    name: 'ICARUS',
-    sub:  'The Flight of Icarus',
-    hue:  '#ff7700',
-    glow: '#ff4400',
-    href: 'icarus.html',
-    _btn: null,
-  },
+  { name: 'ORION',   sub: 'The Giant Scorpion',    hue: '#8844ff', glow: '#6622cc', href: 'orion.html'         },
+  { name: 'OLYMPUS', sub: 'Hall of the Gods',      hue: '#fff5c0', glow: '#D4AF37', href: 'mount-olympus.html', kind: 'mountain' },
+  { name: 'ICARUS',  sub: 'The Flight of Icarus',  hue: '#ff7700', glow: '#ff4400', href: 'icarus.html'        },
 ];
+portals.forEach((p, i) => { p.x = W * (i + 1) / (portals.length + 1); p._btn = null; });
+const PORTAL_RADIUS = Math.min(130, (W / (portals.length + 1)) * 0.45);
 
 // ── Particle motes ────────────────────────────────────────────────────────
 const motes = Array.from({length:28}, () => ({
@@ -65,25 +118,73 @@ const player = {
   facing: 1,
   walkPhase: 0,
   nearPortal: null,
+  isToad: false, // easter egg: press 't' to toggle
 };
 
 let keys = {}, time = 0, mouse = {x:0, y:0};
+let lastHopCycle = 0; // tracks toad's hop cycle to fire one ribbit per hop
+
+// ── Audio (lazy — created on first user gesture) ──────────────────────────
+let audioCtx = null;
+function ensureAudio() {
+  if (!audioCtx) {
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+    catch (e) { return null; }
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+function ribbit() {
+  const ac = ensureAudio();
+  if (!ac) return;
+  const t0 = ac.currentTime;
+  // two short bursts — "ri" then a longer "bbit"
+  const bursts = [
+    { start: 0,    dur: 0.07, f0: 200, f1: 130, vol: 0.14 },
+    { start: 0.10, dur: 0.20, f0: 170, f1:  80, vol: 0.20 },
+  ];
+  for (const b of bursts) {
+    const osc = ac.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(b.f0, t0 + b.start);
+    osc.frequency.exponentialRampToValueAtTime(b.f1, t0 + b.start + b.dur);
+    const filt = ac.createBiquadFilter();
+    filt.type = 'lowpass'; filt.frequency.value = 900; filt.Q.value = 6;
+    const gain = ac.createGain();
+    gain.gain.setValueAtTime(0.0001, t0 + b.start);
+    gain.gain.exponentialRampToValueAtTime(b.vol, t0 + b.start + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + b.start + b.dur);
+    osc.connect(filt).connect(gain).connect(ac.destination);
+    osc.start(t0 + b.start);
+    osc.stop(t0 + b.start + b.dur + 0.02);
+  }
+}
 
 // ── Update ────────────────────────────────────────────────────────────────
 function update(dt) {
   time += dt;
 
-  // movement
+  // movement — toad is twice as fast
   const left  = keys['ArrowLeft']  || keys['a'];
   const right = keys['ArrowRight'] || keys['d'];
-  player.vx = right ? 220 : left ? -220 : 0;
+  const speed = player.isToad ? 440 : 220;
+  player.vx = right ? speed : left ? -speed : 0;
   if (player.vx !== 0) { player.facing = player.vx > 0 ? 1 : -1; player.walkPhase += dt*7; }
   player.x = Math.max(50, Math.min(W-50, player.x + player.vx*dt));
+
+  // ribbit once per hop while moving as toad
+  if (player.isToad && player.vx !== 0) {
+    const cycle = Math.floor(player.walkPhase / (Math.PI * 2));
+    if (cycle !== lastHopCycle) { ribbit(); lastHopCycle = cycle; }
+  } else {
+    lastHopCycle = Math.floor(player.walkPhase / (Math.PI * 2));
+  }
 
   // portal proximity
   player.nearPortal = null;
   for (const p of portals) {
-    if (Math.abs(player.x - p.x) < 130) { player.nearPortal = p; break; }
+    if (Math.abs(player.x - p.x) < PORTAL_RADIUS) { player.nearPortal = p; break; }
   }
 
   // enter portal via Space / Enter
@@ -130,6 +231,112 @@ function drawColumn(x) {
   ctx.fillStyle='#a09070';
   ctx.fillRect(x-cW/2-4, GY-7, cW+8, 7);
   ctx.restore();
+}
+
+function drawMountain(p) {
+  // Mount Olympus: snow-capped peak that sits behind the player line.
+  // Same footprint/anchor as a portal so player.nearPortal logic still applies.
+  const peakH = 200, baseW = 220;
+  const pulse = 0.85 + Math.sin(time*1.4)*0.15;
+  ctx.save();
+  ctx.translate(p.x, GY);
+
+  // Divine aura behind the summit
+  const aura = ctx.createRadialGradient(0, -peakH+10, 4, 0, -peakH+10, peakH*1.1);
+  aura.addColorStop(0, `rgba(255,240,180,${0.55*pulse})`);
+  aura.addColorStop(0.4, `rgba(212,175,55,${0.22*pulse})`);
+  aura.addColorStop(1, 'rgba(212,175,55,0)');
+  ctx.fillStyle = aura;
+  ctx.beginPath();
+  ctx.arc(0, -peakH+10, peakH*1.1, 0, Math.PI*2);
+  ctx.fill();
+
+  // Mountain body — triangle with subtle gradient
+  const mtnG = ctx.createLinearGradient(0, -peakH, 0, 0);
+  mtnG.addColorStop(0,   '#5b6694');
+  mtnG.addColorStop(0.4, '#2e375f');
+  mtnG.addColorStop(1,   '#0d1126');
+  ctx.fillStyle = mtnG;
+  ctx.beginPath();
+  ctx.moveTo(-baseW/2, 0);
+  ctx.lineTo(-baseW*0.18, -peakH*0.55);
+  ctx.lineTo(-baseW*0.05, -peakH*0.85);
+  ctx.lineTo(0, -peakH);
+  ctx.lineTo( baseW*0.06, -peakH*0.84);
+  ctx.lineTo( baseW*0.20, -peakH*0.55);
+  ctx.lineTo( baseW/2, 0);
+  ctx.closePath();
+  ctx.fill();
+
+  // ridge highlight (left flank catches the divine light)
+  ctx.strokeStyle = 'rgba(180,200,240,0.35)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(-baseW*0.18, -peakH*0.55);
+  ctx.lineTo(-baseW*0.05, -peakH*0.85);
+  ctx.lineTo(0, -peakH);
+  ctx.stroke();
+
+  // Snowcap
+  ctx.fillStyle = 'rgba(245,248,255,0.95)';
+  ctx.beginPath();
+  ctx.moveTo(-baseW*0.10, -peakH*0.65);
+  ctx.lineTo(-baseW*0.07, -peakH*0.72);
+  ctx.lineTo(-baseW*0.05, -peakH*0.85);
+  ctx.lineTo(0, -peakH);
+  ctx.lineTo( baseW*0.06, -peakH*0.84);
+  ctx.lineTo( baseW*0.10, -peakH*0.72);
+  ctx.lineTo( baseW*0.13, -peakH*0.65);
+  ctx.lineTo( baseW*0.07, -peakH*0.66);
+  ctx.lineTo( baseW*0.04, -peakH*0.78);
+  ctx.lineTo(0, -peakH*0.74);
+  ctx.lineTo(-baseW*0.04, -peakH*0.78);
+  ctx.lineTo(-baseW*0.07, -peakH*0.66);
+  ctx.closePath();
+  ctx.fill();
+
+  // Tiny shrine/altar at the foot center
+  ctx.fillStyle = 'rgba(212,175,55,0.5)';
+  ctx.fillRect(-12, -8, 24, 8);
+  ctx.fillStyle = 'rgba(255,240,180,' + (0.5+0.4*pulse) + ')';
+  ctx.fillRect(-3, -14, 6, 6);
+
+  // Title above peak
+  ctx.shadowColor = '#D4AF37';
+  ctx.shadowBlur = 18*pulse;
+  ctx.fillStyle = GOLD;
+  ctx.font = 'bold 16px serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(p.name, 0, -peakH-22);
+  ctx.shadowBlur = 0;
+  ctx.font = 'italic 11px serif';
+  ctx.fillStyle = 'rgba(255,220,140,0.75)';
+  ctx.fillText(p.sub, 0, -peakH-8);
+
+  ctx.restore();
+
+  // ENTER button when player is near
+  if (player.nearPortal === p) {
+    const bx=p.x, by=GY-peakH-56, bw=120, bh=34;
+    const bp = 0.88 + Math.sin(time*5)*0.12;
+    ctx.save();
+    ctx.shadowColor = GOLD; ctx.shadowBlur = 18*bp;
+    ctx.fillStyle = `rgba(212,175,55,${0.92*bp})`;
+    ctx.beginPath(); ctx.roundRect(bx-bw/2, by-bh/2, bw, bh, 7); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#1a0f00';
+    ctx.font = 'bold 14px monospace';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('ASCEND', bx, by);
+    ctx.fillStyle = 'rgba(255,255,255,0.65)';
+    ctx.font = '10px monospace';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText('click or press SPACE', bx, by+28);
+    ctx.restore();
+    p._btn = {x:bx-bw/2, y:by-bh/2, w:bw, h:bh};
+  } else {
+    p._btn = null;
+  }
 }
 
 function drawPortal(p) {
@@ -227,6 +434,10 @@ function drawPortal(p) {
 }
 
 function drawPlayer() {
+  if (player.isToad) drawToad(); else drawHuman();
+}
+
+function drawHuman() {
   const x=player.x, y=player.y, f=player.facing;
   const walk = player.vx!==0 ? Math.sin(player.walkPhase)*0.9 : 0;
   ctx.save();
@@ -284,6 +495,126 @@ function drawPlayer() {
   ctx.restore();
 }
 
+function drawToad() {
+  const x=player.x, y=player.y, f=player.facing;
+  const moving = player.vx !== 0;
+  // hop arc when moving — toad rises and stretches mid-air
+  const hopT   = moving ? Math.max(0, Math.sin(player.walkPhase)) : 0;
+  const hop    = hopT * 16;
+  const stretch = hopT * 0.10;
+
+  ctx.save();
+  ctx.translate(x, y);
+
+  // ground shadow (shrinks while toad is in the air)
+  const shScale = 1 - hop/42;
+  ctx.fillStyle = `rgba(0,0,0,${0.32*shScale})`;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 26*shScale, 5*shScale, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  ctx.translate(0, -hop);
+  ctx.scale(f * (1 - stretch*0.4), 1 + stretch);
+
+  // ── BACK LEG (folded, behind body) ───────────────────────────────
+  ctx.fillStyle = '#2d5d2a';
+  ctx.beginPath();
+  ctx.ellipse(-14, -14, 14, 9, -0.2, 0, Math.PI*2);
+  ctx.fill();
+  // back foot
+  ctx.fillStyle = '#3a7a36';
+  ctx.beginPath();
+  ctx.ellipse(-22, -3, 14, 5, 0.05, 0, Math.PI*2);
+  ctx.fill();
+  // webbed toes
+  ctx.strokeStyle = '#1c3a1a'; ctx.lineWidth = 1.6; ctx.lineCap = 'round';
+  for (let i=0;i<3;i++) {
+    ctx.beginPath();
+    ctx.moveTo(-28, -3);
+    ctx.lineTo(-36 + i*2, -2 + (i-1)*2);
+    ctx.stroke();
+  }
+
+  // ── BODY (head + body fused, squat oval) ─────────────────────────
+  const bodyG = ctx.createRadialGradient(8, -32, 4, 4, -22, 30);
+  bodyG.addColorStop(0,    '#6cb064');
+  bodyG.addColorStop(0.55, '#3f7a39');
+  bodyG.addColorStop(1,    '#214c1f');
+  ctx.fillStyle = bodyG;
+  ctx.beginPath();
+  ctx.ellipse(2, -18, 24, 18, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  // pale belly underside
+  ctx.fillStyle = 'rgba(222,228,168,0.9)';
+  ctx.beginPath();
+  ctx.ellipse(2, -9, 18, 8, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  // ── WARTS ────────────────────────────────────────────────────────
+  const warts = [[-10,-30],[-2,-34],[8,-32],[16,-26],[-14,-22],[12,-20],[20,-18],[-8,-24]];
+  ctx.fillStyle = '#1c3a1a';
+  for (const [wx,wy] of warts) {
+    ctx.beginPath(); ctx.arc(wx, wy, 1.8, 0, Math.PI*2); ctx.fill();
+  }
+  ctx.fillStyle = 'rgba(170,210,130,0.7)';
+  for (const [wx,wy] of warts) {
+    ctx.beginPath(); ctx.arc(wx-0.6, wy-0.7, 0.7, 0, Math.PI*2); ctx.fill();
+  }
+
+  // ── FRONT LEG ────────────────────────────────────────────────────
+  ctx.fillStyle = '#3a7a36';
+  ctx.beginPath();
+  ctx.ellipse(15, -3, 7, 4.5, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.strokeStyle = '#1c3a1a'; ctx.lineWidth = 1.5;
+  for (let i=0;i<3;i++) {
+    ctx.beginPath();
+    ctx.moveTo(19, -2);
+    ctx.lineTo(24 + i*1.5, 0.5);
+    ctx.stroke();
+  }
+
+  // ── MOUTH (wide curve across the front) ──────────────────────────
+  ctx.strokeStyle = '#0e1a0d'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(8, -14);
+  ctx.quadraticCurveTo(20, -10, 25, -16);
+  ctx.stroke();
+  // tongue peek at the corner
+  ctx.fillStyle = '#c8484a';
+  ctx.beginPath(); ctx.arc(19, -12, 1.2, 0, Math.PI*2); ctx.fill();
+
+  // ── BACK EYE BUMP (further, smaller) ─────────────────────────────
+  ctx.fillStyle = '#3f7a39';
+  ctx.beginPath(); ctx.ellipse(-2, -34, 6, 7, 0, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#d4b240';
+  ctx.beginPath(); ctx.arc(-1, -34, 3.5, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#0a0a0a';
+  ctx.beginPath(); ctx.ellipse(-1, -34, 1, 3, 0, 0, Math.PI*2); ctx.fill();
+
+  // ── FRONT EYE BUMP (large, prominent) ────────────────────────────
+  ctx.fillStyle = '#4d8c46';
+  ctx.beginPath(); ctx.ellipse(14, -36, 8.5, 9, 0, 0, Math.PI*2); ctx.fill();
+  // golden iris
+  ctx.fillStyle = '#f0c844';
+  ctx.beginPath(); ctx.arc(15, -36, 5.5, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = '#7a4a10'; ctx.lineWidth = 0.8;
+  ctx.beginPath(); ctx.arc(15, -36, 5.5, 0, Math.PI*2); ctx.stroke();
+  // vertical slit pupil
+  ctx.fillStyle = '#0a0a0a';
+  ctx.beginPath(); ctx.ellipse(15, -36, 1.4, 4.6, 0, 0, Math.PI*2); ctx.fill();
+  // catchlight
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.beginPath(); ctx.arc(16.6, -38, 1.0, 0, Math.PI*2); ctx.fill();
+
+  // nostril
+  ctx.fillStyle = '#1a2818';
+  ctx.beginPath(); ctx.arc(22, -22, 0.9, 0, Math.PI*2); ctx.fill();
+
+  ctx.restore();
+}
+
 // ── Render ────────────────────────────────────────────────────────────────
 function render() {
   // Sky
@@ -337,12 +668,19 @@ function render() {
   }
   ctx.globalAlpha=1;
 
-  // Columns across the plaza
-  const colXs = [W*0.08, W*0.18, W*0.28, W*0.78, W*0.88];
+  // Columns flanking the portals — left of leftmost, right of rightmost.
+  const leftX  = portals[0].x;
+  const rightX = portals[portals.length-1].x;
+  const colXs = [
+    leftX * 0.25, leftX * 0.65,
+    rightX + (W - rightX) * 0.30, rightX + (W - rightX) * 0.72,
+  ];
   for (const cx of colXs) drawColumn(cx);
 
   // Portals
-  for (const p of portals) drawPortal(p);
+  for (const p of portals) {
+    if (p.kind === 'mountain') drawMountain(p); else drawPortal(p);
+  }
 
   // Player
   drawPlayer();
@@ -373,11 +711,25 @@ function loop(ts) {
 requestAnimationFrame(loop);
 
 // ── Input ─────────────────────────────────────────────────────────────────
+function inputBusy(e) {
+  // skip the canvas key handlers when the user is typing in a form field
+  // or when a modal is open
+  if (document.getElementById('modalBg')?.classList.contains('open')) return true;
+  const tag = e.target?.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA';
+}
+
 window.addEventListener('keydown', e => {
+  if (inputBusy(e)) return;
+  // easter egg: 't' toggles toad form (ignore key-repeat so a held key only flips once)
+  if (!e.repeat && (e.key === 't' || e.key === 'T')) {
+    player.isToad = !player.isToad;
+    ensureAudio(); // unlock audio on user gesture so the first ribbit plays
+  }
   keys[e.key]=true;
   e.preventDefault();
 });
-window.addEventListener('keyup', e => { keys[e.key]=false; });
+window.addEventListener('keyup', e => { if (!inputBusy(e)) keys[e.key]=false; });
 
 canvas.addEventListener('mousemove', e => {
   const r=canvas.getBoundingClientRect();
@@ -394,6 +746,8 @@ canvas.addEventListener('mousemove', e => {
 });
 
 canvas.addEventListener('click', e => {
+  // Block portal navigation while the name modal is open.
+  if (document.getElementById('modalBg')?.classList.contains('open')) return;
   const r=canvas.getBoundingClientRect();
   const mx=e.clientX-r.left, my=e.clientY-r.top;
   for (const p of portals) {
@@ -405,6 +759,40 @@ canvas.addEventListener('click', e => {
     }
   }
 });
+
+// ── Player name (localStorage) ────────────────────────────────────────────
+const NAME_KEY = 'godgames_playerName';
+const $ = (id) => document.getElementById(id);
+
+function getName() { return localStorage.getItem(NAME_KEY) || ''; }
+function setName(n) {
+  const clean = (n || '').replace(/[\x00-\x1f\x7f]/g, '').replace(/\s+/g,' ').trim().slice(0,20);
+  if (!clean) return false;
+  localStorage.setItem(NAME_KEY, clean);
+  $('whoName').textContent = clean;
+  return true;
+}
+function showModal(initial) {
+  $('nameInput').value = initial != null ? initial : getName();
+  $('modalBg').classList.add('open');
+  setTimeout(() => $('nameInput').focus(), 50);
+}
+function hideModal() { $('modalBg').classList.remove('open'); }
+
+$('changeNameBtn').addEventListener('click', () => showModal());
+$('nameSave').addEventListener('click', () => {
+  if (setName($('nameInput').value)) hideModal();
+});
+$('nameInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && setName($('nameInput').value)) hideModal();
+  e.stopPropagation();
+});
+
+(function initName() {
+  const n = getName();
+  if (!n) showModal('');
+  else $('whoName').textContent = n;
+})();
 </script>
 </body>
 </html>

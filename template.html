@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TODO — God Games</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#000; overflow:hidden; }
+canvas { display:block; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script src="engine.js"></script>
+<script>
+// ── Game state ────────────────────────────────────────────────────────────
+let player;
+
+// ── Audio (per-game thematic SFX wrap Engine.audio.tone) ──────────────────
+const sfx = {
+  hit:    () => Engine.audio.tone( 90, 'square',   0.20, 0.55,  60),
+  pickup: () => Engine.audio.tone(660, 'sine',     0.12, 0.30, 880),
+};
+
+Engine.boot({
+  title:    'TODO',
+  subtitle: 'The Tale of TODO',
+  instructions: [
+    '← → keys: move',
+    'Z: action',
+    'Defeat your foe.',
+  ],
+  deadTitle:      'TODO HAS FALLEN',
+  deadSubtitle:   'A short epitaph.',
+  victoryTitle:   'TODO TRIUMPHS',
+  victorySubtitle:'A short victory line.',
+
+  theme: {
+    bg:     '#06060a',     // or a function(ctx, W, H, time, engine)
+    accent: '#cc3322',     // primary glow color
+    danger: '#660000',     // dead-screen color
+  },
+
+  onInit(e) {
+    player = { x: e.W * 0.2, y: e.H * 0.7, vx: 0, hp: 5 };
+  },
+
+  onUpdate(dt, e) {
+    if (e.keys['ArrowLeft']  || e.keys['a']) player.x -= 220 * dt;
+    if (e.keys['ArrowRight'] || e.keys['d']) player.x += 220 * dt;
+    player.x = Math.max(30, Math.min(e.W - 30, player.x));
+
+    if (e.justPressed('z') || e.justPressed('Z')) {
+      sfx.hit();
+      e.particles.emit({ x: player.x, y: player.y - 30, color: e.theme.accent, count: 6, speed: 100, upBias: 50, lifetime: 0.8 });
+      e.shake(3);
+    }
+
+    // Win/lose:
+    // if (player.hp <= 0) e.setState('dead');
+    // if (won)            e.setState('victory');
+  },
+
+  onRender(ctx, e) {
+    ctx.fillStyle = e.theme.accent;
+    ctx.fillRect(player.x - 10, player.y - 30, 20, 30);
+  },
+
+  onHud(ctx, e) {
+    e.hud.drawHearts(20, 30, player.hp, 5);
+  },
+});
+</script>
+</body>
+</html>
