@@ -2643,6 +2643,13 @@ Engine.boot({
     restartKey: '1',
   },
 
+  mobile: {
+    movement: 'horizontal',
+    actions: [
+      { label: 'FLAP', key: 'ArrowUp', mode: 'hold' },
+    ],
+  },
+
   onInit() {
     initAudio();
     initGame();

@@ -9,6 +9,30 @@
 body { background:#000; overflow:hidden; font-family: 'Trebuchet MS', serif; color:#f0e8d0; }
 canvas { display:block; cursor:default; }
 
+/* ── Landscape rotation prompt (touch + portrait only) ── */
+.rotate-overlay {
+  display: none;
+  position: fixed; inset: 0; z-index: 9999;
+  background: #04071a; color: #D4AF37;
+  flex-direction: column; align-items: center; justify-content: center;
+  gap: 22px; font-family: 'Trebuchet MS', serif; font-size: 22px;
+  letter-spacing: 0.1em; text-align: center;
+}
+.rotate-icon {
+  width: 56px; height: 92px;
+  border: 3px solid #D4AF37; border-radius: 8px;
+  box-shadow: 0 0 24px rgba(212,175,55,0.45);
+  animation: rotate-bob 2.4s ease-in-out infinite;
+}
+@keyframes rotate-bob {
+  0%, 25%, 100% { transform: rotate(0deg); }
+  55%, 80%      { transform: rotate(-90deg); }
+}
+@media (orientation: portrait) and (pointer: coarse) {
+  body > *:not(.rotate-overlay) { display: none !important; }
+  .rotate-overlay { display: flex !important; }
+}
+
 /* ── Top-right HUD: player name ── */
 #whoBar {
   position:fixed; top:18px; right:22px; z-index:5;
@@ -64,6 +88,11 @@ canvas { display:block; cursor:default; }
 </style>
 </head>
 <body>
+<div class="rotate-overlay">
+  <div class="rotate-icon"></div>
+  <div>ROTATE YOUR DEVICE</div>
+  <div style="font-size:13px; opacity:0.7; letter-spacing:0.04em;">The hub is best viewed in landscape</div>
+</div>
 <canvas id="c"></canvas>
 
 <div id="whoBar">Playing as: <b id="whoName">…</b><button id="changeNameBtn">change</button></div>
@@ -103,6 +132,7 @@ const portals = [
 ];
 portals.forEach((p, i) => { p.x = W * (i + 1) / (portals.length + 1); p._btn = null; });
 const PORTAL_RADIUS = Math.min(130, (W / (portals.length + 1)) * 0.45);
+const IS_TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
 
 // ── Particle motes ────────────────────────────────────────────────────────
 const motes = Array.from({length:28}, () => ({
@@ -681,6 +711,17 @@ function render() {
   // Portals
   for (const p of portals) {
     if (p.kind === 'mountain') drawMountain(p); else drawPortal(p);
+  }
+
+  // On touch devices, expand each portal's tap region to cover the whole arch
+  // so the player can navigate by tapping any portal directly (no walking).
+  if (IS_TOUCH) {
+    for (const p of portals) {
+      const isMtn = p.kind === 'mountain';
+      const w = isMtn ? 220 : 150;
+      const h = isMtn ? 230 : 200;
+      p._btn = { x: p.x - w/2, y: GY - h, w, h };
+    }
   }
 
   // Player

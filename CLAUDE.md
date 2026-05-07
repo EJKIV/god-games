@@ -26,6 +26,7 @@ A series of Greek mythology mini-games built by a Theo.
 - When adding new features, NEVER break existing features
 - Make controls responsive and satisfying
 - Target 60fps smooth gameplay
+- **Mobile**: every page enforces landscape via a `(orientation: portrait) and (pointer: coarse)` CSS overlay. Each game declares a `mobile` block in `Engine.boot({...})` listing its on-screen buttons; the engine renders a translucent gamepad and synthesizes keydown/keyup so the existing keyboard branches work unchanged. Modes per action: `'tap'` (default), `'hold'` (sustained), `'doubleTap'` (fires two presses ~80ms apart so existing `performance.now()` double-tap detectors trigger from one tap). The hub auto-expands portal hit regions on touch so tapping a portal arch navigates directly.
 
 ## Git Workflow
 - After completing each major feature, commit with a descriptive message

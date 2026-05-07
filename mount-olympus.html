@@ -189,9 +189,38 @@ footer {
   nav.topbar { font-size:11px; }
   .frame { padding:20px 14px; }
 }
+
+/* ── Landscape rotation prompt (touch + portrait only) ── */
+.rotate-overlay {
+  display: none;
+  position: fixed; inset: 0; z-index: 9999;
+  background: #04071a; color: #D4AF37;
+  flex-direction: column; align-items: center; justify-content: center;
+  gap: 22px; font-family: 'Trebuchet MS', serif; font-size: 22px;
+  letter-spacing: 0.1em; text-align: center;
+}
+.rotate-icon {
+  width: 56px; height: 92px;
+  border: 3px solid #D4AF37; border-radius: 8px;
+  box-shadow: 0 0 24px rgba(212,175,55,0.45);
+  animation: rotate-bob 2.4s ease-in-out infinite;
+}
+@keyframes rotate-bob {
+  0%, 25%, 100% { transform: rotate(0deg); }
+  55%, 80%      { transform: rotate(-90deg); }
+}
+@media (orientation: portrait) and (pointer: coarse) {
+  body > *:not(.rotate-overlay) { display: none !important; }
+  .rotate-overlay { display: flex !important; }
+}
 </style>
 </head>
 <body>
+<div class="rotate-overlay">
+  <div class="rotate-icon"></div>
+  <div>ROTATE YOUR DEVICE</div>
+  <div style="font-size:13px; opacity:0.7; letter-spacing:0.04em;">Mount Olympus is best viewed in landscape</div>
+</div>
 <canvas id="bg"></canvas>
 
 <nav class="topbar">

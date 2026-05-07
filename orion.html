@@ -883,6 +883,16 @@ Engine.boot({
     restartKey: '1',
   },
 
+  mobile: {
+    movement: 'horizontal',
+    actions: [
+      { label: 'JUMP',  key: 'ArrowUp', mode: 'hold' },
+      { label: 'SPEAR', key: 'z' },
+      { label: 'STAB',  key: 'x' },
+      { label: 'DODGE', key: 'Shift', mode: 'doubleTap' },
+    ],
+  },
+
   onTryStart() {
     if (!hasName()) { showNameModal(); return false; }
     return true;

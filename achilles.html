@@ -744,6 +744,11 @@ Engine.boot({
     restartKey: [' ', 'Enter'],
   },
 
+  mobile: {
+    movement: 'horizontal',
+    actions: [], // dodging arrows is the entire mechanic — no extra keys
+  },
+
   onResize() { initLayout(); },
 
   onInit() { resetGame(); },

@@ -52,7 +52,186 @@ const Engine = {
     this.canvas.addEventListener('mousedown', () => { this.mouse.down = true; });
     this.canvas.addEventListener('mouseup',   () => { this.mouse.down = false; });
 
+    this._setupMobileShell();
+
     requestAnimationFrame((ts) => this._loop(ts));
+  },
+
+  // ── Mobile / touch support ─────────────────────────────────────────────
+  // Injects a portrait-rotation overlay (always present, shown by media query
+  // on touch devices in portrait) and an on-screen virtual gamepad (only on
+  // (pointer: coarse) devices) that simulates keydown/keyup so existing game
+  // code runs unchanged. Game declares its buttons via `config.mobile`.
+  _setupMobileShell() {
+    if (!document.getElementById('ge-mobile-style')) {
+      const style = document.createElement('style');
+      style.id = 'ge-mobile-style';
+      style.textContent = `
+        .ge-rotate-overlay {
+          display: none;
+          position: fixed; inset: 0; z-index: 9999;
+          background: #04071a; color: #D4AF37;
+          flex-direction: column; align-items: center; justify-content: center;
+          gap: 22px; font-family: 'Trebuchet MS', serif; font-size: 22px;
+          letter-spacing: 0.1em; text-align: center;
+        }
+        .ge-rotate-icon {
+          width: 56px; height: 92px;
+          border: 3px solid #D4AF37; border-radius: 8px;
+          box-shadow: 0 0 24px rgba(212,175,55,0.45);
+          animation: ge-rotate-bob 2.4s ease-in-out infinite;
+        }
+        @keyframes ge-rotate-bob {
+          0%, 25%, 100% { transform: rotate(0deg); }
+          55%, 80%      { transform: rotate(-90deg); }
+        }
+        @media (orientation: portrait) and (pointer: coarse) {
+          body > *:not(.ge-rotate-overlay) { display: none !important; }
+          .ge-rotate-overlay { display: flex !important; }
+        }
+        .ge-touch-ui {
+          position: fixed; inset: 0; pointer-events: none; z-index: 100;
+          user-select: none; -webkit-user-select: none;
+        }
+        .ge-touch-ui button {
+          pointer-events: auto;
+          touch-action: none;
+          user-select: none; -webkit-user-select: none;
+          -webkit-tap-highlight-color: transparent;
+          background: rgba(212,175,55,0.18);
+          border: 2px solid rgba(212,175,55,0.55);
+          color: rgba(255,240,180,0.95);
+          font-family: monospace; font-weight: bold;
+          backdrop-filter: blur(2px);
+          -webkit-backdrop-filter: blur(2px);
+          transition: background 0.05s, transform 0.05s;
+          outline: none;
+        }
+        .ge-touch-ui button:active,
+        .ge-touch-ui button.held {
+          background: rgba(212,175,55,0.55);
+          transform: scale(0.93);
+        }
+        .ge-dpad { position: absolute; bottom: 22px; left: 22px; display: flex; gap: 14px; }
+        .ge-dpad button { width: 84px; height: 84px; font-size: 30px; border-radius: 50%; }
+        .ge-actions { position: absolute; bottom: 22px; right: 22px; display: grid; gap: 12px; grid-template-columns: 1fr; }
+        .ge-actions.cols-2 { grid-template-columns: 1fr 1fr; }
+        .ge-actions button { width: 76px; height: 76px; font-size: 12px; padding: 4px; line-height: 1.1; border-radius: 50%; }
+        .ge-back-wrap { position: absolute; top: 64px; left: 8px; }
+        .ge-back-wrap button { width: 60px; height: 38px; font-size: 11px; border-radius: 8px; }
+      `;
+      document.head.appendChild(style);
+    }
+
+    if (!document.querySelector('.ge-rotate-overlay')) {
+      const overlay = document.createElement('div');
+      overlay.className = 'ge-rotate-overlay';
+      overlay.innerHTML = `
+        <div class="ge-rotate-icon"></div>
+        <div>ROTATE YOUR DEVICE</div>
+        <div style="font-size:13px; opacity:0.7; letter-spacing:0.04em;">This game is best played in landscape</div>
+      `;
+      document.body.appendChild(overlay);
+    }
+
+    this.isTouch = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+    if (!this.isTouch) return;
+
+    const m = this.config.mobile || {};
+
+    // Tap canvas during title/dead/victory to start/restart (same as Space/restartKey).
+    this.canvas.addEventListener('touchstart', (e) => {
+      if (e.target !== this.canvas) return; // only when touching empty canvas
+      if (this.state === 'title') {
+        e.preventDefault();
+        this._tapKey(' ');
+      } else if (this.state === 'dead' || this.state === 'victory') {
+        e.preventDefault();
+        const rk = Array.isArray(this.theme.restartKey) ? this.theme.restartKey[0] : this.theme.restartKey;
+        this._tapKey(rk);
+      }
+    }, { passive: false });
+
+    const ui = document.createElement('div');
+    ui.className = 'ge-touch-ui';
+
+    if (m.movement === 'horizontal') {
+      const lk = m.leftKey  || 'ArrowLeft';
+      const rk = m.rightKey || 'ArrowRight';
+      const dpad = document.createElement('div');
+      dpad.className = 'ge-dpad';
+      dpad.appendChild(this._makeTouchButton('◀', lk, 'hold'));
+      dpad.appendChild(this._makeTouchButton('▶', rk, 'hold'));
+      ui.appendChild(dpad);
+    }
+
+    if (m.actions && m.actions.length) {
+      const actions = document.createElement('div');
+      actions.className = 'ge-actions';
+      if (m.actions.length > 3) actions.classList.add('cols-2');
+      for (const a of m.actions) {
+        actions.appendChild(this._makeTouchButton(a.label, a.key, a.mode || 'tap'));
+      }
+      ui.appendChild(actions);
+    }
+
+    if (m.back !== false) {
+      const back = document.createElement('div');
+      back.className = 'ge-back-wrap';
+      back.appendChild(this._makeTouchButton('← HUB', 'Escape', 'tap'));
+      ui.appendChild(back);
+    }
+
+    document.body.appendChild(ui);
+  },
+
+  _makeTouchButton(label, key, mode) {
+    const btn = document.createElement('button');
+    btn.textContent = label;
+    btn.tabIndex = -1;
+
+    const start = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      btn.classList.add('held');
+      if (mode === 'doubleTap') {
+        // Two synthetic press/release pairs ~80ms apart so existing
+        // performance.now() double-tap detectors trigger from one tap.
+        this._simKeyDown(key);
+        setTimeout(() => this._simKeyUp(key),    60);
+        setTimeout(() => this._simKeyDown(key), 120);
+        setTimeout(() => this._simKeyUp(key),   180);
+      } else {
+        this._simKeyDown(key);
+      }
+    };
+    const end = (e) => {
+      if (e) e.preventDefault();
+      btn.classList.remove('held');
+      if (mode !== 'doubleTap') this._simKeyUp(key);
+    };
+
+    btn.addEventListener('touchstart',  start, { passive: false });
+    btn.addEventListener('touchend',    end,   { passive: false });
+    btn.addEventListener('touchcancel', end,   { passive: false });
+    btn.addEventListener('mousedown',   start);
+    btn.addEventListener('mouseup',     end);
+    btn.addEventListener('mouseleave',  () => { if (btn.classList.contains('held')) end(); });
+    btn.addEventListener('contextmenu', (e) => e.preventDefault());
+    return btn;
+  },
+
+  // Simulate a keyboard event by routing through the same handlers desktop
+  // keys take, so audio init, state transitions, and onKeyDown all fire.
+  _simKeyDown(key) {
+    this._onKeyDown({ key, target: { tagName: '' }, preventDefault: () => {} });
+  },
+  _simKeyUp(key) {
+    this._onKeyUp({ key });
+  },
+  _tapKey(key) {
+    this._simKeyDown(key);
+    setTimeout(() => this._simKeyUp(key), 50);
   },
 
   setState(next) {
