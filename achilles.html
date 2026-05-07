@@ -72,6 +72,7 @@ const TILE     = 72;
 // Layout — recomputed on boot + resize (depend on Engine.W/H).
 let PLAYER_Y, LANE_L, LANE_R;
 let archerXs, tileColors, stars;
+let archers = []; // {x, downT, glow} per archer slot — manga state
 
 function initLayout() {
   const W = Engine.W, H = Engine.H;
@@ -79,6 +80,7 @@ function initLayout() {
   LANE_L   = W * 0.06;
   LANE_R   = W * 0.94;
   archerXs = Array.from({length:10}, (_,i) => LANE_L + (LANE_R - LANE_L) * ((i + 0.5) / 10));
+  archers  = archerXs.map(x => ({ x, downT: 0, glow: 0, releaseT: 0, drawT: 0 }));
   tileColors = [];
   for (let ty = 0; ty * TILE < H; ty++) {
     const row = [];
@@ -109,6 +111,17 @@ let canvas, ctx;
 let mangaPunch = null;       // Manga.fx.cameraPunch instance
 let mangaSlomo = null;       // Manga.fx.slomo instance
 let mangaDeathT = 0;         // Engine.time when death entered (drives panel-split)
+
+// ── Manga abilities (player) ──────────────────────────────────────────────
+let bashT  = 0, bashCD  = 0;       // shield bash: deflect window + cooldown
+let bowT   = 0, bowCD   = 0;       // counter shot: bow-pose anim + cooldown
+const BASH_DUR = 0.4, BASH_CD = 5; // tunable
+const BOW_POSE = 0.30, BOW_CD = 2.5;
+let returnArrows = [];             // arrows player has fired UPWARD at archers
+
+// ── Archer enemy specials (manga only) ────────────────────────────────────
+let pendingSpecial = null;     // 'volley' | 'inferno' | 'echo' — pre-rolled before a wave
+let mangaTexts = [];           // {text, x, y, t, color, size} — manga sfxText popups
 function mangaReady() {
   return Engine.manga && window.Manga && Manga.fx && Manga.fx.cameraPunch && Manga.fx.slomo && Manga.characters && Manga.characters.achilles;
 }
@@ -127,12 +140,13 @@ let submittedThisRun = false;
 
 async function submitToHall(finalScore) {
   const name = localStorage.getItem(NAME_KEY) || 'NAMELESS MORTAL';
+  const game = Engine.manga ? 'achilles-manga' : 'achilles';
   hallStatus = 'pending';
   try {
     const res = await fetch('/api/leaderboard', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ game: 'achilles', name, score: finalScore }),
+      body: JSON.stringify({ game, name, score: finalScore }),
     });
     if (!res.ok) { hallStatus = 'fail'; return; }
     const json = await res.json();
@@ -192,31 +206,77 @@ function resetGame() {
     walkPhase: 0, stepT: 0, facing: 1,
   };
   arrows = []; particles = []; floaters = [];
+  returnArrows = [];
   score = 0; xp = 0; playTime = 0; waveTimer = 1.8;
   hallRank = null; hallStatus = null; submittedThisRun = false;
   mangaDeathT = 0;
+  bashT = 0; bashCD = 0;
+  bowT = 0; bowCD = 0;
+  pendingSpecial = null;
+  mangaTexts.length = 0;
+  if (archers) for (const a of archers) { a.downT = 0; a.glow = 0; a.releaseT = 0; a.drawT = 0; }
 }
 
 // ── Wave builder ──────────────────────────────────────────────────────────
-function spawnWave() {
+// `special` is null in normal mode, or 'volley'/'inferno'/'echo' in manga mode.
+function pickArcherIndex() {
+  if (!archers || archers.length === 0) return -1;
+  const alive = [];
+  for (let i = 0; i < archers.length; i++) if (archers[i].downT <= 0) alive.push(i);
+  if (alive.length === 0) return Math.floor(Math.random() * archers.length);
+  return alive[Math.floor(Math.random() * alive.length)];
+}
+
+function spawnWave(special) {
   const diff  = Math.min(1, playTime / 60);
   const speed = 380 + diff * 460 + Math.random() * 100;
 
-  // Targeted arrows — aimed at Achilles' current position with a tight spread
-  const numTargeted = 2 + Math.floor(diff * 3) + Math.floor(Math.random() * 2); // 2→7
-  const spread = Math.max(18, 45 - diff * 28); // cluster tightens over time
-  for (let i = 0; i < numTargeted; i++) {
-    const x = player.x + (Math.random() - 0.5) * spread * 2;
+  // Each spawned arrow starts at the firing archer's position so it visually
+  // originates from them. We also fire releaseT on that archer so the bow flashes.
+  function spawnArrowFromArcher(ai, props) {
+    const a = archers[ai];
+    if (a) a.releaseT = Math.max(a.releaseT, 0.18);
+    const startY = a ? 28 + (Math.random() - 0.5) * 4 : -(15 + Math.random() * 40);
     arrows.push({
-      x: Math.max(LANE_L + 10, Math.min(LANE_R - 10, x)),
-      y: -(15 + Math.random() * 40),
-      speed: speed + (Math.random() - 0.5) * 80,
+      x: props.x,
+      y: startY,
+      speed: props.speed,
       alive: true, landed: false,
-      targeted: true,
+      targeted: !!props.targeted,
+      originIdx: ai,
+      ...(props.extra || {}),
     });
   }
 
-  // Decoy arrows — random positions away from Achilles (to fake him out)
+  // ── Volley special: 5-arrow fan converging on predicted player position ─
+  if (special === 'volley') {
+    const targetX = player.x + player.vx * 0.25;
+    const ai = pickArcherIndex();
+    for (let i = 0; i < 5; i++) {
+      const tx = targetX + (i - 2) * 26;
+      spawnArrowFromArcher(ai, {
+        x: Math.max(LANE_L + 10, Math.min(LANE_R - 10, tx)),
+        speed: speed * 0.95 + (Math.random() - 0.5) * 40,
+        targeted: true,
+      });
+    }
+    sfx.arrow();
+    return;
+  }
+
+  // Build arrow specs first so we can apply specials post-hoc
+  const specs = [];
+  const numTargeted = 2 + Math.floor(diff * 3) + Math.floor(Math.random() * 2);
+  const spread = Math.max(18, 45 - diff * 28);
+  for (let i = 0; i < numTargeted; i++) {
+    const x = player.x + (Math.random() - 0.5) * spread * 2;
+    specs.push({
+      ai: pickArcherIndex(),
+      x: Math.max(LANE_L + 10, Math.min(LANE_R - 10, x)),
+      speed: speed + (Math.random() - 0.5) * 80,
+      targeted: true, extra: {},
+    });
+  }
   const numDecoy = 1 + Math.floor(Math.random() * (1 + Math.floor(diff * 1.5)));
   for (let i = 0; i < numDecoy; i++) {
     let x, attempts = 0;
@@ -224,15 +284,26 @@ function spawnWave() {
       x = LANE_L + Math.random() * (LANE_R - LANE_L);
       attempts++;
     } while (Math.abs(x - player.x) < 90 && attempts < 20);
-    arrows.push({
+    specs.push({
+      ai: pickArcherIndex(),
       x,
-      y: -(15 + Math.random() * 40),
       speed: speed + (Math.random() - 0.5) * 80,
-      alive: true, landed: false,
-      targeted: false,
+      targeted: false, extra: {},
     });
   }
 
+  // Apply manga-only modifiers
+  if (special === 'inferno') {
+    const target = specs.find(s => s.targeted) || specs[0];
+    if (target) {
+      target.extra.inferno = true;
+      target.speed *= 1.5;
+    }
+  } else if (special === 'echo') {
+    for (const s of specs) s.extra.echoArmed = true;
+  }
+
+  for (const s of specs) spawnArrowFromArcher(s.ai, s);
   sfx.arrow();
 }
 
@@ -242,6 +313,42 @@ function update(dt) {
   if (ensureMangaFx()) {
     dt = mangaSlomo.scaleDt(dt);
     mangaPunch.update(dt);
+  }
+
+  // Manga ability cooldowns + archer state decay (cheap to always run)
+  bashT  = Math.max(0, bashT  - dt);
+  bashCD = Math.max(0, bashCD - dt);
+  bowT   = Math.max(0, bowT   - dt);
+  bowCD  = Math.max(0, bowCD  - dt);
+  if (archers) for (const a of archers) {
+    a.downT    = Math.max(0, a.downT    - dt);
+    a.glow     = Math.max(0, a.glow     - dt);
+    a.releaseT = Math.max(0, a.releaseT - dt);
+    a.drawT    = Math.max(0, a.drawT    - dt);
+  }
+  for (let i = mangaTexts.length - 1; i >= 0; i--) {
+    mangaTexts[i].t -= dt;
+    if (mangaTexts[i].t <= 0) mangaTexts.splice(i, 1);
+  }
+
+  // Player's return arrows — rise toward target archer; on contact, disable.
+  for (let i = returnArrows.length - 1; i >= 0; i--) {
+    const ra = returnArrows[i];
+    ra.y += ra.vy * dt; // vy is negative
+    ra.trailT += dt;
+    const target = archers[ra.targetIdx];
+    if (target && ra.y <= 28 + 8) {
+      target.downT = 4;
+      target.releaseT = 0;
+      target.drawT = 0;
+      // Manga particle burst at archer
+      burst(target.x, 28, '#fff5c0', 14, 1.0);
+      burst(target.x, 28, '#ffd54a', 8, 0.6);
+      mangaTexts.push({ text: 'HIT!', x: target.x, y: 14, t: 0.4, color: '#fff5c0', size: 26 });
+      returnArrows.splice(i, 1);
+    } else if (ra.y < -40) {
+      returnArrows.splice(i, 1);
+    }
   }
 
   playTime += dt;
@@ -264,17 +371,68 @@ function update(dt) {
   // Wave spawn
   const interval = Math.max(WAVE_MIN, WAVE_BASE - playTime * RAMP);
   waveTimer -= dt;
-  if (waveTimer <= 0) { spawnWave(); waveTimer = interval + (Math.random() - 0.5) * 0.25; }
+
+  // Manga-only: pre-roll a special when the wave is ~0.45s away so we can telegraph it.
+  if (Engine.manga && pendingSpecial === null && waveTimer < 0.45 && waveTimer > 0) {
+    const r = Math.random();
+    if      (r < 0.18) pendingSpecial = 'volley';
+    else if (r < 0.30) pendingSpecial = 'inferno';
+    else if (r < 0.42) pendingSpecial = 'echo';
+    if (pendingSpecial) {
+      const labels = { volley: 'VOLLEY!', inferno: 'INFERNO!', echo: 'ECHO!' };
+      const colors = { volley: '#ffaa44', inferno: '#ff2200', echo: '#aaccff' };
+      mangaTexts.push({
+        text: labels[pendingSpecial], x: Engine.W / 2, y: Engine.H * 0.30,
+        t: 0.6, color: colors[pendingSpecial], size: 50,
+      });
+      // Glow archers as a second telegraph
+      for (const a of archers) a.glow = Math.max(a.glow, 0.45);
+    }
+  }
+
+  if (waveTimer <= 0) {
+    spawnWave(pendingSpecial);
+    pendingSpecial = null;
+    waveTimer = interval + (Math.random() - 0.5) * 0.25;
+  }
 
   // Arrows
   for (const a of arrows) {
     if (!a.alive) continue;
     a.y += a.speed * dt;
 
+    // Echo special: original arrow spawns a phantom mid-flight that lands later.
+    if (a.echoArmed && !a.echoSpawned && a.y > PLAYER_Y * 0.5) {
+      a.echoSpawned = true;
+      arrows.push({
+        x: a.x + (Math.random() - 0.5) * 28,
+        y: -10,
+        speed: a.speed,
+        alive: true, landed: false,
+        targeted: a.targeted,
+        originIdx: a.originIdx,
+        isEcho: true,
+      });
+    }
+
     if (a.y >= PLAYER_Y && !a.landed) {
       a.landed = true;
       const dist = Math.abs(a.x - player.x);
-      if (dist < PLAYER_R + 12 && player.iframes <= 0) {
+      const inHitbox = dist < PLAYER_R + 12;
+
+      // SHIELD BASH: deflect any in-hitbox arrow during bash window.
+      if (inHitbox && bashT > 0 && Engine.manga) {
+        // Down the originating archer for 5s.
+        if (a.originIdx != null && archers[a.originIdx]) archers[a.originIdx].downT = 5;
+        burst(a.x, PLAYER_Y, '#fff5c0', 16, 1.0);
+        burst(a.x, PLAYER_Y - 10, '#ffd54a', 8, 0.7);
+        addFloater(a.x, PLAYER_Y - 60, 'PARRY!', '#fff5c0');
+        Engine.shake(5);
+        setTimeout(() => { a.alive = false; }, 50);
+        continue;
+      }
+
+      if (inHitbox && player.iframes <= 0) {
         // Hit
         player.hp--;
         player.iframes = 0.85;
@@ -381,27 +539,100 @@ function drawGround() {
 }
 
 function drawArchers() {
-  for (const ax of archerXs) {
+  const mangaOn = Engine.manga && window.Manga;
+  const ink = mangaOn && Manga.effects && Manga.effects.inkStroke
+    ? (w) => Manga.effects.inkStroke(ctx, w)
+    : (w) => { ctx.strokeStyle = '#0a0a0a'; ctx.lineWidth = w; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; };
+
+  for (const a of archers) {
+    const ax = a.x;
     const bob = Math.sin(time * 2.2 + ax * 0.01) * 1.5;
+    const downed = a.downT > 0;
+
     ctx.save();
     ctx.translate(ax, 28 + bob);
-    ctx.globalAlpha = 0.65;
 
+    // Telegraph glow (manga only, before special waves)
+    if (a.glow > 0 && mangaOn) {
+      ctx.save();
+      ctx.shadowColor = '#ff3322'; ctx.shadowBlur = 22 * a.glow;
+      ctx.strokeStyle = `rgba(255, 60, 30, ${Math.min(1, a.glow * 1.6)})`;
+      ctx.lineWidth = 2.4;
+      ctx.beginPath(); ctx.arc(0, 0, 16, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
+
+    ctx.globalAlpha = downed ? 0.25 : 0.92;
+
+    // Helmet base — small ellipse with bold ink
+    ctx.fillStyle = '#3a2a14';
+    ctx.beginPath(); ctx.arc(0, -10, 6.5, 0, Math.PI * 2); ctx.fill();
+    ink(2);
+    ctx.stroke();
+    // Helmet top accent
     ctx.fillStyle = '#1a1408';
-    ctx.beginPath(); ctx.ellipse(0, 0, 7, 9, 0, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.arc(0, -10, 5, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(0, -10, 6.5, Math.PI, 0); ctx.fill();
+    ink(1.4);
+    ctx.beginPath(); ctx.moveTo(-6, -9); ctx.lineTo(6, -9); ctx.stroke();
 
-    ctx.strokeStyle = '#6a5020';
-    ctx.lineWidth = 2; ctx.lineCap = 'round';
+    // Shoulders / pauldron — wider ellipse below helmet
+    ctx.fillStyle = '#1a1408';
+    ctx.beginPath(); ctx.ellipse(0, 0, 9, 7, 0, 0, Math.PI * 2); ctx.fill();
+    ink(2);
+    ctx.stroke();
+    // Pauldron rim (manga ink line)
+    ink(1);
+    ctx.beginPath(); ctx.ellipse(0, -1.5, 8, 5, 0, 0, Math.PI * 2); ctx.stroke();
+
+    // Bow — curved arc with grip
+    const drawBack = a.releaseT > 0 ? 0 : (a.drawT > 0 ? Math.min(8, (1 - a.drawT / 0.35) * 8) : 4);
+    ctx.strokeStyle = '#6a4818'; ctx.lineWidth = 2.6; ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.arc(0, 6, 10, -Math.PI*0.6, Math.PI*0.6);
+    ctx.arc(0, 8, 12, -Math.PI * 0.55, Math.PI * 0.55);
+    ctx.stroke();
+    // Grip
+    ctx.fillStyle = '#3a2810';
+    ctx.fillRect(-1.5, 6, 3, 4);
+    ink(1);
+    ctx.strokeRect(-1.5, 6, 3, 4);
+
+    // Bowstring — tightens/pulls back during draw, snaps on release
+    ctx.strokeStyle = a.drawT > 0 ? 'rgba(245,220,140,0.95)' : 'rgba(190,170,100,0.7)';
+    ctx.lineWidth = a.drawT > 0 ? 1.6 : 1.1;
+    ctx.beginPath();
+    ctx.moveTo(-10, 8);
+    ctx.lineTo(0, 16 + drawBack);
+    ctx.lineTo(10, 8);
     ctx.stroke();
 
-    ctx.strokeStyle = 'rgba(200,180,100,0.7)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(-9, 0); ctx.lineTo(0, 14); ctx.lineTo(9, 0);
-    ctx.stroke();
+    // Arrow nocked while drawing
+    if (a.drawT > 0) {
+      ctx.strokeStyle = '#fff5c0'; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(0, 16 + drawBack); ctx.lineTo(0, -10 + drawBack); ctx.stroke();
+      ctx.fillStyle = '#fff5c0';
+      ctx.beginPath();
+      ctx.moveTo(0, -12 + drawBack); ctx.lineTo(-2, -8 + drawBack); ctx.lineTo(2, -8 + drawBack);
+      ctx.closePath(); ctx.fill();
+    }
+
+    // Release flash — speed lines from the bow when an arrow just left
+    if (a.releaseT > 0 && mangaOn && Manga.effects && Manga.effects.speedLines) {
+      const k = a.releaseT / 0.18;
+      Manga.effects.speedLines(ctx, 0, 12, {
+        count: 7, innerR: 8, outerR: 22 + (1 - k) * 12,
+        color: `rgba(255, 245, 180, ${k})`, width: 1.8, jitter: 0.4,
+      });
+    }
+
+    // Downed: X over the archer
+    if (downed) {
+      ctx.globalAlpha = 0.9;
+      ctx.strokeStyle = '#0a0a0a'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(-10, -10); ctx.lineTo(10, 10);
+      ctx.moveTo(10, -10); ctx.lineTo(-10, 10);
+      ctx.stroke();
+    }
 
     ctx.restore();
   }
@@ -444,12 +675,14 @@ function drawArrow(a) {
 
   ctx.save();
   ctx.translate(a.x, a.y);
+  if (a.isEcho) ctx.globalAlpha = 0.55; // phantom echo arrow is ghostly
 
-  // Glow halo — targeted arrows glow red, decoys glow orange
-  if (progress > 0.45) {
-    const g = (progress - 0.45) / 0.55;
-    ctx.shadowColor = a.targeted ? '#ff2200' : '#ff8800';
-    ctx.shadowBlur  = (a.targeted ? 24 : 16) * g * scale;
+  // Glow halo — targeted arrows glow red, decoys glow orange.
+  // Inferno arrows burn brighter and pulse.
+  if (progress > 0.45 || a.inferno) {
+    const g = a.inferno ? 1 : (progress - 0.45) / 0.55;
+    ctx.shadowColor = a.inferno ? '#ff1100' : (a.targeted ? '#ff2200' : '#ff8800');
+    ctx.shadowBlur  = (a.inferno ? 36 : (a.targeted ? 24 : 16)) * g * scale;
   }
 
   ctx.strokeStyle = '#8a6030';
@@ -502,10 +735,57 @@ function drawPlayerRouted() {
       hp: player.hp,
       hitFlash: player.hitFlash,
       iframes: player.iframes,
+      bashing: bashT > 0,
+      drawingBow: bowT > 0,
     });
   } else {
     drawPlayer();
   }
+}
+
+// Player's counter-shot arrow rising upward — bright gold + ink trail line.
+function drawReturnArrow(ra) {
+  const trailLen = Math.min(120, ra.trailT * 700);
+  ctx.save();
+  // Speed-line trail
+  ctx.strokeStyle = 'rgba(255,235,140,0.55)';
+  ctx.lineWidth = 1.4; ctx.lineCap = 'round';
+  for (let i = 0; i < 4; i++) {
+    ctx.beginPath();
+    const off = (i - 1.5) * 3;
+    ctx.moveTo(ra.x + off, ra.y + trailLen);
+    ctx.lineTo(ra.x + off, ra.y + 6);
+    ctx.stroke();
+  }
+  // Arrow shaft
+  ctx.shadowColor = '#fff5c0'; ctx.shadowBlur = 14;
+  ctx.strokeStyle = '#fff5c0'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(ra.x, ra.y + 12);
+  ctx.lineTo(ra.x, ra.y - 10);
+  ctx.stroke();
+  // Hot core
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(ra.x, ra.y + 10); ctx.lineTo(ra.x, ra.y - 8);
+  ctx.stroke();
+  // Arrowhead
+  ctx.fillStyle = '#fff5c0';
+  ctx.beginPath();
+  ctx.moveTo(ra.x, ra.y - 12); ctx.lineTo(ra.x - 3, ra.y - 6); ctx.lineTo(ra.x + 3, ra.y - 6);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#0a0a0a'; ctx.lineWidth = 1.5;
+  ctx.stroke();
+  // Fletching
+  ctx.fillStyle = '#cc2222';
+  ctx.beginPath();
+  ctx.moveTo(ra.x, ra.y + 8); ctx.lineTo(ra.x - 3, ra.y + 14); ctx.lineTo(ra.x, ra.y + 11);
+  ctx.closePath(); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(ra.x, ra.y + 8); ctx.lineTo(ra.x + 3, ra.y + 14); ctx.lineTo(ra.x, ra.y + 11);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
 }
 
 function drawPlayer() {
@@ -626,6 +906,8 @@ function drawWorldFrame() {
   drawArchers();
   drawLandingShadows();
   for (const a of arrows) drawArrow(a);
+  // Player's counter-shot arrows rising at the archers (manga ability).
+  for (const ra of returnArrows) drawReturnArrow(ra);
   drawPlayerRouted();
 
   // Speed lines radiating from Achilles when an arrow lands near (manga only)
@@ -677,12 +959,54 @@ function drawWorldFrame() {
   ctx.fillStyle = 'rgba(255,200,100,0.38)';
   ctx.fillText('← → dodge the arrows', W/2, 54);
 
+  // Manga ability HUD — bottom-right ring icons for X (shield) + Z (bow).
   if (Engine.manga) {
-    ctx.font = 'bold 11px monospace';
-    ctx.fillStyle = 'rgba(255,68,170,0.6)';
-    ctx.textAlign = 'right';
-    ctx.fillText('MANGA', W - 22, 80);
+    drawAbilityIcon(W - 88, H - 76, 'X', '🛡', bashCD, BASH_CD, bashT > 0);
+    drawAbilityIcon(W - 32, H - 76, 'Z', '🏹', bowCD,  BOW_CD,  bowT  > 0);
   }
+
+  // Manga texts — telegraph warnings and ability shouts (sfxText style)
+  if (mangaTexts.length && window.Manga && Manga.effects && Manga.effects.sfxText) {
+    for (const mt of mangaTexts) {
+      const a = Math.min(1, mt.t * 1.6);
+      Manga.effects.sfxText(ctx, mt.x, mt.y, mt.text, {
+        size: mt.size || 38, color: mt.color || '#ffd54a',
+        outline: '#0a0a0a', tilt: -8, alpha: a,
+      });
+    }
+  }
+}
+
+// Bottom-right manga ability indicator: ring with cooldown sweep + key label.
+function drawAbilityIcon(cx, cy, key, glyph, cd, cdMax, active) {
+  const r = 22;
+  ctx.save();
+  // Ring background
+  ctx.fillStyle = active ? 'rgba(255,235,140,0.55)' : 'rgba(0,0,0,0.55)';
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#0a0a0a'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+  // Cooldown sweep (top-clockwise, fills as ready)
+  const ready = 1 - Math.min(1, cd / cdMax);
+  if (cd > 0) {
+    ctx.strokeStyle = 'rgba(212,175,55,0.85)'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(cx, cy, r - 3, -Math.PI / 2, -Math.PI / 2 + ready * Math.PI * 2); ctx.stroke();
+  } else {
+    ctx.shadowColor = '#fff5c0'; ctx.shadowBlur = 10;
+    ctx.strokeStyle = '#fff5c0'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(cx, cy, r - 3, 0, Math.PI * 2); ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+  // Key letter — manga-styled
+  ctx.font = '900 18px "Impact", "Arial Black", sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.lineWidth = 4; ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#0a0a0a';
+  ctx.strokeText(key, cx, cy);
+  ctx.fillStyle = cd > 0 ? '#888' : '#fff5c0';
+  ctx.fillText(key, cx, cy);
+  ctx.textBaseline = 'alphabetic';
+  ctx.restore();
 }
 
 // ── Title screen ──────────────────────────────────────────────────────────
@@ -942,6 +1266,38 @@ Engine.boot({
     }
     if (e.state === 'dead' && (ev.key === 'h' || ev.key === 'H')) {
       window.location.href = 'mount-olympus.html';
+    }
+
+    // ── Manga abilities (only during play, manga mode) ───────────────
+    if (e.state === 'playing' && e.manga) {
+      if ((ev.key === 'x' || ev.key === 'X') && bashCD <= 0) {
+        bashT = BASH_DUR; bashCD = BASH_CD;
+        const polish = Manga.characters.achilles.polish.onBash;
+        if (e.audio._ctx && Manga.fx.sfxLayered) Manga.fx.sfxLayered(e.audio._ctx, polish.audioLayers);
+        mangaTexts.push({ text: polish.sfxText, x: player.x, y: PLAYER_Y - 90, t: 0.45, color: '#fff5c0', size: 36 });
+      }
+      if ((ev.key === 'z' || ev.key === 'Z') && bowCD <= 0) {
+        // Counter shot: fires one arrow at the nearest alive archer.
+        let bestIdx = -1, bestDist = Infinity;
+        for (let i = 0; i < archers.length; i++) {
+          if (archers[i].downT > 0) continue;
+          const d = Math.abs(archers[i].x - player.x);
+          if (d < bestDist) { bestDist = d; bestIdx = i; }
+        }
+        if (bestIdx >= 0) {
+          bowT = BOW_POSE; bowCD = BOW_CD;
+          returnArrows.push({
+            fromX: player.x, fromY: PLAYER_Y - 30,
+            x: player.x, y: PLAYER_Y - 30,
+            vy: -(PLAYER_Y - 30 - 28) / 0.32, // reach archer in ~0.32s
+            targetIdx: bestIdx,
+            trailT: 0,
+          });
+          const polish = Manga.characters.achilles.polish.onBow;
+          if (e.audio._ctx && Manga.fx.sfxLayered) Manga.fx.sfxLayered(e.audio._ctx, polish.audioLayers);
+          mangaTexts.push({ text: 'SHOT!', x: player.x, y: PLAYER_Y - 110, t: 0.4, color: '#ffd54a', size: 30 });
+        }
+      }
     }
   },
 });

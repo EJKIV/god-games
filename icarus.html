@@ -2540,12 +2540,13 @@ let submittedThisRun = false;
 
 async function submitToHall(score) {
   const name = localStorage.getItem(NAME_KEY) || 'NAMELESS MORTAL';
+  const game = Engine.manga ? 'icarus-manga' : 'icarus';
   hallStatus = 'pending';
   try {
     const res = await fetch('/api/leaderboard', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ game: 'icarus', name, score }),
+      body: JSON.stringify({ game, name, score }),
     });
     if (!res.ok) { hallStatus = 'fail'; return; }
     const json = await res.json();

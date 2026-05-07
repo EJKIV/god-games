@@ -93,12 +93,13 @@ function fmtRunTime(ms) {
 
 async function submitToHall(timeMs) {
   const name = localStorage.getItem(NAME_KEY) || 'NAMELESS MORTAL';
+  const game = Engine.manga ? 'orion-manga' : 'orion';
   hallStatus = 'pending';
   try {
     const res = await fetch('/api/leaderboard', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ game: 'orion', name, score: timeMs }),
+      body: JSON.stringify({ game, name, score: timeMs }),
     });
     if (!res.ok) { hallStatus = 'fail'; return; }
     const json = await res.json();
