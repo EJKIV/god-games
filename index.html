@@ -105,6 +105,7 @@ canvas { display:block; cursor:default; }
     <br><button id="nameSave">ENTER OLYMPUS</button>
   </div>
 </div>
+<script src="manga/manga.js"></script>
 <script>
 const canvas = document.getElementById('c');
 const ctx    = canvas.getContext('2d');
@@ -225,6 +226,9 @@ function update(dt) {
 
   // manga toast lifetime
   if (_mangaToast.t > 0) _mangaToast.t = Math.max(0, _mangaToast.t - dt);
+
+  // Zeus cinematic
+  if (_zeusStrike) _zeusStrike.update(dt);
 
   // motes drift upward, reset at bottom
   for (const m of motes) {
@@ -468,7 +472,47 @@ function drawPortal(p) {
 }
 
 function drawPlayer() {
+  // Manga path uses the portable hub-walker character module.
+  if (localStorage.getItem(MANGA_KEY) === '1' && window.Manga && Manga.characters && Manga.characters.hubWalker) {
+    Manga.characters.hubWalker.draw(ctx, {
+      x: player.x, y: player.y, facing: player.facing,
+      walkPhase: player.walkPhase, vx: player.vx,
+      form: player.isToad ? 'toad' : 'human',
+    });
+    return;
+  }
   if (player.isToad) drawToad(); else drawHuman();
+}
+
+// Manga-styled action button: bold ink-outlined gold pill above the portal.
+// Mirrors the hit-region (`p._btn`) the existing canvas click listener reads.
+function drawMangaPortalButton(p) {
+  const near = player.nearPortal === p;
+  if (!near) { p._btn = null; return; }
+  const isMtn = p.kind === 'mountain';
+  const archH = isMtn ? 220 : 150;
+  const label = isMtn ? 'ASCEND' : 'PLAY';
+  const bw = isMtn ? 130 : 110;
+  const bh = 40;
+  const bx = p.x;
+  const by = GY - archH - 60;
+  const pulse = 0.86 + Math.sin(time * 5) * 0.14;
+  ctx.save();
+  // Pill background — flat gold with thick ink outline
+  ctx.fillStyle = `rgba(255, 215, 90, ${0.95 * pulse})`;
+  ctx.beginPath(); ctx.roundRect(bx - bw / 2, by - bh / 2, bw, bh, 8); ctx.fill();
+  ctx.strokeStyle = '#0a0a0a'; ctx.lineWidth = 4; ctx.lineJoin = 'round';
+  ctx.beginPath(); ctx.roundRect(bx - bw / 2, by - bh / 2, bw, bh, 8); ctx.stroke();
+  // Label — bold sans-serif with thicker ink outline
+  ctx.font = '900 19px "Impact", "Arial Black", sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.lineWidth = 4; ctx.strokeStyle = '#0a0a0a';
+  ctx.strokeText(label, bx, by);
+  ctx.fillStyle = '#1a0f00';
+  ctx.fillText(label, bx, by);
+  ctx.textBaseline = 'alphabetic';
+  ctx.restore();
+  p._btn = { x: bx - bw / 2, y: by - bh / 2, w: bw, h: bh };
 }
 
 function drawHuman() {
@@ -709,11 +753,26 @@ function render() {
     leftX * 0.25, leftX * 0.65,
     rightX + (W - rightX) * 0.30, rightX + (W - rightX) * 0.72,
   ];
-  for (const cx of colXs) drawColumn(cx);
+  const _mangaActive = localStorage.getItem(MANGA_KEY) === '1' && window.Manga && Manga.scenes;
+  for (const cx of colXs) {
+    if (_mangaActive) Manga.scenes.column(ctx, { x: cx, gy: GY });
+    else drawColumn(cx);
+  }
 
-  // Portals
+  // Portals — manga path draws the arch/mountain art via Manga.scenes; the action
+  // button (proximity prompt + p._btn hit region) is drawn by the helper below
+  // since both paths need it.
   for (const p of portals) {
-    if (p.kind === 'mountain') drawMountain(p); else drawPortal(p);
+    if (_mangaActive) {
+      if (p.kind === 'mountain') {
+        Manga.scenes.olympus(ctx, { x: p.x, gy: GY, name: p.name, sub: p.sub, near: player.nearPortal === p, time });
+      } else {
+        Manga.scenes.archPortal(ctx, { x: p.x, gy: GY, name: p.name, sub: p.sub, hue: p.hue, near: player.nearPortal === p, time });
+      }
+      drawMangaPortalButton(p);
+    } else {
+      if (p.kind === 'mountain') drawMountain(p); else drawPortal(p);
+    }
   }
 
   // On touch devices, expand each portal's tap region to cover the whole arch
@@ -729,6 +788,25 @@ function render() {
 
   // Player
   drawPlayer();
+
+  // Manga atmosphere — bold overlay so the screen unmistakably reads "manga".
+  // Drawn on top of the world but below the Zeus cinematic + title + toast.
+  const _mangaOn = localStorage.getItem(MANGA_KEY) === '1';
+  if (_mangaOn && window.Manga && Manga.effects) {
+    // The manga *art* (scenes + characters) carries most of the look now;
+    // these overlays only add atmosphere, not replace it.
+    Manga.effects.halftone(ctx, 0, 0,  W, GY,    { density: 7, dotSize: 1.7, alpha: 0.10, color: '#000' });
+    Manga.effects.halftone(ctx, 0, GY, W, H - GY, { density: 6, dotSize: 1.7, alpha: 0.18, color: '#000' });
+    Manga.effects.scanlines(ctx, 0, 0, W, H, { spacing: 3, alpha: 0.09 });
+    Manga.effects.vignette(ctx, W, H, { strength: 0.6 });
+  }
+  // Apply a CSS filter to the canvas itself so the whole frame reads desaturated +
+  // high-contrast — the difference is immediate and obvious.
+  const desiredFilter = _mangaOn ? 'contrast(1.18) saturate(0.78)' : 'none';
+  if (canvas.style.filter !== desiredFilter) canvas.style.filter = desiredFilter;
+
+  // Zeus cinematic — drawn on top of atmosphere so the bolt + flash dominate.
+  if (_zeusStrike) _zeusStrike.render(ctx, W, H);
 
   // Title
   ctx.save();
@@ -755,15 +833,6 @@ function render() {
     ctx.restore();
   }
 
-  // Subtle indicator when manga mode is on
-  if (localStorage.getItem(MANGA_KEY) === '1') {
-    ctx.save();
-    ctx.font = 'bold 11px monospace';
-    ctx.fillStyle = 'rgba(255,68,170,0.55)';
-    ctx.textAlign = 'right';
-    ctx.fillText('MANGA', W - 22, 90);
-    ctx.restore();
-  }
 }
 
 // ── Loop ──────────────────────────────────────────────────────────────────
@@ -787,13 +856,39 @@ function inputBusy(e) {
   return tag === 'INPUT' || tag === 'TEXTAREA';
 }
 
-// Secret manga mode — type 'shankle' to enable, 'normal' to disable.
+// Secret manga mode — type 'shankle' to summon Zeus, 'normal' to revert.
 // Persisted in localStorage so the toggle survives navigation to game pages,
 // where engine.js reads it at boot and exposes Engine.manga.
 const MANGA_KEY = 'godgames_manga';
 let _typedBuf = '';
 let _mangaToast = { text: '', t: 0, color: '#D4AF37' };
 function showMangaToast(text, color) { _mangaToast = { text, t: 2.6, color: color || '#D4AF37' }; }
+
+// Active Zeus strike instance (only present during the cinematic).
+let _zeusStrike = null;
+function startZeusStrike() {
+  if (!window.Manga || !Manga.fx || !Manga.fx.zeusStrike) {
+    // Library not loaded yet — fall back to instant flip so the toggle still works.
+    localStorage.setItem(MANGA_KEY, '1');
+    showMangaToast('MANGA MODE ACTIVATED', '#ff44aa');
+    return;
+  }
+  ensureAudio();
+  const olympus = portals.find(p => p.kind === 'mountain') || portals[0];
+  _zeusStrike = Manga.fx.zeusStrike({
+    fromX: olympus.x,
+    fromY: GY - 220,            // above the mountain peak
+    toX:   player.x,
+    toY:   player.y - 30,
+    audioCtx,
+    onImpact: () => {
+      localStorage.setItem(MANGA_KEY, '1');
+      showMangaToast('THE GODS HAVE SPOKEN', '#ffeeaa');
+    },
+    onDone: () => { _zeusStrike = null; },
+  });
+  _zeusStrike.start();
+}
 
 window.addEventListener('keydown', e => {
   if (inputBusy(e)) return;
@@ -806,9 +901,11 @@ window.addEventListener('keydown', e => {
   if (e.key && e.key.length === 1) {
     _typedBuf = (_typedBuf + e.key.toLowerCase()).slice(-12);
     if (_typedBuf.endsWith('shankle')) {
-      localStorage.setItem(MANGA_KEY, '1');
-      showMangaToast('MANGA MODE ACTIVATED', '#ff44aa');
       _typedBuf = '';
+      // Already manga or already striking — ignore re-trigger.
+      if (localStorage.getItem(MANGA_KEY) !== '1' && !_zeusStrike) {
+        startZeusStrike();
+      }
     } else if (_typedBuf.endsWith('normal')) {
       localStorage.removeItem(MANGA_KEY);
       showMangaToast('NORMAL MODE', '#D4AF37');

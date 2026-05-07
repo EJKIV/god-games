@@ -15,12 +15,13 @@
 
   // Initialize namespace early so feature-detection (`window.Manga?.fx`) works
   // even before sub-files have parsed.
-  window.Manga = window.Manga || {
-    effects: {},
-    characters: {},
-    fx: {},
-    INK: '#0a0a0a',
-  };
+  window.Manga = window.Manga || {};
+  const M = window.Manga;
+  M.effects    = M.effects    || {};
+  M.characters = M.characters || {};
+  M.fx         = M.fx         || {};
+  M.scenes     = M.scenes     || {};
+  M.INK        = M.INK        || '#0a0a0a';
 
   const MANGA_FILES = [
     // Effects (stateless render helpers)
@@ -36,8 +37,12 @@
     'fx/camerapunch.js',
     'fx/slomo.js',
     'fx/sfxlayered.js',
+    'fx/zeusstrike.js',
+    // Scenes (environmental drawables — portals, mountains, columns)
+    'scenes/hub.js',
     // Characters
     'characters/achilles.js',
+    'characters/hub-walker.js',
   ];
 
   // Resolve files relative to this script's URL so the library works no matter
