@@ -8,25 +8,53 @@ A series of Greek-mythology HTML5-canvas mini-games sharing one engine, one hub,
 
 ## Stack Snapshot
 
-- **HTML5 Canvas + vanilla JS** — no build step, no bundler, no dependencies. Open any `.html` directly with `file://` or any static server.
+- **HTML5 Canvas + vanilla JS** — no build step, no bundler. Open any `.html` directly with `file://` (after one-time `npm install`) or any static server.
+- **Engine + manga library now come from `@tns/game-engine`** — a sibling package in `~/projects/tellandshow/game-studio/packages/game-engine/`. god-games is a *consumer* of this package, dogfooding it the same way kids' games do. See "Where the engine comes from" below.
 - **Vercel Functions** (Node 18+ ESM) for `/api/*` — `package.json` declares `"type": "module"`.
 - **Upstash Redis** (sorted sets) for leaderboards. Env vars `KV_REST_API_URL` / `KV_REST_API_TOKEN`.
 - **Hosting**: `god-games.vercel.app` (production alias on `ejkivs-projects/god-games`).
 - **Git remote**: `https://github.com/EJKIV/god-games.git`.
 
+## Where the engine comes from
+
+god-games used to ship `engine.js` and `manga/` directly at the repo root. As of 2026-05-07, both moved into `@tns/game-engine` (Tell and Show's published game engine package), and god-games consumes them via npm.
+
+```
+god-games/
+├── package.json              # depends on "@tns/game-engine": "file:../tellandshow/game-studio/packages/game-engine"
+└── node_modules/
+    └── @tns/
+        └── game-engine -> ../../../tellandshow/game-studio/packages/game-engine   (symlinked by `npm install`)
+```
+
+HTML files load engine + manga via:
+```html
+<script src="node_modules/@tns/game-engine/core/engine.js"></script>
+<script src="node_modules/@tns/game-engine/manga/manga.js"></script>
+```
+
+**Dev requirement**: clone `tellandshow` next to `god-games` (sibling directories under `~/projects/`), then run `npm install` in god-games. The `file:` link makes the symlink; `npm install` is a one-time download, not a build step.
+
+**To make engine changes**: edit `tellandshow/game-studio/packages/game-engine/core/engine.js` (or `manga/...`). The symlink means your edits are immediately visible to god-games on next page reload — no rebuild, no republish.
+
+When `@tns/game-engine` is published to npm, swap the `file:` dep for a real semver. Same workflow for kids' games — they'll just `tns update`.
+
 ## Core Architecture Patterns
 
-- **Each game = one HTML file** that loads `engine.js` + (optionally) `manga/manga.js` and calls `Engine.boot({...})` with its theme + lifecycle hooks (`onInit`, `onUpdate`, `onRender`, `onTitleRender`, `onGameOverRender`, `onKeyDown`, `onTryStart`).
+- **Each game = one HTML file** that loads `node_modules/@tns/game-engine/core/engine.js` + (optionally) `node_modules/@tns/game-engine/manga/manga.js` and calls `Engine.boot({...})` with its theme + lifecycle hooks (`onInit`, `onUpdate`, `onRender`, `onTitleRender`, `onGameOverRender`, `onKeyDown`, `onTryStart`).
 - **Adding a new game**: copy `template.html` → `<name>.html`, fill in mechanics, register in `api/leaderboard.js` `GAMES` table, add a portal entry to `index.html` `portals` array, add a tablet to `mount-olympus.html` (matches existing pattern).
-- **Hub & Mt. Olympus do *not* use `engine.js`** — they have their own loops. They duplicate the landscape-overlay CSS inline (single source not feasible without a build step).
+- **Hub & Mt. Olympus do *not* use the engine** — they have their own loops. They duplicate the landscape-overlay CSS inline (single source not feasible without a build step).
 - **Mobile contract**: each game declares `mobile: { movement, actions }` in its `Engine.boot` config. Engine renders translucent on-screen buttons that synthesize keydown/keyup, so existing keyboard branches run unchanged. Modes per action: `'tap'` (default), `'hold'` (sustained), `'doubleTap'` (fires two presses ~80ms apart for double-tap detectors).
-- **Manga easter egg**: typing `'shankle'` on the hub sets `localStorage.godgames_manga='1'`; `'normal'` clears. `engine.js` reads at boot and exposes `Engine.manga`. Game render branches on it. `manga/` library is portable — see `manga/CLAUDE.md`.
+- **Manga easter egg**: typing `'shankle'` on the hub sets `localStorage.godgames_manga='1'`; `'normal'` clears. The engine reads at boot and exposes `Engine.manga`. Game render branches on it. The manga library is portable — see `node_modules/@tns/game-engine/manga/CLAUDE.md`.
 - **Score submission contract**: each game submits to `/api/leaderboard` POST `{ game, name, score }` on death/victory. Game must be registered in `api/leaderboard.js` `GAMES` table — see `api/CLAUDE.md`.
 - **Name modal pattern**: every interactive page reads `localStorage.godgames_playerName`; if missing, opens a modal that sanitizes (`replace(/[\x00-\x1f\x7f]/g, '')`, clamp to 20) and stores. Sanitization regex must match `api/leaderboard.js` exactly.
 
 ## Commands
 
 ```bash
+# One-time setup (after cloning fresh, with tellandshow as a sibling clone)
+npm install
+
 # Local smoke test (any plain HTTP server works since there's no build)
 python3 -m http.server 8765
 # then open http://localhost:8765
@@ -47,26 +75,23 @@ git push origin master
 ```
 god-games/
 ├── CLAUDE.md  AGENTS.md        Router (this file). AGENTS.md is a symlink.
-├── engine.js                   Shared lifecycle: rAF loop, input, audio ctx, particles, shake,
-│                               camera, screens, HUD primitives, mobile/touch shell, manga flag.
 ├── index.html                  Hub world (4 portals + name modal + manga easter-egg detector).
 ├── achilles.html               Arrow Gauntlet — overhead dodge. First manga-mode integration.
 ├── icarus.html                 Flight game — sun/sea wing damage, tutorial.
 ├── orion.html                  Boss fight — scorpion vs spear/stab/dodge.
 ├── mount-olympus.html          Leaderboard display (Icarus / Orion / Achilles tablets).
 ├── template.html               Skeleton: copy this when adding a new game.
-├── package.json                {"type":"module"} so api/*.js is ESM.
-├── manga/                      Portable canvas art library — manga style + cinematic polish.
-└── api/                        Vercel serverless functions (leaderboard).
+├── package.json                Declares dep on @tns/game-engine (file: link to sibling tellandshow clone).
+├── api/                        Vercel serverless functions (leaderboard) — stays here for Vercel routing.
+└── node_modules/@tns/game-engine/   Symlinked engine + manga (managed by npm; populated by `npm install`).
 ```
 
-| If touching                                | Read first             |
-|--------------------------------------------|------------------------|
-| `manga/*` (visual library, polish, characters) | `manga/AGENTS.md`     |
-| `api/*` (leaderboard backend)              | `api/AGENTS.md`        |
-| `index.html` (hub) or `mount-olympus.html` | (root only)            |
-| Game files (`*.html` using `engine.js`)    | (root only)            |
-| `engine.js`                                | (root only)            |
+| If touching                                       | Read first                                            |
+|---------------------------------------------------|-------------------------------------------------------|
+| Engine internals or manga visuals                 | `~/projects/tellandshow/game-studio/packages/game-engine/CLAUDE.md` |
+| `api/*` (leaderboard backend)                     | `api/AGENTS.md`                                       |
+| `index.html` (hub) or `mount-olympus.html`        | (root only)                                           |
+| Game files (`*.html` using the engine)            | (root only)                                           |
 
 ## Rules / Coding Standards
 
@@ -100,7 +125,8 @@ god-games/
 - Adding a build step (bundler, TypeScript, sprite preprocessing). The "open any HTML in any browser" promise is load-bearing for sharing.
 - Changing `Engine.state` machine (`'title' | 'playing' | 'dead' | 'victory'`) or its transition rules. Every game branches on these.
 - Schema changes to `api/leaderboard.js` member format — see `api/CLAUDE.md`.
-- Adding a new top-level dependency (e.g. an analytics SDK). Currently zero deps.
+- Adding a new top-level dependency. Currently the only runtime dep is `@tns/game-engine` (and dev-only Vercel CLI / vitest if added later).
+- Editing engine internals from inside god-games. Engine source-of-truth is `~/projects/tellandshow/game-studio/packages/game-engine/`. Edits land there, propagate here through the symlink.
 
 ### Never
 - Commit `.env*` files or env-var contents.
@@ -119,6 +145,7 @@ god-games/
 
 | Date       | Change                                                                                     | Author |
 |------------|--------------------------------------------------------------------------------------------|--------|
+| 2026-05-07 | Engine + manga moved out to `@tns/game-engine` (consumed via npm link). god-games is now a *consumer* of the published engine. | jim    |
 | 2026-05-07 | Restructured to cascading router pattern. Subtree files under `manga/` and `api/`. Polish library v2. | jim    |
 | 2026-05-06 | Added mobile/landscape support and manga easter egg (`shankle`/`normal`).                  | jim    |
 | 2026-05-06 | Added Achilles. Wired Mount Olympus leaderboard. Engine extraction. Name modal.            | jim    |

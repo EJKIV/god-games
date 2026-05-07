@@ -1,5 +1,9 @@
 {
   "name": "god-games",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "description": "Reference-implementation consumer of @tns/game-engine. The achilles/icarus/orion games are the worked-example gallery surfaced inside Tell and Show's Game Studio.",
+  "dependencies": {
+    "@tns/game-engine": "file:../tellandshow/game-studio/packages/game-engine"
+  }
 }

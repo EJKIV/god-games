@@ -1,3 +1,5 @@
 .vercel
 .claude/*
 !.claude/skills/
+node_modules/
+
