@@ -223,6 +223,9 @@ function update(dt) {
     window.location.href = player.nearPortal.href;
   }
 
+  // manga toast lifetime
+  if (_mangaToast.t > 0) _mangaToast.t = Math.max(0, _mangaToast.t - dt);
+
   // motes drift upward, reset at bottom
   for (const m of motes) {
     m.y  += m.vy * dt;
@@ -738,6 +741,29 @@ function render() {
   ctx.fillStyle='rgba(255,255,200,0.45)';
   ctx.fillText('Walk to a portal  ·  Arrow keys to move', W/2, 70);
   ctx.restore();
+
+  // Manga easter-egg toast (centered, fades out)
+  if (_mangaToast.t > 0) {
+    const a = Math.min(1, _mangaToast.t / 0.6);
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 26px monospace';
+    ctx.fillStyle = _mangaToast.color;
+    ctx.shadowColor = _mangaToast.color; ctx.shadowBlur = 18;
+    ctx.fillText(_mangaToast.text, W/2, H * 0.42);
+    ctx.restore();
+  }
+
+  // Subtle indicator when manga mode is on
+  if (localStorage.getItem(MANGA_KEY) === '1') {
+    ctx.save();
+    ctx.font = 'bold 11px monospace';
+    ctx.fillStyle = 'rgba(255,68,170,0.55)';
+    ctx.textAlign = 'right';
+    ctx.fillText('MANGA', W - 22, 90);
+    ctx.restore();
+  }
 }
 
 // ── Loop ──────────────────────────────────────────────────────────────────
@@ -761,12 +787,33 @@ function inputBusy(e) {
   return tag === 'INPUT' || tag === 'TEXTAREA';
 }
 
+// Secret manga mode — type 'shankle' to enable, 'normal' to disable.
+// Persisted in localStorage so the toggle survives navigation to game pages,
+// where engine.js reads it at boot and exposes Engine.manga.
+const MANGA_KEY = 'godgames_manga';
+let _typedBuf = '';
+let _mangaToast = { text: '', t: 0, color: '#D4AF37' };
+function showMangaToast(text, color) { _mangaToast = { text, t: 2.6, color: color || '#D4AF37' }; }
+
 window.addEventListener('keydown', e => {
   if (inputBusy(e)) return;
   // easter egg: 't' toggles toad form (ignore key-repeat so a held key only flips once)
   if (!e.repeat && (e.key === 't' || e.key === 'T')) {
     player.isToad = !player.isToad;
     ensureAudio(); // unlock audio on user gesture so the first ribbit plays
+  }
+  // Sequence-detector: append printable chars, keep last 12.
+  if (e.key && e.key.length === 1) {
+    _typedBuf = (_typedBuf + e.key.toLowerCase()).slice(-12);
+    if (_typedBuf.endsWith('shankle')) {
+      localStorage.setItem(MANGA_KEY, '1');
+      showMangaToast('MANGA MODE ACTIVATED', '#ff44aa');
+      _typedBuf = '';
+    } else if (_typedBuf.endsWith('normal')) {
+      localStorage.removeItem(MANGA_KEY);
+      showMangaToast('NORMAL MODE', '#D4AF37');
+      _typedBuf = '';
+    }
   }
   keys[e.key]=true;
   e.preventDefault();

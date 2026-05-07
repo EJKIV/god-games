@@ -58,6 +58,7 @@ canvas { display:block; }
   </div>
 </div>
 <script src="engine.js"></script>
+<script src="manga/manga.js"></script>
 <script>
 // ── Constants ─────────────────────────────────────────────────────────────
 const PLAYER_R = 26;
@@ -103,6 +104,20 @@ let playTime = 0;
 let score = 0, xp = 0;
 let time = 0;     // mirror of Engine.time
 let canvas, ctx;
+
+// ── Manga polish (lazy — sub-files in manga/ load async) ──────────────────
+let mangaPunch = null;       // Manga.fx.cameraPunch instance
+let mangaSlomo = null;       // Manga.fx.slomo instance
+let mangaDeathT = 0;         // Engine.time when death entered (drives panel-split)
+function mangaReady() {
+  return Engine.manga && window.Manga && Manga.fx && Manga.fx.cameraPunch && Manga.fx.slomo && Manga.characters && Manga.characters.achilles;
+}
+function ensureMangaFx() {
+  if (!mangaReady()) return false;
+  if (!mangaPunch) mangaPunch = Manga.fx.cameraPunch();
+  if (!mangaSlomo) mangaSlomo = Manga.fx.slomo();
+  return true;
+}
 
 // ── Hall of Mount Olympus ─────────────────────────────────────────────────
 const NAME_KEY = 'godgames_playerName';
@@ -179,6 +194,7 @@ function resetGame() {
   arrows = []; particles = []; floaters = [];
   score = 0; xp = 0; playTime = 0; waveTimer = 1.8;
   hallRank = null; hallStatus = null; submittedThisRun = false;
+  mangaDeathT = 0;
 }
 
 // ── Wave builder ──────────────────────────────────────────────────────────
@@ -222,6 +238,12 @@ function spawnWave() {
 
 // ── Update ────────────────────────────────────────────────────────────────
 function update(dt) {
+  // Manga polish: scale dt by slo-mo, decay camera-punch.
+  if (ensureMangaFx()) {
+    dt = mangaSlomo.scaleDt(dt);
+    mangaPunch.update(dt);
+  }
+
   playTime += dt;
 
   // Player movement
@@ -261,6 +283,16 @@ function update(dt) {
         burst(player.x, PLAYER_Y - 10, '#ff3300', 18);
         burst(a.x, PLAYER_Y, '#cc2200', 8, 0.6);
         addFloater(player.x, PLAYER_Y - 80, '-1 HP', '#ff4422');
+        // Manga polish: camera punch + micro-stutter
+        if (ensureMangaFx()) {
+          const p = Manga.characters.achilles.polish.onHit;
+          mangaPunch.trigger(
+            (Math.random() - 0.5) * p.punchIntensity * 2,
+            (Math.random() - 0.5) * p.punchIntensity * 2,
+            p.punchDuration,
+          );
+          mangaSlomo.trigger(p.slomoFactor, p.slomoDuration);
+        }
         if (player.hp <= 0) {
           burst(player.x, PLAYER_Y - 10, '#ff6600', 32);
           burst(player.x, PLAYER_Y - 10, '#ffcc00', 20);
@@ -268,6 +300,13 @@ function update(dt) {
           if (!submittedThisRun) {
             submittedThisRun = true;
             submitToHall(Math.floor(score));
+          }
+          // Manga polish: long slo-mo + layered death SFX + start panel-split
+          if (ensureMangaFx()) {
+            const p = Manga.characters.achilles.polish.onDeath;
+            mangaSlomo.trigger(p.slomoFactor, p.slomoDuration);
+            if (Engine.audio._ctx) Manga.fx.sfxLayered(Engine.audio._ctx, p.audioLayers);
+            mangaDeathT = Engine.time;
           }
           Engine.setState('dead');
         }
@@ -449,6 +488,26 @@ function drawArrow(a) {
   ctx.restore();
 }
 
+// Routes the player draw between the inline overhead-warrior and the
+// portable manga library. The library is loaded by manga/manga.js and
+// exposed as window.Manga; we no-op gracefully if it hasn't loaded yet.
+function drawPlayerRouted() {
+  if (Engine.manga && window.Manga && window.Manga.characters && window.Manga.characters.achilles) {
+    window.Manga.characters.achilles.draw(ctx, {
+      x: player.x,
+      y: PLAYER_Y,
+      facing: player.facing,
+      walkPhase: player.walkPhase,
+      vx: player.vx,
+      hp: player.hp,
+      hitFlash: player.hitFlash,
+      iframes: player.iframes,
+    });
+  } else {
+    drawPlayer();
+  }
+}
+
 function drawPlayer() {
   const x = player.x, y = PLAYER_Y;
   const walk = player.vx !== 0 ? Math.sin(player.walkPhase) : 0;
@@ -560,10 +619,23 @@ function drawWorldFrame() {
   const W = Engine.W, H = Engine.H;
 
   drawGround();
+  // Manga atmospheric halftone over the battlefield
+  if (Engine.manga && window.Manga) {
+    window.Manga.effects.halftone(ctx, 0, 0, W, H, { density: 8, dotSize: 1.6, alpha: 0.12, color: '#000' });
+  }
   drawArchers();
   drawLandingShadows();
   for (const a of arrows) drawArrow(a);
-  drawPlayer();
+  drawPlayerRouted();
+
+  // Speed lines radiating from Achilles when an arrow lands near (manga only)
+  if (Engine.manga && window.Manga && player && player.hitFlash > 0) {
+    const f = player.hitFlash / 0.35;
+    window.Manga.effects.speedLines(ctx, player.x, PLAYER_Y - 8, {
+      count: 16, innerR: 38, outerR: 90 + f * 60,
+      color: '#ff2200', width: 3, jitter: 0.5,
+    });
+  }
 
   for (const p of particles) {
     ctx.globalAlpha = Math.max(0, p.alpha);
@@ -572,12 +644,24 @@ function drawWorldFrame() {
   }
   ctx.globalAlpha = 1;
 
+  // Floaters — manga-style SFX text in manga mode, regular in normal mode.
   for (const f of floaters) {
-    ctx.globalAlpha = f.alpha;
-    ctx.textAlign = 'center'; ctx.font = 'bold 16px monospace';
-    ctx.fillStyle = f.color; ctx.shadowColor = f.color; ctx.shadowBlur = 8;
-    ctx.fillText(f.text, f.x, f.y);
-    ctx.shadowBlur = 0;
+    if (Engine.manga && window.Manga) {
+      const isHit = f.text.startsWith('-');
+      window.Manga.effects.sfxText(ctx, f.x, f.y, isHit ? 'BAM!' : f.text, {
+        size: isHit ? 44 : 28,
+        color: isHit ? '#ffd54a' : f.color,
+        outline: '#0a0a0a',
+        tilt: isHit ? -10 : -4,
+        alpha: f.alpha,
+      });
+    } else {
+      ctx.globalAlpha = f.alpha;
+      ctx.textAlign = 'center'; ctx.font = 'bold 16px monospace';
+      ctx.fillStyle = f.color; ctx.shadowColor = f.color; ctx.shadowBlur = 8;
+      ctx.fillText(f.text, f.x, f.y);
+      ctx.shadowBlur = 0;
+    }
   }
   ctx.globalAlpha = 1;
 
@@ -592,6 +676,13 @@ function drawWorldFrame() {
   ctx.font = '11px monospace';
   ctx.fillStyle = 'rgba(255,200,100,0.38)';
   ctx.fillText('← → dodge the arrows', W/2, 54);
+
+  if (Engine.manga) {
+    ctx.font = 'bold 11px monospace';
+    ctx.fillStyle = 'rgba(255,68,170,0.6)';
+    ctx.textAlign = 'right';
+    ctx.fillText('MANGA', W - 22, 80);
+  }
 }
 
 // ── Title screen ──────────────────────────────────────────────────────────
@@ -644,8 +735,42 @@ function renderDead() {
   const W = Engine.W, H = Engine.H;
   drawWorldFrame();
 
+  // Manga panel-split (first ~0.8s) + FALLEN! stamp held until the dead panel
+  // begins fading in. Both timings driven by the character's polish profile.
+  if (mangaReady() && mangaDeathT > 0) {
+    const p = Manga.characters.achilles.polish.onDeath;
+    const elapsed = Engine.time - mangaDeathT;
+    const splitT = Math.min(1, elapsed / 0.8);
+    if (p.panelSplit && splitT < 1) {
+      Manga.effects.panelSplit(ctx, W, H, splitT);
+    }
+    // FALLEN! fades in over 0.2s, holds, then fades out so it's gone by `deadScreenDelay`.
+    if (elapsed < p.deadScreenDelay) {
+      const fadeIn  = elapsed < 0.2 ? elapsed / 0.2 : 1;
+      const fadeOut = Math.max(0, 1 - (elapsed - 0.2) / Math.max(0.01, p.deadScreenDelay - 0.2));
+      const a = Math.min(fadeIn, fadeOut);
+      Manga.effects.sfxText(ctx, W/2, H * 0.42, p.sfxText, {
+        size: 110, color: '#ff5544', outline: '#0a0a0a',
+        outlineWidth: 14, tilt: -6, alpha: a,
+      });
+    }
+  }
+
+  // In manga mode, hold the dead/score panel back so the cinematic plays out.
+  // `panelAlpha` ramps 0 → 1 over `deadScreenFadeIn` once `deadScreenDelay` is up.
+  let panelAlpha = 1;
+  if (mangaReady() && mangaDeathT > 0) {
+    const polish = Manga.characters.achilles.polish.onDeath;
+    const elapsed = Engine.time - mangaDeathT;
+    if (elapsed < polish.deadScreenDelay) return;
+    panelAlpha = Math.min(1, (elapsed - polish.deadScreenDelay) / Math.max(0.01, polish.deadScreenFadeIn));
+  }
+
   const pw = Math.min(480, W*0.82), ph = 320;
   const px = (W-pw)/2, py = (H-ph)/2;
+
+  ctx.save();
+  ctx.globalAlpha = panelAlpha;
 
   ctx.fillStyle = 'rgba(0,0,0,0.66)'; ctx.fillRect(0, 0, W, H);
 
@@ -684,7 +809,6 @@ function renderDead() {
 
   const pulse = 0.85 + Math.sin(time * 4) * 0.15;
   const bw = 160, bh = 44, bx = W/2 - bw/2, by = py + ph - 66;
-  ctx.save();
   ctx.shadowColor = Engine.GOLD; ctx.shadowBlur = 18 * pulse;
   ctx.fillStyle = `rgba(212,175,55,${0.9*pulse})`;
   ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 8); ctx.fill();
@@ -692,10 +816,11 @@ function renderDead() {
   ctx.fillStyle = '#1a0f00'; ctx.font = 'bold 18px monospace';
   ctx.textBaseline = 'middle'; ctx.fillText('PLAY AGAIN', W/2, by + bh/2);
   ctx.textBaseline = 'alphabetic';
-  ctx.restore();
 
   ctx.fillStyle = 'rgba(180,170,140,0.45)'; ctx.font = '11px monospace';
   ctx.fillText('ESC — hub world    ·    H — Mount Olympus', W/2, py + ph + 24);
+
+  ctx.restore();
 }
 
 // ── Name gate ─────────────────────────────────────────────────────────────
@@ -760,7 +885,34 @@ Engine.boot({
 
   onRender() {
     time = Engine.time;
+    // Manga polish: camera-punch translate around the world.
+    const punching = mangaReady() && mangaPunch && (mangaPunch.x !== 0 || mangaPunch.y !== 0);
+    if (punching) { ctx.save(); ctx.translate(mangaPunch.x, mangaPunch.y); }
     drawWorldFrame();
+    if (punching) { ctx.restore(); }
+
+    // Manga polish overlays — drawn in screen space, ON TOP of HUD.
+    if (mangaReady()) {
+      const W = Engine.W, H = Engine.H;
+      const p = Manga.characters.achilles.polish;
+      // Atmospheric vignette + faint scanlines
+      Manga.effects.vignette(ctx, W, H, { strength: p.atmosphere.vignetteStrength });
+      Manga.effects.scanlines(ctx, W, H, { spacing: 3, alpha: p.atmosphere.scanlineAlpha });
+      // Hit feedback: full-screen red flash + big "BAM!" near player
+      if (player && player.hitFlash > 0) {
+        const f = player.hitFlash / 0.35;
+        Manga.effects.flash(ctx, W, H, p.onHit.flashColor, f * 0.6);
+        const px = player.x + (mangaPunch ? mangaPunch.x : 0);
+        const py = PLAYER_Y - 70 + (mangaPunch ? mangaPunch.y : 0);
+        Manga.effects.sfxText(ctx, px, py, p.onHit.sfxText, {
+          size: 60, color: '#ffd54a', tilt: -10, alpha: f,
+        });
+        Manga.effects.speedLines(ctx, px, py + 40, {
+          count: 18, innerR: 42, outerR: 110 + f * 60,
+          color: '#ff2200', width: 3, jitter: 0.5,
+        });
+      }
+    }
   },
 
   onTitleRender() {

@@ -16,6 +16,9 @@ const Engine = {
   camera: { x: 0, y: 0 },
   config: null,
   theme: null,
+  // Easter-egg manga mode — toggled from the hub by typing 'shankle' / 'normal'.
+  // Read here at boot; games branch their render with `if (Engine.manga) ...`.
+  manga: typeof localStorage !== 'undefined' && localStorage.getItem('godgames_manga') === '1',
 
   // Internal
   _shakeAmt: 0,
