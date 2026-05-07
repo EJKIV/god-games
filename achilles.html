@@ -63,9 +63,9 @@ canvas { display:block; }
 const PLAYER_R = 26;
 const HP_MAX   = 5;
 const SPD      = 400;
-const WAVE_BASE= 2.0;
-const WAVE_MIN = 0.50;
-const RAMP     = 0.055;
+const WAVE_BASE= 1.4;
+const WAVE_MIN = 0.32;
+const RAMP     = 0.07;
 const TILE     = 72;
 
 // Layout — recomputed on boot + resize (depend on Engine.W/H).
@@ -183,20 +183,40 @@ function resetGame() {
 
 // ── Wave builder ──────────────────────────────────────────────────────────
 function spawnWave() {
-  const diff  = Math.min(1, playTime / 70);
-  const cols  = 5 + Math.floor(diff * 5);
-  const colW  = (LANE_R - LANE_L) / cols;
-  const speed = 230 + diff * 360 + Math.random() * 80;
+  const diff  = Math.min(1, playTime / 60);
+  const speed = 380 + diff * 460 + Math.random() * 100;
 
-  const numSafe = Math.max(1, Math.round(3 - diff * 1.6));
-  const safe = new Set();
-  while (safe.size < numSafe) safe.add(Math.floor(Math.random() * cols));
-
-  for (let c = 0; c < cols; c++) {
-    if (safe.has(c)) continue;
-    const x = LANE_L + (c + 0.5) * colW + (Math.random() - 0.5) * colW * 0.35;
-    arrows.push({ x, y: -(20 + Math.random() * 35), speed, alive: true, landed: false });
+  // Targeted arrows — aimed at Achilles' current position with a tight spread
+  const numTargeted = 2 + Math.floor(diff * 3) + Math.floor(Math.random() * 2); // 2→7
+  const spread = Math.max(18, 45 - diff * 28); // cluster tightens over time
+  for (let i = 0; i < numTargeted; i++) {
+    const x = player.x + (Math.random() - 0.5) * spread * 2;
+    arrows.push({
+      x: Math.max(LANE_L + 10, Math.min(LANE_R - 10, x)),
+      y: -(15 + Math.random() * 40),
+      speed: speed + (Math.random() - 0.5) * 80,
+      alive: true, landed: false,
+      targeted: true,
+    });
   }
+
+  // Decoy arrows — random positions away from Achilles (to fake him out)
+  const numDecoy = 1 + Math.floor(Math.random() * (1 + Math.floor(diff * 1.5)));
+  for (let i = 0; i < numDecoy; i++) {
+    let x, attempts = 0;
+    do {
+      x = LANE_L + Math.random() * (LANE_R - LANE_L);
+      attempts++;
+    } while (Math.abs(x - player.x) < 90 && attempts < 20);
+    arrows.push({
+      x,
+      y: -(15 + Math.random() * 40),
+      speed: speed + (Math.random() - 0.5) * 80,
+      alive: true, landed: false,
+      targeted: false,
+    });
+  }
+
   sfx.arrow();
 }
 
@@ -358,17 +378,17 @@ function drawLandingShadows() {
     const rh = 3 + progress * 8;
     ctx.save();
     ctx.globalAlpha = alpha;
-    ctx.fillStyle = '#000';
+    ctx.fillStyle = a.targeted ? 'rgba(180,0,0,0.7)' : 'rgba(0,0,0,0.7)';
     ctx.beginPath();
     ctx.ellipse(a.x, PLAYER_Y, rw, rh, 0, 0, Math.PI * 2);
     ctx.fill();
-    if (progress > 0.70) {
-      const warn = (progress - 0.70) / 0.30;
-      ctx.globalAlpha = warn * 0.45;
-      ctx.strokeStyle = '#ff4400';
-      ctx.lineWidth = 2;
+    if (progress > 0.65) {
+      const warn = (progress - 0.65) / 0.35;
+      ctx.globalAlpha = warn * (a.targeted ? 0.65 : 0.35);
+      ctx.strokeStyle = a.targeted ? '#ff2200' : '#ff7700';
+      ctx.lineWidth = a.targeted ? 2.5 : 1.5;
       ctx.beginPath();
-      ctx.ellipse(a.x, PLAYER_Y, rw * 1.6, rh * 1.6, 0, 0, Math.PI * 2);
+      ctx.ellipse(a.x, PLAYER_Y, rw * 1.7, rh * 1.7, 0, 0, Math.PI * 2);
       ctx.stroke();
     }
     ctx.restore();
@@ -386,10 +406,11 @@ function drawArrow(a) {
   ctx.save();
   ctx.translate(a.x, a.y);
 
-  if (progress > 0.55) {
-    const g = (progress - 0.55) / 0.45;
-    ctx.shadowColor = '#ff8800';
-    ctx.shadowBlur  = 18 * g * scale;
+  // Glow halo — targeted arrows glow red, decoys glow orange
+  if (progress > 0.45) {
+    const g = (progress - 0.45) / 0.55;
+    ctx.shadowColor = a.targeted ? '#ff2200' : '#ff8800';
+    ctx.shadowBlur  = (a.targeted ? 24 : 16) * g * scale;
   }
 
   ctx.strokeStyle = '#8a6030';
