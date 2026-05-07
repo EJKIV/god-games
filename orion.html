@@ -72,7 +72,7 @@ const BOSS_HP   = 200;
 const MAX_SPEARS= 7;
 
 // ── Game state ────────────────────────────────────────────────────────────
-let orion, boss, spears, venoms;
+let orion, boss, spears, venoms, phantoms;
 let lastShiftTime = -1, lastSpaceTime = -1, lastXTime = -1;
 let ctx; // bound from Engine.ctx after boot
 
@@ -82,6 +82,7 @@ let constellationCD = 0;          // cooldown
 const CONSTELLATION_CHARGE = 0.35;
 const CONSTELLATION_CD     = 8;
 let mangaTexts = [];              // { text, x, y, t, color, size }
+// Scorpio Dodge — perfect-timing window grants Engine.setTimeScale slo-mo (manga only).
 
 // ── Hall of Mount Olympus (leaderboard) ──────────────────────────────────
 const NAME_KEY = 'godgames_playerName';
@@ -203,7 +204,7 @@ function initGame() {
     stingFired:false,
     chargeVx:0,
   };
-  spears=[]; venoms=[];
+  spears=[]; venoms=[]; phantoms=[];
   runStartMs = performance.now();
   runEndMs = null;
   submittedThisRun = false;
@@ -345,7 +346,19 @@ function updateBoss(dt) {
       boss.x += (orion.x<boss.x?-1:1)*90*dt;
       if(boss.attackTimer<=0){
         const r = Math.random();
-        if(dist<220 && r<0.22){ boss.state='claw'; boss.stateTimer=0; sfx.roar(); }
+        // Manga-only Phantom Claw — spectral projectile, gated to mid/low HP.
+        if (Engine.manga && boss.hp < BOSS_HP * 0.55 && r > 0.88) {
+          boss.state='phantom'; boss.stateTimer=0; boss.phantomSpawned=false; sfx.roar();
+          if (!boss._phantomAnnounced) {
+            boss._phantomAnnounced = true;
+            mangaTexts.push({
+              text: 'THE SCORPION SUMMONS A PHANTOM CLAW…',
+              x: Engine.W / 2, y: Engine.H * 0.22,
+              t: 1.2, color: '#cc88ff', size: 30,
+            });
+          }
+        }
+        else if(dist<220 && r<0.22){ boss.state='claw'; boss.stateTimer=0; sfx.roar(); }
         else if(r<0.60){ boss.state='sting'; boss.stateTimer=0; boss.stingFired=false; boss.stingTargetX=orion.x; boss.stingTargetY=orion.y-18; sfx.roar(); }
         else { boss.state='charge'; boss.stateTimer=0; boss.chargeVx=(orion.x<boss.x?-1:1)*(280+boss.phase*50); sfx.roar(); }
         boss.attackTimer = (1.8-boss.phase*0.3)+Math.random()*1.0;
@@ -431,6 +444,31 @@ function updateBoss(dt) {
       if(boss.stateTimer>1.2){ boss.state='idle'; boss.attackTimer=1.2; }
       break;
 
+    case 'phantom':
+      boss.stateTimer += dt;
+      // Wind-up: claw flares open, manga halftone glow on the head
+      if (boss.stateTimer < 0.45) {
+        boss.clawOpen += (1 - boss.clawOpen) * dt * 12;
+      } else if (!boss.phantomSpawned) {
+        boss.phantomSpawned = true;
+        const sx = boss.x + boss.facing * 70, sy = boss.y - 38;
+        const dx = orion.x - sx, dy = (orion.y - 30) - sy;
+        const d = Math.sqrt(dx * dx + dy * dy) || 1;
+        phantoms.push({
+          x: sx, y: sy,
+          vx: dx / d * 380, vy: dy / d * 380,
+          angle: Math.atan2(dy, dx),
+          life: 1.2, maxLife: 1.2, t: 0,
+        });
+        sfx.roar();
+        mangaTexts.push({ text: 'PHANTOM CLAW!', x: Engine.W / 2, y: Engine.H * 0.30, t: 0.9, color: '#cc88ff', size: 56 });
+        Engine.shake(5);
+      } else {
+        boss.clawOpen += (0 - boss.clawOpen) * dt * 8;
+      }
+      if (boss.stateTimer > 1.3) boss.state = 'idle';
+      break;
+
     case 'hurt':
       boss.stateTimer += dt;
       if(boss.stateTimer>0.32) boss.state='idle';
@@ -497,6 +535,58 @@ function updateVenoms(dt){
       }
     }
     if(v.x<-80 || v.x>W+80 || v.y>GY+60) venoms.splice(i,1);
+  }
+}
+
+// Perfect-dodge window: a boss attack must be imminent or in flight when the
+// player initiates the dodge. The window is generous because the boss telegraph
+// is short; the reward is a free counter, extra invincibility, and slo-mo.
+function isPerfectDodge(){
+  if(boss.state === 'claw'    && boss.stateTimer < 0.6 && Math.abs(orion.x - boss.x) < 220) return true;
+  if(boss.state === 'charge'  && Math.abs(orion.x - boss.x) < 240) return true;
+  if(boss.state === 'sting'   && boss.stingFired && boss.stateTimer < 1.1) return true;
+  if(boss.state === 'phantom' && boss.phantomSpawned) return true;
+  for(const v of venoms)   if(Math.abs(v.x-orion.x)<150 && Math.abs(v.y-orion.y)<130) return true;
+  for(const p of phantoms) if(Math.abs(p.x-orion.x)<160 && Math.abs(p.y-orion.y)<150) return true;
+  return false;
+}
+
+function triggerPerfectDodge(){
+  // Faster dodge + extended invincibility window
+  orion.dodgeVx *= 1.30;
+  orion.invincible = Math.max(orion.invincible, 0.6);
+  // Free counter — small chunk of damage to the boss. Kept low (5) so a
+  // queued stab on the same frame can't compound into a 30-dmg burst.
+  if(boss.state !== 'dead'){
+    boss.hp = Math.max(0, boss.hp - 5);
+    boss.hurtFlash = 0.18; Engine.shake(7);
+    burst(orion.x, orion.y - 38, '#aaddff', 14, 170);
+    if(boss.state !== 'hurt' && boss.state !== 'claw' && boss.state !== 'sting' && boss.state !== 'phantom'){
+      boss.state = 'hurt'; boss.stateTimer = 0;
+    }
+  }
+  // Manga flourish: "JUST!" text + slo-mo. Plain mode still gets the gameplay
+  // bonus + the audio chime so the timing feedback is universal.
+  Engine.audio.tone(660, 'sine', 0.15, 0.25, 880);
+  if(Engine.manga){
+    mangaTexts.push({ text: 'JUST!', x: orion.x, y: orion.y - 80, t: 0.55, color: '#aaddff', size: 64 });
+    Engine.setTimeScale(0.35, 0.45);
+  }
+}
+
+function updatePhantoms(dt){
+  const W = Engine.W, GY = groundY();
+  for(let i=phantoms.length-1; i>=0; i--){
+    const p = phantoms[i];
+    p.x += p.vx*dt; p.y += p.vy*dt;
+    p.t  += dt;
+    p.life -= dt;
+    if(orion.invincible<=0 && Math.abs(p.x-orion.x)<32 && Math.abs(p.y-(orion.y-28))<42){
+      hurtOrion();
+      burst(p.x, p.y, '#cc88ff', 12, 130);
+      phantoms.splice(i,1); continue;
+    }
+    if(p.life<=0 || p.x<-100 || p.x>W+100 || p.y>GY+80 || p.y<-100) phantoms.splice(i,1);
   }
 }
 
@@ -1009,7 +1099,9 @@ Engine.boot({
   onInit() { initGame(); },
 
   onUpdate(dt) {
-    // Manga ability cooldowns + telegraph text decay
+    // dt is already scaled by Engine.timeScale, so any active slo-mo dip from
+    // a perfect dodge slows cooldowns + manga telegraph decay alongside the
+    // boss/projectile updates.
     constellationT  = Math.max(0, constellationT  - dt);
     constellationCD = Math.max(0, constellationCD - dt);
     for (let i = mangaTexts.length - 1; i >= 0; i--) {
@@ -1021,6 +1113,7 @@ Engine.boot({
     updateBoss(dt);
     updateSpears(dt);
     updateVenoms(dt);
+    updatePhantoms(dt);
 
     // Submit on the first frame of victory. runEndMs was snapshotted the
     // moment the scorpion's HP hit 0 (see updateBoss).
@@ -1117,6 +1210,42 @@ Engine.boot({
       ctx.shadowBlur=0;
       ctx.restore();
     }
+    // Phantom Claw — spectral pincer streaking toward Orion (manga only)
+    for(const p of phantoms){
+      const a = Math.min(1, p.life / 0.4);
+      const wobble = Math.sin(p.t * 18) * 0.05;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.angle + wobble);
+      ctx.globalAlpha = 0.85 * a;
+      ctx.shadowColor = '#cc88ff'; ctx.shadowBlur = 22;
+      // Filled silhouette of a curling claw — bold ink with violet glow
+      ctx.fillStyle = '#16081e';
+      ctx.beginPath();
+      ctx.moveTo(-4, -16);
+      ctx.bezierCurveTo(18, -22, 36, -10, 42, 0);
+      ctx.bezierCurveTo(36, 10, 18, 22, -4, 16);
+      ctx.bezierCurveTo(-2, 8, -2, -8, -4, -16);
+      ctx.closePath(); ctx.fill();
+      ctx.lineWidth = 3.5; ctx.lineJoin = 'round';
+      ctx.strokeStyle = '#cc88ff';
+      ctx.stroke();
+      // Inner pincer cleft + claw tips
+      ctx.strokeStyle = '#7a3ad4'; ctx.lineWidth = 2.4; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(8, 0); ctx.lineTo(34, 0); ctx.stroke();
+      ctx.strokeStyle = '#0a0a0a'; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.moveTo(40, -3); ctx.lineTo(48, -1); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(40,  3); ctx.lineTo(48,  1); ctx.stroke();
+      // Manga speed lines streaming behind it
+      if (window.Manga && Manga.effects && Manga.effects.speedLines) {
+        Manga.effects.speedLines(ctx, -10, 0, {
+          count: 5, innerR: 16, outerR: 38,
+          color: 'rgba(204,136,255,0.7)', width: 1.6, jitter: 0.6,
+        });
+      }
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
     drawScorpion();
     drawOrion();
     renderHUD();   // inside shake transform — matches original orion feel
@@ -1181,6 +1310,7 @@ Engine.boot({
         burst(orion.x, orion.y-30, '#aaddff', 6, 80);
         Engine.audio.tone(320,'sine',0.15,0.18,280);
         lastShiftTime = -1;
+        if (isPerfectDodge()) triggerPerfectDodge();
       } else {
         lastShiftTime = now;
       }
