@@ -222,6 +222,25 @@ function resetGame() {
   pendingSpecial = null;
   mangaTexts.length = 0;
   if (archers) for (const a of archers) { a.downT = 0; a.glow = 0; a.releaseT = 0; a.drawT = 0; }
+  patroclusKills.length = 0;
+}
+
+// Mystery: Shade of Patroclus — three counter-shot kills that all fall within
+// 2 seconds of each other earn the 'lay' syllable. Ring buffer of timestamps,
+// trimmed every call so it stays bounded.
+const PATROCLUS_WINDOW_MS = 2000;
+const PATROCLUS_GOAL = 3;
+const patroclusKills = [];
+function recordPatroclusKill() {
+  const now = performance.now();
+  patroclusKills.push(now);
+  while (patroclusKills.length && now - patroclusKills[0] > PATROCLUS_WINDOW_MS) {
+    patroclusKills.shift();
+  }
+  if (patroclusKills.length >= PATROCLUS_GOAL) {
+    patroclusKills.length = 0;
+    if (window.GodGames && GodGames.Mysteries) GodGames.Mysteries.earnHint('lay');
+  }
 }
 
 // ── Wave builder ──────────────────────────────────────────────────────────
@@ -352,10 +371,12 @@ function update(dt) {
       burst(target.x, 28, '#fff5c0', 14, 1.0);
       burst(target.x, 28, '#ffd54a', 8, 0.6);
       mangaTexts.push({ text: 'HIT!', x: target.x, y: 14, t: 0.4, color: '#fff5c0', size: 26 });
-      // Mystery: archer downs count toward the 'lay' syllable + a 25-kill goal.
+      // Mystery: Shade of Patroclus — archer downs that all land within 2
+      // seconds of each other earn 'lay'. Kept as a small ring buffer of
+      // recent kill timestamps; trim everything older than 2s, then check
+      // length >= 3.
       if (window.GodGames && GodGames.Mysteries) {
-        const kills = GodGames.Mysteries.tally('achilles_kills');
-        if (kills >= 25) GodGames.Mysteries.earnHint('lay');
+        recordPatroclusKill();
       }
       returnArrows.splice(i, 1);
     } else if (ra.y < -40) {

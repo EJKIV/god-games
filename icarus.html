@@ -114,6 +114,12 @@ let TUTORIAL_LINES = BASE_TUTORIAL;
 let state = 'title';
 let tutorialStep = 0;
 let time = 0;     // mirror of Engine.time, synced before each frame's logic
+// Mystery: The Sun's Embrace — accumulate seconds spent flying into the sun
+// at maximum heat (heat ≥ 0.95). The myth of Icarus, mirrored: the player
+// must choose to fly directly into the sun, accepting the burn. Reset
+// when the player drops below the heat threshold.
+let sunEmbraceT = 0;
+const SUN_EMBRACE_GOAL = 3;     // seconds at max heat → 'shan'
 
 let player, feathers, fires, clouds, floaters, islands, splashes, drips, shakeAmt, shakeDecay;
 
@@ -363,6 +369,7 @@ function initGame() {
   // Manga abilities
   diveT = 0; diveCD = 0;
   rescueUsed = false; rescueT = 0; rescueReach = 0;
+  sunEmbraceT = 0;
   mangaTexts.length = 0;
   hallStatus = null;
 }
@@ -656,6 +663,19 @@ function updatePlaying(dt) {
   player.wetDmg  = Math.max(player.orcaDmg, player.wetDmg  - sunDmg * 0.625); // sun heals only 25% as effectively; orca damage permanent
   const prev = player.wingHealth;
   recomputeWingHealth();
+
+  // Mystery: The Sun's Embrace — Icarus mirrors his own myth by flying
+  // *directly into* the sun. Sustain heat ≥ 0.95 for SUN_EMBRACE_GOAL seconds
+  // and the syllable is whispered as the wax begins to fail.
+  if (heat >= 0.95) {
+    sunEmbraceT += dt;
+    if (sunEmbraceT >= SUN_EMBRACE_GOAL) {
+      sunEmbraceT = 0;
+      if (window.GodGames && GodGames.Mysteries) GodGames.Mysteries.earnHint('shan');
+    }
+  } else {
+    sunEmbraceT = 0;
+  }
 
   // feather threshold events — only when near the sun
   if (heat > 0) {
@@ -3087,8 +3107,6 @@ Engine.boot({
     if (e.state === 'title' && state === 'tutorial' && (ev.key === 'ArrowUp' || ev.key === ' ')) {
       tutorialStep++;
       if (tutorialStep >= TUTORIAL_LINES.length) {
-        // Mystery hint: completing Daedalus's tutorial earns the first manga syllable.
-        if (window.GodGames && GodGames.Mysteries) GodGames.Mysteries.earnHint('shan');
         e.audio.init();
         initAudio();
         e.setState('playing');

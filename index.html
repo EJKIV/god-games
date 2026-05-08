@@ -366,23 +366,44 @@ function renderStorm() {
 }
 
 // ── Mysteries panel ──────────────────────────────────────────────────────
-// Right-edge parchment listing each mystery with progress + reveal text.
-// Polls localStorage every render so progress made in another tab/game
-// shows up the next time the player returns to the hub.
+// Cryptic right-edge scroll. Locked mysteries show only a poetic flavor
+// line — never instructions. Once a hint is earned, the panel reveals only
+// the syllable/fragment as a poetic line; the player has to figure out what
+// to do with the fragments. Solved mysteries get a single celebration line.
 function renderMysteriesPanel() {
   const Mysteries = window.GodGames && window.GodGames.Mysteries;
   if (!Mysteries) return;
-  const panelW = 240;
-  const x0 = W - panelW - 20;
+  const panelW = 230;
+  const x0 = W - panelW - 18;
   const y0 = 80;
   const items = Mysteries.list;
-  const lineH = 18;
-  // Compute panel height roughly by counting lines we'll render.
-  let totalLines = 1; // header
-  for (const m of items) totalLines += 3 + (m.hints ? m.hints.length : 0);
-  const panelH = Math.min(H - 100, totalLines * lineH + 30);
 
   ctx.save();
+  ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+
+  // First pass: measure required height (no draws — just font metrics).
+  const lh = 13;
+  let neededH = 30;
+  for (const m of items) {
+    neededH += 18; // title row
+    for (const h of m.hints || []) {
+      if (Mysteries.hasHint(h.id)) {
+        ctx.font = 'italic 10px serif';
+        const w = ctx.measureText('· ' + h.fragment).width;
+        const lines = Math.max(1, Math.ceil(w / (panelW - 24)));
+        neededH += lines * lh + 1;
+      }
+    }
+    if (Mysteries.isSolved(m.id)) {
+      ctx.font = 'italic 10px serif';
+      const w = ctx.measureText('✓ ' + (m.solvedFlavor || '')).width;
+      const lines = Math.max(1, Math.ceil(w / (panelW - 24)));
+      neededH += lines * lh + 4;
+    }
+    neededH += 6;
+  }
+  const panelH = Math.min(H - 100, neededH);
+
   // Background scroll
   ctx.fillStyle = 'rgba(15,10,4,0.78)';
   ctx.strokeStyle = 'rgba(212,175,55,0.45)';
@@ -391,62 +412,90 @@ function renderMysteriesPanel() {
   ctx.fill(); ctx.stroke();
 
   // Header
-  ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-  ctx.fillStyle = GOLD; ctx.font = 'bold 13px monospace';
+  ctx.fillStyle = GOLD; ctx.font = 'bold 12px monospace';
   ctx.shadowColor = GOLD; ctx.shadowBlur = 6;
-  ctx.fillText('MYSTERIES OF THE GODS', x0 + 12, y0 + 10);
+  ctx.fillText('THE MYSTERIES', x0 + 12, y0 + 10);
   ctx.shadowBlur = 0;
 
   let y = y0 + 30;
   for (const m of items) {
-    if (y + 60 > y0 + panelH) break;
+    if (y + 18 > y0 + panelH) break;
     const solved = Mysteries.isSolved(m.id);
     const blocked = m.requires && !Mysteries.isSolved(m.requires);
-    const allHintsSolved = (m.hints || []).every(h => Mysteries.hasHint(h.id));
-    // Title
-    ctx.font = 'bold 11px monospace';
+
+    // Title row — solved/locked/blocked all stay short and poetic.
+    ctx.font = 'bold 10px monospace';
     if (solved) {
-      ctx.fillStyle = '#44dd66';
-      ctx.fillText('✦ ' + m.title.toUpperCase(), x0 + 12, y);
+      ctx.fillStyle = '#9adda4';
+      ctx.fillText('✦ ' + (m.solvedTitle || ''), x0 + 12, y);
     } else if (blocked) {
-      ctx.fillStyle = 'rgba(180,160,120,0.45)';
-      ctx.fillText('???', x0 + 12, y);
+      ctx.fillStyle = 'rgba(160,140,110,0.40)';
+      ctx.fillText('· · ·', x0 + 12, y);
     } else {
-      ctx.fillStyle = allHintsSolved ? '#ffd54a' : 'rgba(220,200,150,0.85)';
-      ctx.fillText((allHintsSolved ? '◆ ' : '◇ ') + (allHintsSolved ? m.title.toUpperCase() : m.lockedTitle), x0 + 12, y);
+      ctx.fillStyle = 'rgba(220,200,150,0.65)';
+      ctx.fillText(m.lockedTitle, x0 + 12, y);
     }
-    y += lineH;
-    // Hints
-    ctx.font = '10px monospace';
-    for (const h of m.hints || []) {
-      const earned = Mysteries.hasHint(h.id);
-      ctx.fillStyle = earned ? 'rgba(220,200,150,0.95)' : 'rgba(160,150,130,0.45)';
-      const txt = earned ? ('• ' + h.text) : ('• ' + h.earnedBy);
-      // Wrap to panel width
-      wrapAndDraw(txt, x0 + 16, y, panelW - 24, 13);
-      const linesUsed = Math.max(1, Math.ceil(ctx.measureText(txt).width / (panelW - 24)));
-      y += linesUsed * 13 + 1;
-    }
-    // Final-step / reward (only when relevant)
-    if (!blocked) {
-      if (m.id === 'manga_mode' && allHintsSolved && !solved) {
-        ctx.fillStyle = '#ff88cc';
-        wrapAndDraw('▸ Type "' + CODEWORD + '" anywhere on the hub.', x0 + 16, y, panelW - 24, 13);
-        y += 26;
-      } else if (m.target && !solved) {
-        const cur = Mysteries.count(m.target.counter);
-        ctx.fillStyle = 'rgba(200,180,120,0.7)';
-        ctx.fillText(`▸ Progress: ${Math.min(cur, m.target.goal)} / ${m.target.goal}`, x0 + 16, y);
-        y += 14;
-      } else if (solved && m.reward) {
-        ctx.fillStyle = 'rgba(150,220,170,0.85)';
-        wrapAndDraw('✓ ' + m.reward, x0 + 16, y, panelW - 24, 13);
-        y += 26;
+    y += 14;
+
+    // Body — locked mysteries show ONLY the flavor line. Earned hints reveal
+    // their poetic fragment. No counters, no goal text, no instructions.
+    ctx.font = 'italic 10px serif';
+    if (solved) {
+      ctx.fillStyle = 'rgba(170,220,180,0.75)';
+      y = drawWrap('✓ ' + (m.solvedFlavor || ''), x0 + 16, y, panelW - 24, lh);
+      y += 4;
+    } else if (blocked) {
+      // Don't even show flavor for blocked-by-prereq mysteries — they're
+      // truly invisible until their prereq solves.
+    } else {
+      // Show only the LOCKED flavor as the persistent line.
+      ctx.fillStyle = 'rgba(190,170,130,0.55)';
+      y = drawWrap(m.lockedFlavor, x0 + 16, y, panelW - 24, lh);
+      // Then any earned hint fragments appear below as discovered fragments.
+      let anyHintEarned = false;
+      for (const h of m.hints || []) {
+        if (!Mysteries.hasHint(h.id)) continue;
+        anyHintEarned = true;
+        ctx.fillStyle = '#ffd54a';
+        y = drawWrap('· ' + h.fragment, x0 + 16, y, panelW - 24, lh);
       }
+      // For the manga mystery only: when all syllables are gathered, surface
+      // the assembled syllables side by side as the final clue. No "type X"
+      // instruction — the player has to guess.
+      if (m.id === 'manga_mode') {
+        const all = (m.hints || []).every(h => Mysteries.hasHint(h.id));
+        if (all) {
+          ctx.fillStyle = '#ff88cc';
+          ctx.font = 'bold 11px monospace';
+          y = drawWrap('shan… kuh… lay', x0 + 16, y + 2, panelW - 24, lh + 1);
+          ctx.font = 'italic 10px serif';
+        }
+      }
+      if (anyHintEarned) y += 2;
     }
     y += 6;
   }
   ctx.restore();
+}
+
+// drawWrap: helper that wraps `text` to maxW at the current font + fillStyle,
+// drawing each line at incrementing y. Returns the y-cursor after the last line.
+function drawWrap(text, x, y, maxW, lh) {
+  const words = text.split(' ');
+  let line = '';
+  let cy = y;
+  for (const w of words) {
+    const test = line ? line + ' ' + w : w;
+    if (ctx.measureText(test).width > maxW && line) {
+      ctx.fillText(line, x, cy);
+      cy += lh;
+      line = w;
+    } else {
+      line = test;
+    }
+  }
+  if (line) { ctx.fillText(line, x, cy); cy += lh; }
+  return cy;
 }
 
 function wrapAndDraw(text, x, y, maxW, lh) {

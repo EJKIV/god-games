@@ -84,6 +84,11 @@ let constellationCD = 0;          // cooldown
 const CONSTELLATION_CHARGE = 0.35;
 const CONSTELLATION_CD     = 8;
 let mangaTexts = [];              // { text, x, y, t, color, size }
+// Mystery: Constellation's Gaze — the hunter looks up at his own image.
+// Accumulates seconds spent stationary in the horizontal band beneath the
+// rendered Orion constellation while the boss is alive. 5s → 'kuh'.
+let gazeT = 0;
+const GAZE_GOAL = 5;
 // Scorpio Dodge — perfect-timing window grants Engine.setTimeScale slo-mo (manga only).
 
 // ── Hall of Mount Olympus (leaderboard) ──────────────────────────────────
@@ -212,6 +217,7 @@ function initGame() {
     chargeVx:0,
   };
   spears=[]; venoms=[]; phantoms=[];
+  gazeT = 0;
   runStartMs = performance.now();
   runEndMs = null;
   submittedThisRun = false;
@@ -562,11 +568,11 @@ function triggerPerfectDodge(){
   // Faster dodge + extended invincibility window
   orion.dodgeVx *= 1.30;
   orion.invincible = Math.max(orion.invincible, 0.6);
-  // Mystery: first perfect dodge earns the second manga syllable + hunter hint.
-  // Each perfect dodge tallies toward the perfect_dodger 5-count goal.
+  // Mystery: each perfect dodge earns the hunter's hint + tallies toward
+  // the 5-count goal. The 'kuh' syllable is gated behind a separate secret
+  // (the Constellation's Gaze) — see updateConstellationGaze.
   if (window.GodGames && GodGames.Mysteries) {
-    GodGames.Mysteries.earnHint('kuh');
-    GodGames.Mysteries.earnHint('first_perfect');
+    GodGames.Mysteries.earnHint('first_just');
     GodGames.Mysteries.tally('orion_perfect_dodges');
   }
   // Free counter — small chunk of damage to the boss. Kept low (5) so a
@@ -585,6 +591,25 @@ function triggerPerfectDodge(){
   if(Engine.manga){
     mangaTexts.push({ text: 'JUST!', x: orion.x, y: orion.y - 80, t: 0.55, color: '#aaddff', size: 64 });
     Engine.setTimeScale(0.35, 0.45);
+  }
+}
+
+// Mystery detector — accumulates time spent stationary beneath the on-screen
+// Orion constellation (top-left of the arena, cx ≈ W*0.11). 5s of holding still
+// in this band while the boss lives earns the 'kuh' syllable.
+function updateConstellationGaze(dt){
+  const W = Engine.W;
+  const beneathConstellation = orion.x > W * 0.04 && orion.x < W * 0.20;
+  const stillEnough = Math.abs(orion.vx) < 5;
+  const bossAlive = boss.state !== 'dead';
+  if (beneathConstellation && stillEnough && bossAlive && orion.proneT <= 0) {
+    gazeT += dt;
+    if (gazeT >= GAZE_GOAL) {
+      gazeT = 0;
+      if (window.GodGames && GodGames.Mysteries) GodGames.Mysteries.earnHint('kuh');
+    }
+  } else {
+    gazeT = 0;
   }
 }
 
@@ -1172,6 +1197,7 @@ Engine.boot({
     updateSpears(dt);
     updateVenoms(dt);
     updatePhantoms(dt);
+    updateConstellationGaze(dt);
 
     // Submit on the first frame of victory. runEndMs was snapshotted the
     // moment the scorpion's HP hit 0 (see updateBoss).

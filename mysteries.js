@@ -1,141 +1,112 @@
 // mysteries.js — God Games puzzle progression.
 //
-// Each mystery is a chain of hints earned through play, optionally followed by
-// a final action (typing a codeword, hitting a counter target). Persistence
-// runs through Engine.unlock (see vendor/@tns/game-engine/unlock/index.js):
-//   • Hint earned         → Engine.unlock.set(`hint.${hintId}`)
-//   • Mystery solved      → Engine.unlock.set(mysteryId)
-//   • Counter progress    → Engine.unlock.tally(counterKey)
+// Each mystery is an in-game secret that the player has to discover. The
+// panel never tells them what to do — only acknowledges what's been found
+// in poetic flavor. Persistence runs through Engine.unlock (see
+// vendor/@tns/game-engine/unlock/index.js):
+//   • Hint earned     → Engine.unlock.set(`hint.${hintId}`)
+//   • Mystery solved  → Engine.unlock.set(mysteryId)
+//   • Counter progress→ Engine.unlock.tally(counterKey)
 //
 // Game files (icarus/orion/achilles) call into Mysteries.* whenever a tracked
-// event fires (sun death, perfect dodge, kill, leaderboard rank). The hub
-// mysteries panel reads back the same store and renders progress.
+// secret event fires. The hub mysteries panel reads back the same store and
+// renders only flavor — no goals, no instructions.
 //
-// Code word for manga mode: 'shankle' (split into syllables across 3 hints).
-// Typing 'shankle' or 'normal' on the hub continues to work as a dev bypass.
+// The manga mode codeword 'shankle' is split into three syllables, each
+// hidden behind a different mythologically-flavored secret across the games:
+//   • 'shan' — The Cautious Flight (Icarus, Daedalus's actual advice)
+//   • 'kuh'  — The Constellation's Gaze (Orion, hunter looks at his own stars)
+//   • 'lay'  — Shade of Patroclus (Achilles, three vengeance shots)
+// Typing 'shankle' or 'normal' on the hub still works as a dev bypass.
 
 (function () {
   if (typeof window === 'undefined') return;
   window.GodGames = window.GodGames || {};
 
   const M = {
-    // Codeword that unlocks manga mode once all 3 syllable hints are earned.
     MANGA_CODEWORD: 'shankle',
 
-    // ── Mystery definitions ───────────────────────────────────────────────
+    // ── Mystery definitions ──────────────────────────────────────────────
+    // Each mystery has only the bare minimum the panel renders. There are no
+    // `earnedBy` strings — discovering the trigger is the puzzle.
     list: [
       {
         id: 'manga_mode',
-        title: 'The Manga Style',
-        lockedTitle: 'A whisper from beyond the page…',
-        description: 'See the world rendered in bold ink and screen-tone.',
+        // Locked: panel shows lockedFlavor only — three poetic mythological
+        // hints layered together pointing at the THREE secrets to find,
+        // without naming any specific action.
+        lockedTitle: '???',
+        lockedFlavor: 'Three myths. Three syllables. Three deaths-in-waiting.',
+        // Each hint, once earned, reveals just its syllable as a fragment
+        // tied to the myth that was honored to earn it.
         hints: [
-          {
-            id: 'hint.shan',
-            earnedBy: 'Complete Daedalus\'s flight tutorial in Icarus.',
-            text: 'Daedalus murmurs the syllable: "shan…"',
-          },
-          {
-            id: 'hint.kuh',
-            earnedBy: 'Land your first perfect dodge against the Scorpion.',
-            text: 'In a frozen breath, you hear: "…kuh…"',
-          },
-          {
-            id: 'hint.lay',
-            earnedBy: 'Slay 25 enemies in Achilles.',
-            text: 'Etched in the bronze of a fallen helm: "…lay"',
-          },
+          { id: 'hint.shan', syllable: 'shan…',  fragment: '"shan…" — burned into wax that would not hold.' },
+          { id: 'hint.kuh',  syllable: '…kuh…',  fragment: '"…kuh…" — between two stars, the hunter looked up.' },
+          { id: 'hint.lay',  syllable: '…lay',   fragment: '"…lay" — three strikes for a fallen friend.' },
         ],
-        finalStep: 'Type the three syllables together at the hub. A storm will gather over Olympus.',
-        reward: 'Manga mode — bold ink + halftone visuals across all games. Unlocks new abilities.',
+        // Once all 3 syllables are earned, the panel surfaces "shan kuh lay".
+        // Player has to read it aloud: 'shankle'.
+        solvedTitle: 'THE MANGA STYLE',
+        solvedFlavor: 'The world rendered in ink.',
       },
       {
         id: 'daedalus_compassion',
-        title: 'Daedalus\'s Compassion',
-        lockedTitle: '???',
-        description: 'Daedalus reaches once for those who fall. Visible only in the manga style.',
         requires: 'manga_mode',
+        lockedTitle: '???',
+        lockedFlavor: 'The wax remembers.',
         hints: [
-          {
-            id: 'hint.wax_remembers',
-            earnedBy: 'Burn against the sun three times.',
-            text: 'The wax remembers every fall. He is watching.',
-            target: { counter: 'icarus_sun_deaths', goal: 3 },
-          },
+          { id: 'hint.wax_three', syllable: 'thrice', fragment: 'Three falls. Three forgivings.', target: { counter: 'icarus_sun_deaths', goal: 3 } },
         ],
-        finalStep: 'Fly again — Daedalus will catch you when you next fall.',
-        reward: 'Daedalus\'s hand emerges and lifts you on your next near-death. Once per run.',
+        solvedTitle: 'DAEDALUS\'S COMPASSION',
+        solvedFlavor: 'Once. The gods will permit one outstretched hand.',
       },
       {
         id: 'perfect_dodger',
-        title: 'The Hunter\'s Eye',
-        lockedTitle: '???',
-        description: 'Time itself slows for those who read the scorpion\'s strikes.',
         requires: 'manga_mode',
+        lockedTitle: '???',
+        lockedFlavor: 'Time bends for those who watch.',
         hints: [
-          {
-            id: 'hint.first_perfect',
-            earnedBy: 'Land your first perfect dodge against the Scorpion.',
-            text: 'A breath held. The world stalled for an instant.',
-          },
+          { id: 'hint.first_just', syllable: 'breath', fragment: 'The world stalled, just for a breath.' },
         ],
-        finalStep: 'Land 5 perfect dodges across your runs.',
         target: { counter: 'orion_perfect_dodges', goal: 5 },
-        reward: 'Your perfect dodges already grant slo-mo + a counter. Future: bonus damage scaling.',
+        solvedTitle: 'THE HUNTER\'S EYE',
+        solvedFlavor: 'Five strikes, five stillnesses.',
       },
       {
         id: 'pantheon_rank',
-        title: 'A Name on Olympus',
         lockedTitle: '???',
-        description: 'The gods notice mortals who climb high enough on the leaderboards.',
+        lockedFlavor: 'The gods record names that climb high enough.',
         hints: [
-          {
-            id: 'hint.first_score',
-            earnedBy: 'Submit any score to a leaderboard.',
-            text: 'Your name has been heard.',
-          },
+          { id: 'hint.first_score', syllable: 'heard', fragment: 'Your name has been heard.' },
         ],
-        finalStep: 'Place top 10 on any single leaderboard.',
         target: { counter: 'olympus_top10_count', goal: 1 },
-        reward: 'A Pantheon mark next to your name on Mount Olympus.',
+        solvedTitle: 'A NAME ON OLYMPUS',
+        solvedFlavor: 'Carved among the immortals.',
       },
       {
         id: 'glyph_hunter',
-        title: 'The Glyph Hunter',
         lockedTitle: '???',
-        description: 'Three hidden glyphs bear the marks of the three games — find them all.',
+        lockedFlavor: 'Three marks bear the seal of three myths.',
         hints: [
-          {
-            id: 'hint.first_glyph',
-            earnedBy: 'Find your first hidden glyph.',
-            text: 'A mark, half-buried, etched in stone.',
-          },
+          { id: 'hint.glyph_first', syllable: 'mark',  fragment: 'A mark, half-buried in stone.' },
         ],
-        finalStep: 'Find all three hidden glyphs (one per game).',
         target: { counter: 'glyphs_found', goal: 3 },
-        reward: 'Future: an alternate visual mode unlocks.',
+        solvedTitle: 'THE GLYPH HUNTER',
+        solvedFlavor: 'Three myths witnessed.',
       },
     ],
 
-    // ── Hint earning helpers ──────────────────────────────────────────────
-    // earnHint(id): mark a hint earned. Triggers any "all-hints-earned"
-    // mystery solves so single-hint mysteries unlock immediately.
+    // ── API used by games ────────────────────────────────────────────────
     earnHint(id) {
       if (!window.Engine || !Engine.unlock) return false;
       const ok = Engine.unlock.set('hint.' + stripHintPrefix(id));
-      if (ok) {
-        for (const myst of M.list) M.maybeSolveByHints(myst);
-      }
+      if (ok) for (const myst of M.list) M.maybeSolveByHints(myst);
       return ok;
     },
     hasHint(id) {
       if (!window.Engine || !Engine.unlock) return false;
       return Engine.unlock.has('hint.' + stripHintPrefix(id));
     },
-    // tally(counterKey, n): bump a counter and auto-earn any hints whose
-    // target counter+goal is now satisfied; auto-solve mysteries whose own
-    // target hits its goal, AND mysteries whose only requirement is that all
-    // hints be earned.
     tally(counterKey, n = 1) {
       if (!window.Engine || !Engine.unlock) return 0;
       const value = Engine.unlock.tally(counterKey, n);
@@ -148,7 +119,6 @@
         if (myst.target && myst.target.counter === counterKey && value >= myst.target.goal) {
           M.maybeSolveMystery(myst);
         }
-        // Auto-solve "all hints satisfied" mysteries (no codeword, no top-level target).
         M.maybeSolveByHints(myst);
       }
       return value;
@@ -161,26 +131,24 @@
       if (!window.Engine || !Engine.unlock) return false;
       return Engine.unlock.has(mysteryId);
     },
-    // Mark a mystery as solved manually (for codeword-style unlocks).
     solve(mysteryId) {
       if (!window.Engine || !Engine.unlock) return false;
       return Engine.unlock.set(mysteryId);
     },
 
-    // Internal: solve a mystery whose top-level target counter has been hit.
+    // Internal: solve when a top-level target counter is met.
     maybeSolveMystery(myst) {
       if (!myst || !myst.target) return false;
       if (M.isSolved(myst.id)) return false;
-      if (Engine.unlock.count(myst.target.counter) < myst.target.goal) return false;
-      if (myst.id === 'manga_mode') return false;            // codeword required
+      if (myst.id === 'manga_mode') return false;
       if (myst.requires && !M.isSolved(myst.requires)) return false;
+      if (Engine.unlock.count(myst.target.counter) < myst.target.goal) return false;
       return M.solve(myst.id);
     },
-    // Internal: solve a mystery once all its hints are earned (used for
-    // mysteries that have no separate top-level target).
+    // Internal: solve when all hints earned (used for hint-only mysteries).
     maybeSolveByHints(myst) {
       if (!myst) return false;
-      if (myst.target) return false;          // handled by maybeSolveMystery
+      if (myst.target) return false;
       if (myst.id === 'manga_mode') return false;
       if (M.isSolved(myst.id)) return false;
       if (myst.requires && !M.isSolved(myst.requires)) return false;
@@ -190,20 +158,16 @@
       return M.solve(myst.id);
     },
 
-    // ── Manga mode helpers ────────────────────────────────────────────────
-    // True once all three manga-mode hint syllables are earned (codeword
-    // becomes typable on the hub).
+    // ── Manga mode helpers ───────────────────────────────────────────────
     mangaCodewordReady() {
       return M.hasHint('shan') && M.hasHint('kuh') && M.hasHint('lay');
     },
-    // Called by the hub when the player types the full codeword.
     triggerMangaUnlock() {
       try { localStorage.setItem('godgames_manga', '1'); } catch (_e) {}
       M.solve('manga_mode');
     },
   };
 
-  // Accept either 'foo' or 'hint.foo' for ergonomic call sites.
   function stripHintPrefix(id) {
     return id.startsWith('hint.') ? id.slice(5) : id;
   }
