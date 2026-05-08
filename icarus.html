@@ -695,7 +695,7 @@ function updatePlaying(dt) {
     sunEmbraceT += dt;
     if (sunEmbraceT >= SUN_EMBRACE_GOAL) {
       sunEmbraceT = 0;
-      if (window.GodGames && GodGames.Mysteries) GodGames.Mysteries.earnHint('shan');
+      if (window.GodGames && GodGames.Mysteries) GodGames.Mysteries.earnHint('z');
     }
   } else {
     sunEmbraceT = 0;
@@ -3159,12 +3159,14 @@ Engine.boot({
 
   onUpdate(dt) {
     time = Engine.time;
+    if (window.GodGames && GodGames.MythCinematic) GodGames.MythCinematic.update(dt);
     update(dt);
   },
 
   onRender() {
     time = Engine.time;
     render();
+    if (window.GodGames && GodGames.MythCinematic) GodGames.MythCinematic.render(ctx, canvas.width, canvas.height);
   },
 
   onTitleRender() {

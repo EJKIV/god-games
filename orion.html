@@ -606,7 +606,7 @@ function updateConstellationGaze(dt){
     gazeT += dt;
     if (gazeT >= GAZE_GOAL) {
       gazeT = 0;
-      if (window.GodGames && GodGames.Mysteries) GodGames.Mysteries.earnHint('kuh');
+      if (window.GodGames && GodGames.Mysteries) GodGames.Mysteries.earnHint('e');
     }
   } else {
     gazeT = 0;
@@ -1202,6 +1202,7 @@ Engine.boot({
     // dt is already scaled by Engine.timeScale, so any active slo-mo dip from
     // a perfect dodge slows cooldowns + manga telegraph decay alongside the
     // boss/projectile updates.
+    if (window.GodGames && GodGames.MythCinematic) GodGames.MythCinematic.update(dt);
     constellationT  = Math.max(0, constellationT  - dt);
     constellationCD = Math.max(0, constellationCD - dt);
     for (let i = mangaTexts.length - 1; i >= 0; i--) {
@@ -1337,6 +1338,7 @@ Engine.boot({
     drawScorpion();
     drawOrion();
     renderHUD();   // inside shake transform — matches original orion feel
+    if (window.GodGames && GodGames.MythCinematic) GodGames.MythCinematic.render(ctx, Engine.W, Engine.H);
   },
 
   onKeyDown(ev) {

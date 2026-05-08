@@ -229,6 +229,10 @@ function update(dt) {
   // manga toast lifetime
   if (_mangaToast.t > 0) _mangaToast.t = Math.max(0, _mangaToast.t - dt);
 
+  // Mystery cinematic — runs even on the hub if a hint is earned elsewhere
+  // and the player returns mid-cinematic. (Most cinematics start in-game.)
+  if (window.GodGames && GodGames.MythCinematic) GodGames.MythCinematic.update(dt);
+
   // Storm-brewing intensity eases toward the codeword progress fraction.
   // Mid-codeword → builds; broken sequence → dissipates.
   const target = _codewordIdx / CODEWORD.length;
@@ -459,15 +463,17 @@ function renderMysteriesPanel() {
         ctx.fillStyle = '#ffd54a';
         y = drawWrap('· ' + h.fragment, x0 + 16, y, panelW - 24, lh);
       }
-      // For the manga mystery only: when all syllables are gathered, surface
-      // the assembled syllables side by side as the final clue. No "type X"
-      // instruction — the player has to guess.
+      // For the manga mystery: once all letter hints are gathered, surface
+      // the assembled invocation as a single uppercase line. The player has
+      // to recognize "Z E U S" as the king's name and type it on the hub.
       if (m.id === 'manga_mode') {
-        const all = (m.hints || []).every(h => Mysteries.hasHint(h.id));
-        if (all) {
+        const lettered = (m.hints || []).filter(h => h.letter);
+        const allLettered = lettered.length > 0 && lettered.every(h => Mysteries.hasHint(h.id));
+        if (allLettered) {
           ctx.fillStyle = '#ff88cc';
-          ctx.font = 'bold 11px monospace';
-          y = drawWrap('shan… kuh… lay', x0 + 16, y + 2, panelW - 24, lh + 1);
+          ctx.font = 'bold 12px monospace';
+          const word = lettered.map(h => h.letter).join(' ');
+          y = drawWrap(word, x0 + 16, y + 2, panelW - 24, lh + 1);
           ctx.font = 'italic 10px serif';
         }
       }
@@ -1101,6 +1107,9 @@ function render() {
   // Mysteries panel — stays visible at the right edge of the screen.
   renderMysteriesPanel();
 
+  // Mythological location cinematic — drawn on top of everything.
+  if (window.GodGames && GodGames.MythCinematic) GodGames.MythCinematic.render(ctx, W, H);
+
   // Title
   ctx.save();
   ctx.textAlign='center';
@@ -1149,11 +1158,14 @@ function inputBusy(e) {
   return tag === 'INPUT' || tag === 'TEXTAREA';
 }
 
-// Secret manga mode — type 'shankle' to summon Zeus, 'normal' to revert.
+// Secret manga mode — earned codeword is 'zeus' (first three letters revealed
+// by per-game mysteries; the final 'S' is the call-to-Zeus invocation typed
+// here). 'shankle' remains as a dev bypass for testing. 'normal' reverts.
 // Persisted in localStorage so the toggle survives navigation to game pages,
 // where engine.js reads it at boot and exposes Engine.manga.
 const MANGA_KEY = 'godgames_manga';
-const CODEWORD = (window.GodGames && window.GodGames.Mysteries && window.GodGames.Mysteries.MANGA_CODEWORD) || 'shankle';
+const CODEWORD = (window.GodGames && window.GodGames.Mysteries && window.GodGames.Mysteries.MANGA_CODEWORD) || 'zeus';
+const DEV_BYPASS_CODEWORD = 'shankle';
 let _typedBuf = '';
 let _mangaToast = { text: '', t: 0, color: '#D4AF37' };
 function showMangaToast(text, color) { _mangaToast = { text, t: 2.6, color: color || '#D4AF37' }; }
@@ -1215,6 +1227,14 @@ window.addEventListener('keydown', e => {
       // Broken sequence — let the storm dissipate. (If the wrong char happens
       // to be the FIRST letter of CODEWORD, restart progress at 1.)
       _codewordIdx = (ch === CODEWORD[0]) ? 1 : 0;
+    }
+    // Dev bypass — typing 'shankle' summons Zeus regardless of earned letters.
+    if (_typedBuf.endsWith(DEV_BYPASS_CODEWORD)) {
+      _typedBuf = '';
+      _codewordIdx = 0;
+      if (localStorage.getItem(MANGA_KEY) !== '1' && !_zeusStrike) {
+        startZeusStrike();
+      }
     }
     if (_typedBuf.endsWith('normal')) {
       localStorage.removeItem(MANGA_KEY);

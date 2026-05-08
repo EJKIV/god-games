@@ -1,51 +1,125 @@
 // mysteries.js — God Games puzzle progression.
 //
-// Each mystery is an in-game secret that the player has to discover. The
-// panel never tells them what to do — only acknowledges what's been found
-// in poetic flavor. Persistence runs through Engine.unlock (see
-// vendor/@tns/game-engine/unlock/index.js):
-//   • Hint earned     → Engine.unlock.set(`hint.${hintId}`)
-//   • Mystery solved  → Engine.unlock.set(mysteryId)
-//   • Counter progress→ Engine.unlock.tally(counterKey)
+// Each god game contributes ONE letter toward a Greek-mythological invocation.
+// Solving a game's secret yields:
+//   • One letter of the codeword (current letters: ZEU).
+//   • A brief MythCinematic overlay — the player is briefly carried to a
+//     transitional Greek-mythology location (Oceanus, Asphodel, Erebus, …).
 //
-// Game files (icarus/orion/achilles) call into Mysteries.* whenever a tracked
-// secret event fires. The hub mysteries panel reads back the same store and
-// renders only flavor — no goals, no instructions.
+// As more games ship, each new game contributes a new letter and the LAST-
+// added game inherits the "call to Zeus" final hint. Today the order is:
+//   Icarus  → 'z' (Oceanus)
+//   Orion   → 'e' (Asphodel Meadows)
+//   Achilles→ 'u' (Erebus) + the call-to-Zeus instruction
 //
-// The manga mode codeword 'shankle' is split into three syllables, each
-// hidden behind a different mythologically-flavored secret across the games:
-//   • 'shan' — The Cautious Flight (Icarus, Daedalus's actual advice)
-//   • 'kuh'  — The Constellation's Gaze (Orion, hunter looks at his own stars)
-//   • 'lay'  — Shade of Patroclus (Achilles, three vengeance shots)
-// Typing 'shankle' or 'normal' on the hub still works as a dev bypass.
+// Final unlock: type 'ZEUS' on Mt. Olympus while the storm builds. The 'S'
+// is the literal act of calling Zeus — there's no fourth game required for
+// it; the player utters the king's name to complete the invocation.
+// 'shankle' remains as a dev bypass.
 
 (function () {
   if (typeof window === 'undefined') return;
   window.GodGames = window.GodGames || {};
 
+  // ── MythCinematic overlay ────────────────────────────────────────────────
+  // Portable 3-second vignette: name (big serif) + flavor (italic) on a
+  // dark backdrop with the location's color. Games wire .update(dt) and
+  // .render(ctx, W, H) into their loops. .trigger fires once per solve.
+  const MythCinematic = {
+    active: null, // { name, flavor, color, t, dur }
+    trigger(name, flavor, color) {
+      this.active = { name, flavor, color: color || '#ffd54a', t: 0, dur: 3.0 };
+    },
+    update(dt) {
+      if (!this.active) return;
+      this.active.t += dt;
+      if (this.active.t >= this.active.dur) this.active = null;
+    },
+    render(ctx, W, H) {
+      if (!this.active) return;
+      const { name, flavor, color, t, dur } = this.active;
+      const fadeIn = 0.45, fadeOut = 0.6;
+      const hold = dur - fadeIn - fadeOut;
+      let alpha;
+      if (t < fadeIn) alpha = t / fadeIn;
+      else if (t < fadeIn + hold) alpha = 1;
+      else alpha = Math.max(0, 1 - (t - fadeIn - hold) / fadeOut);
+      ctx.save();
+      // Dark backdrop with a vignette feel
+      ctx.globalAlpha = alpha * 0.92;
+      const bg = ctx.createRadialGradient(W/2, H/2, 80, W/2, H/2, Math.max(W, H));
+      bg.addColorStop(0, 'rgba(8, 4, 14, 0.50)');
+      bg.addColorStop(1, 'rgba(2, 0, 6, 0.97)');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, W, H);
+
+      // Decorative ink frame — top + bottom borders
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = color;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 14;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(W * 0.12, H * 0.30); ctx.lineTo(W * 0.88, H * 0.30);
+      ctx.moveTo(W * 0.12, H * 0.62); ctx.lineTo(W * 0.88, H * 0.62);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Location name — big serif, glowing in the location's color
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.font = 'bold 56px serif';
+      ctx.shadowColor = color; ctx.shadowBlur = 28;
+      ctx.fillStyle = color;
+      ctx.fillText(name, W / 2, H * 0.46);
+      ctx.shadowBlur = 0;
+
+      // Subtitle — italic flavor text
+      ctx.font = 'italic 20px serif';
+      ctx.fillStyle = 'rgba(240, 230, 200, 0.88)';
+      ctx.fillText(flavor, W / 2, H * 0.54);
+
+      ctx.restore();
+    },
+  };
+
   const M = {
-    MANGA_CODEWORD: 'shankle',
+    MANGA_CODEWORD: 'zeus',
 
     // ── Mystery definitions ──────────────────────────────────────────────
-    // Each mystery has only the bare minimum the panel renders. There are no
-    // `earnedBy` strings — discovering the trigger is the puzzle.
     list: [
       {
         id: 'manga_mode',
-        // Locked: panel shows lockedFlavor only — three poetic mythological
-        // hints layered together pointing at the THREE secrets to find,
-        // without naming any specific action.
         lockedTitle: '???',
-        lockedFlavor: 'Three myths. Three syllables. Three deaths-in-waiting.',
-        // Each hint, once earned, reveals just its syllable as a fragment
-        // tied to the myth that was honored to earn it.
+        lockedFlavor: 'Three myths, three letters. The fourth, you must speak yourself.',
+        // Each hint contributes one letter of the codeword. solveOrder
+        // determines panel ordering. mythLocation is what the cinematic
+        // shows when the hint is earned.
         hints: [
-          { id: 'hint.shan', syllable: 'shan…',  fragment: '"shan…" — burned into wax that would not hold.' },
-          { id: 'hint.kuh',  syllable: '…kuh…',  fragment: '"…kuh…" — between two stars, the hunter looked up.' },
-          { id: 'hint.lay',  syllable: '…lay',   fragment: '"…lay" — three strikes for a fallen friend.' },
+          {
+            id: 'hint.z', letter: 'Z',
+            fragment: '"Z" — burned into wax that would not hold.',
+            mythLocation: { name: 'RIVER OCEANUS', flavor: 'the boundary where the world ends', color: '#88c8ff' },
+          },
+          {
+            id: 'hint.e', letter: 'E',
+            fragment: '"E" — between two stars, the hunter looked up.',
+            mythLocation: { name: 'ASPHODEL MEADOWS', flavor: 'where neutral souls walk in gray', color: '#bfbcae' },
+          },
+          {
+            id: 'hint.u', letter: 'U',
+            fragment: '"U" — three strikes for a fallen friend.',
+            mythLocation: { name: 'EREBUS', flavor: 'the gloom before the underworld', color: '#a070d0' },
+          },
+          {
+            id: 'hint.zeus_call', letter: 'S',
+            fragment: 'Climb to Olympus. Speak the name. Call to ZEUS.',
+            // This hint earns automatically when all three letter hints are
+            // earned — surfacing the final-step instruction. The 'S' itself
+            // is added to the storm sequence by typing it on the hub.
+            autoEarnsAfter: ['hint.z', 'hint.e', 'hint.u'],
+          },
         ],
-        // Once all 3 syllables are earned, the panel surfaces "shan kuh lay".
-        // Player has to read it aloud: 'shankle'.
         solvedTitle: 'THE MANGA STYLE',
         solvedFlavor: 'The world rendered in ink.',
       },
@@ -55,7 +129,7 @@
         lockedTitle: '???',
         lockedFlavor: 'The wax remembers.',
         hints: [
-          { id: 'hint.wax_three', syllable: 'thrice', fragment: 'Three falls. Three forgivings.', target: { counter: 'icarus_sun_deaths', goal: 3 } },
+          { id: 'hint.wax_three', fragment: 'Three falls. Three forgivings.', target: { counter: 'icarus_sun_deaths', goal: 3 } },
         ],
         solvedTitle: 'DAEDALUS\'S COMPASSION',
         solvedFlavor: 'Once. The gods will permit one outstretched hand.',
@@ -66,7 +140,7 @@
         lockedTitle: '???',
         lockedFlavor: 'Time bends for those who watch.',
         hints: [
-          { id: 'hint.first_just', syllable: 'breath', fragment: 'The world stalled, just for a breath.' },
+          { id: 'hint.first_just', fragment: 'The world stalled, just for a breath.' },
         ],
         target: { counter: 'orion_perfect_dodges', goal: 5 },
         solvedTitle: 'THE HUNTER\'S EYE',
@@ -77,7 +151,7 @@
         lockedTitle: '???',
         lockedFlavor: 'The gods record names that climb high enough.',
         hints: [
-          { id: 'hint.first_score', syllable: 'heard', fragment: 'Your name has been heard.' },
+          { id: 'hint.first_score', fragment: 'Your name has been heard.' },
         ],
         target: { counter: 'olympus_top10_count', goal: 1 },
         solvedTitle: 'A NAME ON OLYMPUS',
@@ -88,7 +162,7 @@
         lockedTitle: '???',
         lockedFlavor: 'Three marks bear the seal of three myths.',
         hints: [
-          { id: 'hint.glyph_first', syllable: 'mark',  fragment: 'A mark, half-buried in stone.' },
+          { id: 'hint.glyph_first', fragment: 'A mark, half-buried in stone.' },
         ],
         target: { counter: 'glyphs_found', goal: 3 },
         solvedTitle: 'THE GLYPH HUNTER',
@@ -97,15 +171,39 @@
     ],
 
     // ── API used by games ────────────────────────────────────────────────
-    earnHint(id) {
+    earnHint(id, opts) {
       if (!window.Engine || !Engine.unlock) return false;
-      const ok = Engine.unlock.set('hint.' + stripHintPrefix(id));
-      if (ok) for (const myst of M.list) M.maybeSolveByHints(myst);
+      const fullId = 'hint.' + stripHintPrefix(id);
+      const ok = Engine.unlock.set(fullId);
+      if (ok) {
+        // If this hint carries a mythLocation, fire the cinematic so the
+        // player witnesses the discovery. opts.silent skips the cinematic.
+        const hint = M.findHint(fullId);
+        if (hint && hint.mythLocation && !(opts && opts.silent)) {
+          MythCinematic.trigger(hint.mythLocation.name, hint.mythLocation.flavor, hint.mythLocation.color);
+        }
+        // Auto-cascade: any hint with autoEarnsAfter pointing entirely at
+        // earned hints now earns automatically (chains the call-to-Zeus reveal).
+        for (const myst of M.list) {
+          for (const h of myst.hints || []) {
+            if (h.autoEarnsAfter && h.autoEarnsAfter.every(a => Engine.unlock.has(a))) {
+              if (!Engine.unlock.has(h.id)) Engine.unlock.set(h.id);
+            }
+          }
+          M.maybeSolveByHints(myst);
+        }
+      }
       return ok;
     },
     hasHint(id) {
       if (!window.Engine || !Engine.unlock) return false;
       return Engine.unlock.has('hint.' + stripHintPrefix(id));
+    },
+    findHint(fullId) {
+      for (const m of M.list) {
+        for (const h of m.hints || []) if (h.id === fullId) return h;
+      }
+      return null;
     },
     tally(counterKey, n = 1) {
       if (!window.Engine || !Engine.unlock) return 0;
@@ -135,8 +233,6 @@
       if (!window.Engine || !Engine.unlock) return false;
       return Engine.unlock.set(mysteryId);
     },
-
-    // Internal: solve when a top-level target counter is met.
     maybeSolveMystery(myst) {
       if (!myst || !myst.target) return false;
       if (M.isSolved(myst.id)) return false;
@@ -145,7 +241,6 @@
       if (Engine.unlock.count(myst.target.counter) < myst.target.goal) return false;
       return M.solve(myst.id);
     },
-    // Internal: solve when all hints earned (used for hint-only mysteries).
     maybeSolveByHints(myst) {
       if (!myst) return false;
       if (myst.target) return false;
@@ -158,9 +253,11 @@
       return M.solve(myst.id);
     },
 
-    // ── Manga mode helpers ───────────────────────────────────────────────
+    // ── Manga-mode codeword helpers ──────────────────────────────────────
+    // True once Z, E, U have all been earned — the call-to-Zeus instruction
+    // is now visible. Player still has to type ZEUS on the hub to activate.
     mangaCodewordReady() {
-      return M.hasHint('shan') && M.hasHint('kuh') && M.hasHint('lay');
+      return M.hasHint('z') && M.hasHint('e') && M.hasHint('u');
     },
     triggerMangaUnlock() {
       try { localStorage.setItem('godgames_manga', '1'); } catch (_e) {}
@@ -173,4 +270,5 @@
   }
 
   window.GodGames.Mysteries = M;
+  window.GodGames.MythCinematic = MythCinematic;
 })();
