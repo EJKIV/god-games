@@ -2483,7 +2483,7 @@ function renderHUD(W, H) {
 
   // ── DEBUG: mystery state overlay (top-left). Toggle by setting
   // localStorage.godgames_debug = '1'. Helps diagnose unreachable triggers.
-  if (true) { // DEBUG: always-on while diagnosing
+  if (typeof localStorage !== 'undefined' && localStorage.getItem('godgames_debug') === '1') {
     ctx.save();
     ctx.font = '12px monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
     ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(8, 92, 280, 92);

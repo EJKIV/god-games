@@ -1104,19 +1104,6 @@ function render() {
   // Zeus cinematic — drawn on top of atmosphere so the bolt + flash dominate.
   if (_zeusStrike) _zeusStrike.render(ctx, W, H);
 
-  // Always-visible build stamp + diagnostic banner — confirms which build is
-  // loaded and tells the player how to diagnose. Bright bottom strip so it's
-  // impossible to miss.
-  ctx.save();
-  ctx.fillStyle = 'rgba(20,10,30,0.85)';
-  ctx.fillRect(0, H - 28, W, 28);
-  ctx.font = 'bold 13px monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-  ctx.fillStyle = '#ffd54a';
-  ctx.shadowColor = '#ffd54a'; ctx.shadowBlur = 6;
-  ctx.fillText('★ BUILD: mysteries-v4 · debug HUDs always on · type "wipemysteries" to reset · "shankle" = dev bypass', 12, H - 14);
-  ctx.shadowBlur = 0;
-  ctx.restore();
-
   // Mysteries panel — stays visible at the right edge of the screen.
   renderMysteriesPanel();
 

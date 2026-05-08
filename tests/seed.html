@@ -1,0 +1,9 @@
+<!DOCTYPE html><html><head><script>
+// Bootstrap for tests/e2e.mjs — pre-fill name + recent-play timestamp,
+// then redirect to `?go=<file>` resolved at the repo root, not relative
+// to /tests/.
+localStorage.setItem('godgames_playerName', 'TEST');
+localStorage.setItem('icarus_lastPlay', String(Date.now()));
+const target = new URLSearchParams(location.search).get('go') || 'index.html';
+location.replace('/' + target);
+</script></head><body>seeding…</body></html>

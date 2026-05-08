@@ -958,7 +958,7 @@ function renderHUD() {
   ctx.save();
 
   // ── DEBUG: mystery state overlay. localStorage.godgames_debug='1' to enable.
-  if (true) { // DEBUG: always-on while diagnosing
+  if (typeof localStorage !== 'undefined' && localStorage.getItem('godgames_debug') === '1') {
     const beneath = orion.x > W * 0.04 && orion.x < W * 0.20;
     const still   = Math.abs(orion.vx) < 5;
     const alive   = boss.state !== 'dead';

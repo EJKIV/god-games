@@ -926,7 +926,7 @@ function drawHUD() {
   const W = Engine.W, H = Engine.H;
 
   // ── DEBUG: mystery state overlay. localStorage.godgames_debug='1' to enable.
-  if (true) { // DEBUG: always-on while diagnosing
+  if (typeof localStorage !== 'undefined' && localStorage.getItem('godgames_debug') === '1') {
     const now = performance.now();
     const recent = patroclusKills.filter(t => now - t <= PATROCLUS_WINDOW_MS).length;
     const earnedU = window.Engine && Engine.unlock && Engine.unlock.has('hint.u');

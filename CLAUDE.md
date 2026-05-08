@@ -80,6 +80,11 @@ curl -sS "https://god-games.vercel.app/api/leaderboard?game=achilles"
 
 # Push to GitHub (Vercel does NOT auto-deploy from git)
 git push origin master
+
+# End-to-end mysteries test (real browser, real triggers — see tests/README.md)
+python3 -m http.server 8765 &
+npm install --no-save puppeteer-core   # one-time
+node tests/e2e.mjs
 ```
 
 ## Structure & Subtree Dispatch
