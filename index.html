@@ -149,11 +149,15 @@ const motes = Array.from({length:28}, () => ({
 const player = {
   x: W*0.32, y: GY,
   vx: 0,
+  vy: 0,                  // toad-mode jump physics
+  onGround: true,
   facing: 1,
   walkPhase: 0,
   nearPortal: null,
   isToad: false, // easter egg: press 't' to toggle
 };
+const TOAD_JUMP_V = -640; // toad jump initial velocity (negative = up)
+const TOAD_GRAVITY = 1400;
 
 let keys = {}, time = 0, mouse = {x:0, y:0};
 let lastHopCycle = 0; // tracks toad's hop cycle to fire one ribbit per hop
@@ -202,13 +206,34 @@ function update(dt) {
   // movement — toad is twice as fast
   const left  = keys['ArrowLeft']  || keys['a'];
   const right = keys['ArrowRight'] || keys['d'];
+  const up    = keys['ArrowUp']    || keys['w'];
   const speed = player.isToad ? 440 : 220;
   player.vx = right ? speed : left ? -speed : 0;
   if (player.vx !== 0) { player.facing = player.vx > 0 ? 1 : -1; player.walkPhase += dt*7; }
   player.x = Math.max(50, Math.min(W-50, player.x + player.vx*dt));
 
+  // Toad jump physics — Up or Space launches when on ground; gravity pulls
+  // back to GY. Only the toad form gets vertical control. Space in human
+  // form continues to enter portals (handled below).
+  if (player.isToad) {
+    if (player.onGround && (up || keys[' '])) {
+      player.vy = TOAD_JUMP_V;
+      player.onGround = false;
+    }
+    if (!player.onGround) {
+      player.vy += TOAD_GRAVITY * dt;
+      player.y  += player.vy * dt;
+      if (player.y >= GY) {
+        player.y = GY; player.vy = 0; player.onGround = true;
+      }
+    }
+  } else {
+    // Human form snaps to ground.
+    player.y = GY; player.vy = 0; player.onGround = true;
+  }
+
   // ribbit once per hop while moving as toad
-  if (player.isToad && player.vx !== 0) {
+  if (player.isToad && (player.vx !== 0 || !player.onGround)) {
     const cycle = Math.floor(player.walkPhase / (Math.PI * 2));
     if (cycle !== lastHopCycle) { ribbit(); lastHopCycle = cycle; }
   } else {
@@ -221,8 +246,28 @@ function update(dt) {
     if (Math.abs(player.x - p.x) < PORTAL_RADIUS) { player.nearPortal = p; break; }
   }
 
-  // enter portal via Space / Enter
-  if (player.nearPortal && (keys[' '] || keys['Enter'])) {
+  // Toad-only mushroom on Mt. Olympus — when the toad lands on it (or
+  // overlaps mid-air during a descent), cut to the olympus-clues page.
+  // The mushroom sits at the base of the Olympus portal so the player has
+  // to deliberately walk over and jump.
+  if (player.isToad) {
+    const olympus = portals.find(p => p.kind === 'mountain');
+    if (olympus) {
+      const dx = player.x - olympus.x;
+      const dy = player.y - (GY - 14);
+      if (Math.abs(dx) < 30 && Math.abs(dy) < 32 && !player.onGround) {
+        window.location.href = 'olympus-clues.html';
+      }
+    }
+  }
+
+  // enter portal via Space / Enter — only in human form. In toad form Space
+  // is the jump key, so the same press shouldn't also pop the player into
+  // the portal.
+  if (!player.isToad && player.nearPortal && (keys[' '] || keys['Enter'])) {
+    window.location.href = player.nearPortal.href;
+  }
+  if (player.isToad && player.nearPortal && keys['Enter']) {
     window.location.href = player.nearPortal.href;
   }
 
@@ -290,6 +335,53 @@ function spawnStormFlash() {
     }
   }
   _stormFlashes.push({ life: 0.18, maxLife: 0.18, branches });
+}
+
+// Toad-only mushroom that sits at the base of Mt. Olympus. Jumping onto it
+// (overlap during a descent) cuts the player to olympus-clues.html, where
+// they review every clue earned. Visible only while player.isToad.
+function renderToadMushroom() {
+  const olympus = portals.find(p => p.kind === 'mountain');
+  if (!olympus) return;
+  const cx = olympus.x;
+  const cy = GY - 14 + Math.sin(time * 2.6) * 1.2;
+  // Faint glow halo so it reads at a glance.
+  ctx.save();
+  ctx.shadowColor = '#ffd54a'; ctx.shadowBlur = 22;
+  ctx.fillStyle = 'rgba(255,213,74,0.18)';
+  ctx.beginPath(); ctx.ellipse(cx, cy + 8, 28, 9, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.shadowBlur = 0;
+  // Stem
+  ctx.fillStyle = '#f5ead6';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + 6, 7, 10, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#0a0a0a'; ctx.lineWidth = 2;
+  ctx.stroke();
+  // Cap — bold ink red
+  ctx.fillStyle = '#cc1818';
+  ctx.beginPath();
+  ctx.moveTo(cx - 18, cy);
+  ctx.bezierCurveTo(cx - 18, cy - 18, cx + 18, cy - 18, cx + 18, cy);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = '#0a0a0a'; ctx.lineWidth = 2.5;
+  ctx.stroke();
+  // White spots — fly agaric mythos
+  ctx.fillStyle = '#fbf6e8';
+  for (const [sx, sy, sr] of [[-9, -6, 2.5], [-3, -10, 2.0], [4, -7, 2.8], [10, -3, 2.2]]) {
+    ctx.beginPath(); ctx.arc(cx + sx, cy + sy, sr, 0, Math.PI * 2); ctx.fill();
+  }
+  // Hint label — "↑ JUMP" appears when toad is close enough
+  if (Math.abs(player.x - cx) < 90) {
+    ctx.font = 'bold 12px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(255,213,74,0.85)';
+    ctx.shadowColor = '#ffd54a'; ctx.shadowBlur = 6;
+    ctx.fillText('↑ JUMP', cx, cy - 30);
+    ctx.shadowBlur = 0;
+  }
+  ctx.restore();
 }
 
 function renderStorm() {
@@ -1101,14 +1193,12 @@ function render() {
   // Storm brewing over Olympus as the codeword is typed.
   renderStorm();
 
+  // Toad-only mushroom on Mt. Olympus. The player has to be in toad form
+  // (press 't') to see it; jumping onto it cuts to the clue review scene.
+  if (player.isToad) renderToadMushroom();
+
   // Zeus cinematic — drawn on top of atmosphere so the bolt + flash dominate.
   if (_zeusStrike) _zeusStrike.render(ctx, W, H);
-
-  // Mysteries panel — stays visible at the right edge of the screen.
-  renderMysteriesPanel();
-
-  // Mythological location cinematic — drawn on top of everything.
-  if (window.GodGames && GodGames.MythCinematic) GodGames.MythCinematic.render(ctx, W, H);
 
   // Title
   ctx.save();

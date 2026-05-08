@@ -700,13 +700,18 @@ function updatePlaying(dt) {
   // *directly into* the sun. Sustain heat ≥ 0.95 for SUN_EMBRACE_GOAL seconds
   // and the syllable is whispered as the wax begins to fail.
   // Sun's Embrace — Icarus must hold himself in the sun's drawn radius for
-  // a beat (cumulative within run). Long enough to feel like a choice, short
-  // enough that the wing's burn timer doesn't beat the player to it.
+  // a beat (cumulative within run). On commit, the run ends and we cut to
+  // the River Oceanus place scene with the next chain clue.
   if (player.y <= SUN_EMBRACE_Y) {
     sunEmbraceT += dt;
     if (sunEmbraceT >= SUN_EMBRACE_GOAL
       && window.GodGames && GodGames.Mysteries && !GodGames.Mysteries.hasHint('z')) {
-      GodGames.Mysteries.earnHint('z');
+      GodGames.Mysteries.unlockAndDepart({
+        hintId:   'z',
+        placeId:  'oceanus',
+        fromGame: 'icarus',
+      });
+      return; // game ends here; navigation begins
     }
   }
 

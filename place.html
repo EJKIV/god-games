@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>God Games — A place revealed</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #04020a; overflow: hidden; font-family: 'Trebuchet MS', serif; color: #f0e8d0; }
+  canvas { display: block; }
+  #returnBtn {
+    position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+    padding: 12px 28px; background: rgba(212,175,55,0.10); border: 1px solid #D4AF37;
+    color: #f0e8d0; font-family: monospace; font-size: 14px;
+    letter-spacing: 0.15em; cursor: pointer; border-radius: 4px;
+    transition: background 0.2s, transform 0.1s; opacity: 0;
+    pointer-events: none;
+  }
+  #returnBtn.visible { opacity: 1; pointer-events: auto; }
+  #returnBtn:hover { background: rgba(212,175,55,0.22); transform: translateX(-50%) translateY(-1px); }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<button id="returnBtn">RETURN TO OLYMPUS  ↵</button>
+
+<script src="vendor/@tns/game-engine/core/engine.js"></script>
+<script src="vendor/@tns/game-engine/manga/manga.js"></script>
+<script src="places.js"></script>
+<script src="mysteries.js"></script>
+<script>
+// place.html — the cinematic destination players land on after solving a
+// mystery. URL params: ?id=<placeId>&from=<gameId>&clue=<clueId>
+//
+// The page is intentionally still — a tableau, not a level. The character
+// stands in the location, the title fades in, then the clue banner does,
+// then the player can return.
+
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+canvas.width  = window.innerWidth;
+canvas.height = window.innerHeight;
+window.addEventListener('resize', () => {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+});
+
+const params  = new URLSearchParams(location.search);
+const placeId = params.get('id')   || 'oceanus';
+const fromGame= params.get('from') || 'icarus';
+const clueId  = params.get('clue') || null;
+
+const place = (window.GodGames && window.GodGames.places && window.GodGames.places[placeId]) || null;
+const clue  = (window.GodGames && window.GodGames.Mysteries && window.GodGames.Mysteries.findClue)
+  ? window.GodGames.Mysteries.findClue(clueId)
+  : null;
+
+// Fallback if the place isn't registered (defensive — shouldn't happen).
+const SAFE_PLACE = {
+  name: 'AN UNKNOWN PLACE',
+  flavor: 'somewhere beyond the streams of Oceanus',
+  palette: { accent: '#D4AF37' },
+  silhouette: (c, W, H) => { c.fillStyle = '#0a0e1c'; c.fillRect(0, 0, W, H); },
+  characterTransform: (_c, W, H) => ({ x: W / 2, y: H * 0.7, scale: 1 }),
+};
+const P = place || SAFE_PLACE;
+
+// Route the character draw call to the correct manga character. fromGame
+// values map onto the canonical engine-package character names.
+const CHARACTER_MAP = { icarus: 'icarus', orion: 'orion', achilles: 'achilles' };
+function drawCharacterAt(x, y, scale) {
+  const char = CHARACTER_MAP[fromGame];
+  if (!char || !window.Manga || !Manga.characters || !Manga.characters[char]) {
+    // Tiny fallback figure
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.fillStyle = '#e8d8b8';
+    ctx.fillRect(-8, -32, 16, 32);
+    ctx.beginPath(); ctx.arc(0, -38, 8, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    return;
+  }
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(scale, scale);
+  // Draw an idle pose using each character's defaults.
+  const t = performance.now() / 1000;
+  if (char === 'icarus') {
+    Manga.characters.icarus.draw(ctx, {
+      x: 0, y: 0, facingRight: 1,
+      vx: 0, vy: 0, flapPhase: t * 0.6,
+      wingHealth: 50, burnDmg: 0, wetDmg: 0,
+      thrusting: false, dying: false, angle: 0, diving: false,
+    });
+  } else if (char === 'orion') {
+    Manga.characters.orion.draw(ctx, {
+      x: 0, y: 0, facing: 1, walkPhase: 0,
+      vx: 0, vy: 0, onGround: true,
+      hp: 3, hurtFlash: 0, invincible: 0,
+      proneT: 0, proneDmg: 0,
+      spearCount: 7, stabFlash: 0, dodgeT: 0,
+      constellationCharging: false, t,
+    });
+  } else if (char === 'achilles') {
+    Manga.characters.achilles.draw(ctx, {
+      x: 0, y: 0, facing: 1, walkPhase: 0,
+      vx: 0, hp: 5, hitFlash: 0, iframes: 0, t,
+    });
+  }
+  ctx.restore();
+}
+
+// Animation timing for fade-ins. After 1.0s the title is in; after 2.4s
+// the clue banner fades up; after 3.0s the Return button appears.
+const startedAt = performance.now();
+function elapsed() { return (performance.now() - startedAt) / 1000; }
+
+const returnBtn = document.getElementById('returnBtn');
+function maybeShowReturn() {
+  if (elapsed() >= 3.0 && !returnBtn.classList.contains('visible')) {
+    returnBtn.classList.add('visible');
+  }
+}
+returnBtn.addEventListener('click', () => { location.href = 'index.html'; });
+
+// Esc / Space / Enter all also return.
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' || e.key === ' ' || e.key === 'Enter') {
+    location.href = 'index.html';
+  }
+});
+
+function render() {
+  const W = canvas.width, H = canvas.height;
+  const t = performance.now() / 1000;
+
+  // Place silhouette = background.
+  P.silhouette(ctx, W, H, t);
+
+  // Character — placed by the place's transform, drawn idle.
+  const tf = (P.characterTransform || (() => ({ x: W/2, y: H*0.7, scale: 1 })))(ctx, W, H);
+  drawCharacterAt(tf.x, tf.y, tf.scale);
+
+  // Title — fades in over the first 1.0s.
+  const titleAlpha = Math.min(1, elapsed() / 1.0);
+  ctx.save();
+  ctx.globalAlpha = titleAlpha;
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 64px serif';
+  ctx.shadowColor = P.palette.accent || '#D4AF37';
+  ctx.shadowBlur = 32;
+  ctx.fillStyle = P.palette.accent || '#D4AF37';
+  ctx.fillText(P.name, W / 2, H * 0.18);
+  ctx.shadowBlur = 0;
+  ctx.font = 'italic 22px serif';
+  ctx.fillStyle = 'rgba(240,230,200,0.85)';
+  ctx.fillText(P.flavor, W / 2, H * 0.18 + 36);
+  ctx.restore();
+
+  // Decorative ink frame above + below the central tableau.
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, Math.max(0, (elapsed() - 0.4) / 0.8));
+  ctx.strokeStyle = P.palette.accent || '#D4AF37';
+  ctx.lineWidth = 1.8;
+  ctx.shadowColor = P.palette.accent || '#D4AF37';
+  ctx.shadowBlur = 10;
+  ctx.beginPath();
+  ctx.moveTo(W * 0.10, H * 0.27); ctx.lineTo(W * 0.90, H * 0.27);
+  ctx.moveTo(W * 0.10, H * 0.86); ctx.lineTo(W * 0.90, H * 0.86);
+  ctx.stroke();
+  ctx.restore();
+
+  // Clue banner — fades in starting at t=2.4s. Bottom-third of the screen.
+  if (clue && clue.text) {
+    const a = Math.max(0, Math.min(1, (elapsed() - 2.4) / 1.0));
+    if (a > 0) {
+      ctx.save();
+      ctx.globalAlpha = a;
+      // Soft scrim behind the text
+      ctx.fillStyle = 'rgba(2, 0, 6, 0.55)';
+      ctx.fillRect(0, H * 0.93 - 92, W, 84);
+      // Heading
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 12px monospace';
+      ctx.fillStyle = '#D4AF37';
+      ctx.shadowColor = '#D4AF37'; ctx.shadowBlur = 6;
+      ctx.fillText('A CLUE IS REVEALED', W / 2, H * 0.93 - 64);
+      ctx.shadowBlur = 0;
+      // Clue text
+      ctx.font = 'italic 18px serif';
+      ctx.fillStyle = 'rgba(240,235,210,0.95)';
+      const lines = wrapText(clue.text, W * 0.7, ctx.font);
+      lines.forEach((l, i) => ctx.fillText(l, W / 2, H * 0.93 - 38 + i * 22));
+      ctx.restore();
+    }
+  } else {
+    // No clue yet — show a generic "you have learned something" line so
+    // the screen never feels empty.
+    const a = Math.max(0, Math.min(1, (elapsed() - 2.4) / 1.0));
+    if (a > 0) {
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.textAlign = 'center';
+      ctx.font = 'italic 18px serif';
+      ctx.fillStyle = 'rgba(240,235,210,0.85)';
+      ctx.fillText('You have learned something the gods do not give twice.', W / 2, H * 0.91);
+      ctx.restore();
+    }
+  }
+
+  maybeShowReturn();
+  requestAnimationFrame(render);
+}
+
+// Tiny text wrapper (we don't have wrapText globally on this page).
+function wrapText(text, maxW, font) {
+  ctx.save(); ctx.font = font;
+  const words = String(text).split(' ');
+  const out = []; let line = '';
+  for (const w of words) {
+    const test = line ? line + ' ' + w : w;
+    if (ctx.measureText(test).width > maxW && line) { out.push(line); line = w; }
+    else line = test;
+  }
+  if (line) out.push(line);
+  ctx.restore();
+  return out;
+}
+
+render();
+</script>
+</body>
+</html>

@@ -246,7 +246,13 @@ function recordPatroclusKill() {
   }
   if (patroclusKills.length >= PATROCLUS_GOAL) {
     patroclusKills.length = 0;
-    if (window.GodGames && GodGames.Mysteries) GodGames.Mysteries.earnHint('u');
+    if (window.GodGames && GodGames.Mysteries && !GodGames.Mysteries.hasHint('u')) {
+      GodGames.Mysteries.unlockAndDepart({
+        hintId:   'u',
+        placeId:  'erebus',
+        fromGame: 'achilles',
+      });
+    }
   }
 }
 

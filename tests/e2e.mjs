@@ -81,24 +81,31 @@ async function testEngineUnlock() {
   await close();
 }
 
-// ── 2. Icarus Sun's Embrace ───────────────────────────────────────────────
+// ── 2. Icarus Sun's Embrace ──────────────────────────────────────────────
+//
+// New experience: trigger fires → game ends → page navigates to
+// place.html?id=oceanus&from=icarus&clue=clue.first. We can't easily
+// follow the navigation back through localStorage in puppeteer's
+// per-context isolation, so we snapshot the unlock state inside Icarus
+// using `window.GodGames.suppressDepart = true` to skip the redirect.
 async function testIcarus() {
   const { page, close } = await freshPage();
   await page.goto(`${BASE}/tests/seed.html?go=icarus.html`, { waitUntil: 'load' });
   await new Promise(r => setTimeout(r, 800));
+  await page.evaluate(() => { window.GodGames.suppressDepart = true; });
   await page.keyboard.press('ArrowUp');     // start
   await new Promise(r => setTimeout(r, 300));
   await page.keyboard.down('ArrowUp');      // hold to fly
-  // Long enough for the player to reach peak altitude AND hold for the
-  // SUN_EMBRACE_GOAL dwell window. ~3.5s = climb (~2s) + dwell + slack.
   await new Promise(r => setTimeout(r, 3500));
 
   const mid = await probe(page);
   await page.screenshot({ path: `${SHOTS}/icarus_play.png` });
   await page.keyboard.up('ArrowUp');
 
-  const ok = mid.unlocks.includes('hint.z');
-  if (ok) pass('Icarus → hint.z earned', `cinematic=${mid.cinematicName}`);
+  const ok = mid.unlocks.includes('hint.z')
+    && mid.unlocks.some(u => u.startsWith('clue.'))
+    && mid.counters.mysteries_solved_count >= 1;
+  if (ok) pass('Icarus → hint.z earned + clue revealed', `unlocks=${mid.unlocks.join(',')}`);
   else fail('Icarus → hint.z earned', JSON.stringify(mid));
   await close();
 }
@@ -108,6 +115,7 @@ async function testOrion() {
   const { page, close } = await freshPage();
   await page.goto(`${BASE}/tests/seed.html?go=orion.html`, { waitUntil: 'load' });
   await new Promise(r => setTimeout(r, 800));
+  await page.evaluate(() => { window.GodGames.suppressDepart = true; });
   await page.keyboard.press(' ');            // start
   await new Promise(r => setTimeout(r, 4500)); // stand still 4+ seconds
 
@@ -123,6 +131,7 @@ async function testAchilles() {
   const { page, close } = await freshPage();
   await page.goto(`${BASE}/tests/seed.html?go=achilles.html`, { waitUntil: 'load' });
   await new Promise(r => setTimeout(r, 800));
+  await page.evaluate(() => { window.GodGames.suppressDepart = true; });
   await page.keyboard.press(' ');
   await new Promise(r => setTimeout(r, 600));
   for (let i = 0; i < 3; i++) {
@@ -135,6 +144,51 @@ async function testAchilles() {
   await page.screenshot({ path: `${SHOTS}/achilles_play.png` });
   if (after.unlocks.includes('hint.u')) pass('Achilles → hint.u earned', 'Patroclus combo');
   else fail('Achilles → hint.u earned', JSON.stringify(after));
+  await close();
+}
+
+// ── 4b. Place page renders the place + character + clue banner ────────────
+async function testPlacePage() {
+  const { page, close } = await freshPage();
+  await page.evaluateOnNewDocument(() => {
+    localStorage.setItem('tns.unlocks', JSON.stringify({
+      'mystery.icarus_solved': Date.now(),
+      'clue.first': Date.now(),
+    }));
+    localStorage.setItem('tns.counters', JSON.stringify({ mysteries_solved_count: 1 }));
+  });
+  await page.goto(`${BASE}/place.html?id=oceanus&from=icarus&clue=clue.first`, { waitUntil: 'load' });
+  await new Promise(r => setTimeout(r, 3500));
+  await page.screenshot({ path: `${SHOTS}/place_oceanus.png` });
+  const probe = await page.evaluate(() => ({
+    title: document.title,
+    hasReturnBtn: !!document.getElementById('returnBtn'),
+    placeKnown: !!(window.GodGames && window.GodGames.places && window.GodGames.places.oceanus),
+  }));
+  if (probe.placeKnown && probe.hasReturnBtn) pass('place.html renders + Return button present');
+  else fail('place.html', JSON.stringify(probe));
+  await close();
+}
+
+// ── 4c. Olympus clues page surfaces earned clues ─────────────────────────
+async function testOlympusClues() {
+  const { page, close } = await freshPage();
+  await page.evaluateOnNewDocument(() => {
+    localStorage.setItem('tns.unlocks', JSON.stringify({
+      'clue.first': Date.now(),
+      'clue.second': Date.now(),
+    }));
+    localStorage.setItem('tns.counters', JSON.stringify({ mysteries_solved_count: 2 }));
+  });
+  await page.goto(`${BASE}/olympus-clues.html`, { waitUntil: 'load' });
+  await new Promise(r => setTimeout(r, 1200));
+  await page.screenshot({ path: `${SHOTS}/olympus_clues.png` });
+  const probe = await page.evaluate(() => ({
+    earned: (window.GodGames?.Mysteries?.revealedClues() || []).map(c => c.id),
+    nextHasRiddle: !!(window.GodGames?.Mysteries?.nextRiddle()),
+  }));
+  if (probe.earned.length === 2 && probe.nextHasRiddle) pass('olympus-clues lists earned + masks next');
+  else fail('olympus-clues', JSON.stringify(probe));
   await close();
 }
 
@@ -229,7 +283,7 @@ async function testPanel() {
 }
 
 // ── Run all ──────────────────────────────────────────────────────────────
-const tests = [testEngineUnlock, testIcarus, testOrion, testAchilles, testPanel, testShankleBypass, testZeusInvocation, testHeelMystery];
+const tests = [testEngineUnlock, testIcarus, testOrion, testAchilles, testPlacePage, testOlympusClues, testPanel, testShankleBypass, testZeusInvocation, testHeelMystery];
 for (const t of tests) {
   try { await t(); }
   catch (e) { fail(t.name, 'threw: ' + e.message); }

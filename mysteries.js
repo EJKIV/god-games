@@ -62,6 +62,37 @@
   const M = {
     MANGA_CODEWORD: 'zeus',
 
+    // ── Clue chain ───────────────────────────────────────────────────────
+    // Reveals advance with the count of mysteries solved, regardless of
+    // which mystery the player solved (so order-of-play doesn't matter).
+    // Append a new entry with revealAt: <count> to extend the chain.
+    clues: [
+      {
+        id: 'clue.first',
+        revealAt: 1,
+        text: 'A whisper carried across two stars: a hunter is still beneath them, watching.',
+        pointsAt: 'orion',
+      },
+      {
+        id: 'clue.second',
+        revealAt: 2,
+        text: 'Bronze remembers a vengeance struck three times — listen for the friend\'s shade.',
+        pointsAt: 'achilles',
+      },
+      {
+        id: 'clue.third',
+        revealAt: 3,
+        text: 'Olympus listens for its master\'s name. Speak it aloud where the lightning gathers.',
+        pointsAt: 'olympus-call-zeus',
+      },
+    ],
+
+    findClue(id) {
+      if (!id) return null;
+      for (const c of M.clues) if (c.id === id) return c;
+      return null;
+    },
+
     // ── Mystery definitions ──────────────────────────────────────────────
     list: [
       {
@@ -249,6 +280,58 @@
     triggerMangaUnlock() {
       try { localStorage.setItem('godgames_manga', '1'); } catch (_e) {}
       M.solve('manga_mode');
+    },
+
+    // ── unlockAndDepart ──────────────────────────────────────────────────
+    // Game-side mystery payoff: end the run, take the player to the
+    // mythological place, hand them a clue toward the next mystery.
+    //
+    //   GodGames.Mysteries.unlockAndDepart({
+    //     hintId:  'z',                 // earns the manga-mode letter
+    //     placeId: 'oceanus',           // place.html target
+    //     fromGame:'icarus',            // which character poses in the place
+    //     extraUnlocks: ['hint.glyph_first'],  // optional companion unlocks
+    //   });
+    //
+    // Steps: earn hint → tally solve count → reveal next chain clue → save
+    // any silent unlocks → submit score (best-effort) → navigate. Set
+    // window.GodGames.suppressDepart = true to skip navigation in tests.
+    unlockAndDepart(opts) {
+      opts = opts || {};
+      let revealedClueId = null;
+      if (window.Engine && Engine.unlock) {
+        if (opts.hintId) M.earnHint(opts.hintId, { silent: true });
+        for (const id of opts.extraUnlocks || []) Engine.unlock.set(String(id));
+        const newCount = Engine.unlock.tally('mysteries_solved_count');
+        const clue = M.clues.find(c => c.revealAt === newCount);
+        if (clue) {
+          Engine.unlock.set(clue.id);
+          revealedClueId = clue.id;
+        }
+      }
+      try { if (typeof window.GodGames.submitNow === 'function') window.GodGames.submitNow(); }
+      catch (_e) {}
+      if (window.GodGames && window.GodGames.suppressDepart) return;
+      const params = new URLSearchParams();
+      if (opts.placeId)  params.set('id',   opts.placeId);
+      if (opts.fromGame) params.set('from', opts.fromGame);
+      if (opts.hintId)   params.set('hint', opts.hintId);
+      if (revealedClueId) params.set('clue', revealedClueId);
+      setTimeout(() => { location.href = 'place.html?' + params.toString(); }, 60);
+    },
+
+    // Convenience helpers used by olympus-clues.html.
+    solvedCount() {
+      if (!window.Engine || !Engine.unlock) return 0;
+      return Engine.unlock.count('mysteries_solved_count');
+    },
+    revealedClues() {
+      if (!window.Engine || !Engine.unlock) return [];
+      return M.clues.filter(c => Engine.unlock.has(c.id));
+    },
+    nextRiddle() {
+      if (!window.Engine || !Engine.unlock) return null;
+      return M.clues.find(c => c.revealAt === M.solvedCount() + 1) || null;
     },
   };
 
