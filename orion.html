@@ -1079,9 +1079,26 @@ function drawBg(c, W, H, time) {
     c.lineTo(cx+OC[b].x*cs, cy+OC[b].y*cs);
     c.stroke();
   }
-  for(const s of OC){
+  for(let i = 0; i < OC.length; i++){
+    const s = OC[i];
     c.fillStyle='rgba(170,215,255,0.9)'; c.shadowColor='rgba(140,200,255,0.7)'; c.shadowBlur=7;
     c.beginPath(); c.arc(cx+s.x*cs, cy+s.y*cs, 2.8, 0, Math.PI*2); c.fill();
+  }
+  // Glyph highlight on the middle belt star — subtle ring while undiscovered,
+  // bright halo once collected.
+  const glyphFound = window.Engine && Engine.unlock && Engine.unlock.has('glyph_orion_found');
+  const bx = cx + OC[4].x * cs, by = cy + OC[4].y * cs;
+  c.shadowBlur = 0;
+  if (glyphFound) {
+    c.strokeStyle = 'rgba(255, 213, 74, 0.85)';
+    c.shadowColor = '#ffd54a'; c.shadowBlur = 12;
+    c.lineWidth = 1.6;
+    c.beginPath(); c.arc(bx, by, 6, 0, Math.PI * 2); c.stroke();
+  } else {
+    const pulse = 0.35 + Math.sin(time * 1.6) * 0.15;
+    c.strokeStyle = `rgba(255, 213, 74, ${pulse})`;
+    c.lineWidth = 1.2;
+    c.beginPath(); c.arc(bx, by, 7, 0, Math.PI * 2); c.stroke();
   }
   c.shadowBlur=0; c.restore();
   // Moon
@@ -1389,6 +1406,37 @@ Engine.boot({
   },
 });
 ctx = Engine.ctx;
+
+// ── Hidden glyph: Orion's Belt ───────────────────────────────────────────
+// The middle star of the belt (the fourth star in OC) gets a faint ring
+// when not yet found. Clicking it during a fight collects the glyph.
+function beltMidScreenPos() {
+  const W = Engine.W, H = Engine.H;
+  const cs = 160;
+  const cx = W * 0.11, cy = H * 0.32;
+  return { x: cx + OC[4].x * cs, y: cy + OC[4].y * cs };
+}
+Engine.canvas.addEventListener('click', (ev) => {
+  if (Engine.state !== 'playing') return;
+  if (!window.Engine || !Engine.unlock || Engine.unlock.has('glyph_orion_found')) return;
+  const r = Engine.canvas.getBoundingClientRect();
+  const mx = ev.clientX - r.left, my = ev.clientY - r.top;
+  const { x, y } = beltMidScreenPos();
+  const dx = mx - x, dy = my - y;
+  if (dx * dx + dy * dy < 14 * 14) {
+    Engine.unlock.set('glyph_orion_found');
+    if (window.GodGames && GodGames.Mysteries) {
+      GodGames.Mysteries.earnHint('glyph_first');
+      GodGames.Mysteries.tally('glyphs_found');
+    }
+    mangaTexts.push({
+      text: 'A MARK!', x: x, y: y - 22,
+      t: 1.0, color: '#ffd54a', size: 28,
+    });
+    burst(x, y, '#ffd54a', 18, 200);
+    Engine.shake(4);
+  }
+});
 </script>
 </body>
 </html>

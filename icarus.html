@@ -120,6 +120,10 @@ let time = 0;     // mirror of Engine.time, synced before each frame's logic
 // when the player drops below the heat threshold.
 let sunEmbraceT = 0;
 const SUN_EMBRACE_GOAL = 3;     // seconds at max heat → 'shan'
+// Glyph: The Labyrinth Mark — Daedalus designed the labyrinth before the
+// wings. A faint spiral is etched at a fixed worldX/y; flying through it
+// claims it. Persistent unlock so it only collects once per profile.
+const GLYPH_ICARUS = { worldX: 1500, yFrac: 0.45, radius: 22 };
 
 let player, feathers, fires, clouds, floaters, islands, splashes, drips, shakeAmt, shakeDecay;
 
@@ -675,6 +679,32 @@ function updatePlaying(dt) {
     }
   } else {
     sunEmbraceT = 0;
+  }
+
+  // Glyph collection — fly through the spiral if not already found.
+  if (window.Engine && Engine.unlock && !Engine.unlock.has('glyph_icarus_found')) {
+    const gx = GLYPH_ICARUS.worldX - cameraX;
+    const gy = canvas.height * GLYPH_ICARUS.yFrac;
+    const dx = player.x - gx, dy = player.y - gy;
+    if (dx * dx + dy * dy < GLYPH_ICARUS.radius * GLYPH_ICARUS.radius) {
+      Engine.unlock.set('glyph_icarus_found');
+      if (window.GodGames && GodGames.Mysteries) {
+        GodGames.Mysteries.earnHint('glyph_first');
+        GodGames.Mysteries.tally('glyphs_found');
+      }
+      // Feather burst + manga shout (gold-tinted feathers feel like sparkles)
+      for (let i = 0; i < 14; i++) {
+        feathers.push({
+          x: gx + (Math.random()-0.5)*30, y: gy + (Math.random()-0.5)*30,
+          vx: (Math.random()-0.5)*180, vy: -60 - Math.random()*100,
+          rot: Math.random()*Math.PI*2, rotV: (Math.random()-0.5)*8,
+          alpha: 1, size: 5 + Math.random()*4,
+          color: `hsl(${45+Math.random()*15},85%,${65+Math.random()*15}%)`,
+        });
+      }
+      mangaTexts.push({ text: 'A MARK!', x: player.x, y: player.y - 50, t: 0.8, color: '#ffd54a', size: 30 });
+      addShake(4);
+    }
   }
 
   // feather threshold events — only when near the sun
@@ -1466,6 +1496,10 @@ function render() {
     ctx.restore();
   }
 
+  // Hidden glyph — Daedalus's labyrinth seal. Subtle spiral; brighter
+  // shimmer once collected so the player sees their mark next time.
+  renderIcarusGlyph(W, H);
+
   // player
   renderPlayer(W, H);
 
@@ -1851,6 +1885,42 @@ function renderIslands(W, H) {
 
     ctx.restore();
   }
+}
+
+function renderIcarusGlyph(W, H) {
+  const gx = GLYPH_ICARUS.worldX - cameraX;
+  if (gx < -40 || gx > W + 40) return;
+  const gy = H * GLYPH_ICARUS.yFrac;
+  const found = window.Engine && Engine.unlock && Engine.unlock.has('glyph_icarus_found');
+  ctx.save();
+  ctx.translate(gx, gy);
+  // Spiral path — Daedalus's labyrinth motif.
+  const turns = 2.4;
+  const steps = 56;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.strokeStyle = found ? '#fff5c0' : 'rgba(15, 12, 4, 0.42)';
+  ctx.lineWidth = found ? 2.2 : 1.6;
+  if (found) { ctx.shadowColor = '#ffd54a'; ctx.shadowBlur = 10; }
+  ctx.beginPath();
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const a = t * turns * Math.PI * 2;
+    const r = 16 * t;
+    const x = Math.cos(a) * r, y = Math.sin(a) * r;
+    if (i === 0) ctx.moveTo(x, y);
+    else         ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  // Subtle shimmer on the unfound glyph so an observant player can pick it
+  // out against the sky / sun gradient.
+  if (!found) {
+    const pulse = 0.20 + Math.sin(time * 2.3) * 0.10;
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = '#ffd54a';
+    ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
 }
 
 function renderPlayer(W, H) {
