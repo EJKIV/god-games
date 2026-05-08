@@ -132,11 +132,17 @@ let diveT  = 0;          // dive-bomb active (s remaining)
 let diveCD = 0;          // dive-bomb cooldown (s)
 const DIVE_DUR = 0.45;
 const DIVE_CD  = 5;
-// Daedalus auto-rescue (manga-only, once per run)
-let rescueUsed  = false; // already fired this run
+// Daedalus auto-rescue (manga-only). Multi-rescue economy: the player
+// starts with 1 charge per run, and each island claimed earns favor that
+// converts to additional charges (every RESCUES_PER_FAVOR favor = +1
+// charge, capped at MAX_RESCUES). Each rescue consumes one charge.
+let rescueAvailable = 0;  // remaining charges this run
+let rescueIslandFavor = 0; // counter; rolls into +1 charge each ISLANDS_PER_RESCUE
 let rescueT     = 0;     // active animation time remaining (s)
 let rescueReach = 0;     // 0..1, hand stretching from below
 const RESCUE_DUR = 1.4;
+const ISLANDS_PER_RESCUE = 3;
+const MAX_RESCUES = 3;
 let mangaTexts = [];     // { text, x, y, t, color, size }
 let eagles, eagleSpawnTimer;
 let orcas, orcaSpawnTimer;
@@ -372,7 +378,7 @@ function initGame() {
   hallRank = null;
   // Manga abilities
   diveT = 0; diveCD = 0;
-  rescueUsed = false; rescueT = 0; rescueReach = 0;
+  rescueAvailable = 1; rescueIslandFavor = 0; rescueT = 0; rescueReach = 0;
   sunEmbraceT = 0;
   mangaTexts.length = 0;
   hallStatus = null;
@@ -610,6 +616,20 @@ function updatePlaying(dt) {
         x: ix, y: surf - 30,
         val: ISLAND_XP_BONUS, alpha: 1.5, vy: -75, big: true,
       });
+      // Multi-rescue economy: every ISLANDS_PER_RESCUE landings earns +1
+      // rescue charge (capped at MAX_RESCUES). Manga-mode + daedalus_compassion
+      // gate is checked at trigger time, so the favor accumulates regardless.
+      rescueIslandFavor++;
+      if (rescueIslandFavor >= ISLANDS_PER_RESCUE) {
+        rescueIslandFavor = 0;
+        if (rescueAvailable < MAX_RESCUES) {
+          rescueAvailable++;
+          mangaTexts.push({
+            text: 'DAEDALUS WATCHES', x: ix, y: surf - 80,
+            t: 1.4, color: '#ffd54a', size: 22,
+          });
+        }
+      }
       playIslandLand();
       addShake(3);
       for (let i = 0; i < 12; i++) {
@@ -1031,7 +1051,7 @@ function updatePlaying(dt) {
     // rescue is invisible / inactive.
     const rescueEarned = window.GodGames && GodGames.Mysteries
       && GodGames.Mysteries.isSolved('daedalus_compassion');
-    if (Engine.manga && rescueEarned && !rescueUsed) {
+    if (Engine.manga && rescueEarned && rescueAvailable > 0) {
       triggerDaedalusRescue();
       return;
     }
@@ -1053,7 +1073,7 @@ function updatePlaying(dt) {
 // Halves recoverable damage (eagle/orca floors are preserved) and clears the
 // direct-hit pool so wingHealth bounces back enough to keep flying.
 function triggerDaedalusRescue() {
-  rescueUsed  = true;
+  rescueAvailable = Math.max(0, rescueAvailable - 1);
   rescueT     = RESCUE_DUR;
   rescueReach = 0;
   // Daedalus shaves a chunk off every damage source so the rescue actually
@@ -2479,7 +2499,7 @@ function renderHUD(W, H) {
 // pulses while the carry plays, dims to a flat outline once consumed.
 function drawRescueRing(cx, cy) {
   const r = 22;
-  const consumed = rescueUsed && rescueT <= 0;
+  const consumed = rescueAvailable === 0 && rescueT <= 0;
   const active   = rescueT > 0;
   ctx.save();
   ctx.fillStyle = active ? 'rgba(255,220,120,0.55)' : 'rgba(0,0,0,0.55)';
@@ -2507,6 +2527,27 @@ function drawRescueRing(cx, cy) {
   ctx.moveTo(cx - 6, cy + 6);
   ctx.quadraticCurveTo(cx, cy + 1, cx + 6, cy + 6);
   ctx.stroke();
+
+  // Charge count + favor pip — small dot row beneath the ring shows how many
+  // rescues remain and how close we are to the next one.
+  const dotsY = cy + r + 8;
+  for (let i = 0; i < MAX_RESCUES; i++) {
+    const x = cx - (MAX_RESCUES - 1) * 5 + i * 10;
+    if (i < rescueAvailable) {
+      ctx.fillStyle = '#ffd54a';
+      ctx.shadowColor = '#ffd54a'; ctx.shadowBlur = 6;
+    } else if (i === rescueAvailable && rescueIslandFavor > 0) {
+      // Partial fill scaled by favor progress
+      const frac = rescueIslandFavor / ISLANDS_PER_RESCUE;
+      ctx.fillStyle = `rgba(255,213,74,${0.20 + frac * 0.6})`;
+      ctx.shadowBlur = 0;
+    } else {
+      ctx.fillStyle = 'rgba(120,100,60,0.45)';
+      ctx.shadowBlur = 0;
+    }
+    ctx.beginPath(); ctx.arc(x, dotsY, 3, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.shadowBlur = 0;
   ctx.restore();
 }
 
