@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Myth Place Cut - place revealed</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #05030b; overflow: hidden; font-family: 'Trebuchet MS', serif; color: #f3ead2; }
+  canvas { display: block; }
+  #returnBtn {
+    position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%);
+    padding: 11px 24px; border: 1px solid #aa66ff; border-radius: 4px;
+    background: rgba(170,102,255,0.10); color: #f3ead2;
+    font: 13px monospace; letter-spacing: 0.14em; cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<button id="returnBtn">RETURN</button>
+
+<script src="../../core/engine.js"></script>
+<script src="../../manga/manga.js"></script>
+<script>
+// A stripped scene-cut destination. God Games uses places.js for many places;
+// this example keeps one inline place so the pattern is portable.
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+const params = new URLSearchParams(location.search);
+const fromGame = params.get('from') || 'icarus';
+
+const INK = (window.Manga && Manga.INK) || '#0a0a0a';
+let halftonePattern = null;
+function halftone(ctx, x, y, w, h, alpha) {
+  if (!halftonePattern) {
+    const tile = document.createElement('canvas');
+    tile.width = tile.height = 6;
+    const tc = tile.getContext('2d');
+    tc.fillStyle = INK;
+    tc.beginPath();
+    tc.arc(3, 3, 1.2, 0, Math.PI * 2);
+    tc.fill();
+    halftonePattern = ctx.createPattern(tile, 'repeat');
+  }
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = halftonePattern;
+  ctx.fillRect(x, y, w, h);
+  ctx.restore();
+}
+
+const PLACE = {
+  name: 'LAND OF DREAMS',
+  flavor: 'where ghosts of dreams dwell beyond the streams',
+  accent: '#aa66ff',
+  silhouette(ctx, W, H, t) {
+    ctx.fillStyle = '#120922';
+    ctx.fillRect(0, 0, W, H);
+    halftone(ctx, 0, 0, W, H, 0.28);
+
+    const floorY = H * 0.66;
+    ctx.fillStyle = '#07040d';
+    ctx.fillRect(0, floorY, W, H - floorY);
+    ctx.strokeStyle = 'rgba(170,102,255,0.42)';
+    ctx.lineWidth = 1.8;
+    for (let i = 0; i < 8; i++) {
+      const y = floorY + i * 23;
+      ctx.beginPath();
+      for (let x = 0; x <= W; x += 18) {
+        const yy = y + Math.sin(x * 0.015 + t * 0.7 + i) * 4;
+        x === 0 ? ctx.moveTo(x, yy) : ctx.lineTo(x, yy);
+      }
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = 'rgba(170,102,255,0.16)';
+    for (let i = 0; i < 6; i++) {
+      const cx = ((i * 210 + t * 9) % (W + 180)) - 90;
+      const cy = H * 0.32 + Math.sin(t * 0.45 + i) * 25;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, 76 + i * 5, 23 + i * 2, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  },
+  characterTransform(W, H) {
+    return { x: W * 0.50, y: H * 0.66, scale: 1.05 };
+  },
+};
+
+const startedAt = performance.now();
+function elapsed() { return (performance.now() - startedAt) / 1000; }
+
+function drawCharacter(x, y, scale, t) {
+  const facing = Math.sin(t * 0.45) > 0 ? 1 : -1;
+  const char = fromGame === 'icarus' && window.Manga && Manga.characters && Manga.characters.icarus
+    ? Manga.characters.icarus
+    : null;
+  ctx.save();
+  ctx.translate(x + Math.sin(t * 0.45) * 90, y);
+  ctx.scale(scale, scale);
+  if (char) {
+    char.draw(ctx, {
+      x: 0, y: 0, facingRight: facing > 0 ? 1 : 0,
+      vx: facing * 60, vy: 0, flapPhase: t * 0.9,
+      wingHealth: 50, burnDmg: 0, wetDmg: 0,
+      thrusting: false, dying: false, angle: 0, diving: false,
+    });
+  } else {
+    ctx.scale(facing, 1);
+    ctx.fillStyle = '#f0d28a';
+    ctx.beginPath(); ctx.arc(0, -30, 9, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#d8c0a0';
+    ctx.fillRect(-8, -20, 16, 28);
+  }
+  ctx.restore();
+}
+
+function render() {
+  const W = canvas.width, H = canvas.height;
+  const t = performance.now() / 1000;
+  PLACE.silhouette(ctx, W, H, t);
+
+  const tf = PLACE.characterTransform(W, H);
+  drawCharacter(tf.x, tf.y, tf.scale, t);
+
+  const a = Math.min(1, elapsed() / 1.0);
+  ctx.save();
+  ctx.globalAlpha = a;
+  ctx.textAlign = 'center';
+  ctx.shadowColor = PLACE.accent;
+  ctx.shadowBlur = 28;
+  ctx.fillStyle = PLACE.accent;
+  ctx.font = 'bold 58px serif';
+  ctx.fillText(PLACE.name, W / 2, H * 0.18);
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = 'rgba(245,235,210,0.86)';
+  ctx.font = 'italic 20px serif';
+  ctx.fillText(PLACE.flavor, W / 2, H * 0.18 + 34);
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, Math.min(1, (elapsed() - 1.5) / 0.8));
+  ctx.textAlign = 'center';
+  ctx.font = 'italic 18px serif';
+  ctx.fillStyle = 'rgba(245,235,210,0.84)';
+  ctx.fillText('A quiet place answers the hidden mark.', W / 2, H * 0.84);
+  ctx.restore();
+
+  requestAnimationFrame(render);
+}
+render();
+
+document.getElementById('returnBtn').addEventListener('click', () => { location.href = 'index.html'; });
+window.addEventListener('keydown', e => {
+  if (e.key === 'Escape' || e.key === ' ' || e.key === 'Enter') location.href = 'index.html';
+});
+</script>
+</body>
+</html>

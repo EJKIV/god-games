@@ -34,12 +34,20 @@ packages/game-engine/
 │   ├── characters/             # Character draw + polish profiles
 │   ├── effects/                # Stateless render helpers (halftone, ink, vignette, ...)
 │   ├── fx/                     # Stateful per-frame fx (camerapunch, slomo, sfxlayered,
-│   │                           # zeusstrike, cinematic) — cinematic powers GodGames
-│   │                           # MythCinematic but is portable to any kid game.
+│   │                           # zeusstrike, cinematic). Manga.fx.cinematic is a
+│   │                           # portable overlay factory for myth discoveries and
+│   │                           # fallback vignettes in kid games.
 │   └── scenes/                 # Cinematic scene drawables
 ├── animation/, audio/, level/, physics/  # Reserved for future helpers
 ├── api/
 │   └── leaderboard.js          # Vercel serverless. See api/CLAUDE.md
+├── examples/
+│   ├── myth-discovery/         # Worked example showing Manga.fx.cinematic +
+│                               # Engine.unlock + Engine.dialogue.drawBubble
+│                               # composing in a fresh kid game (~150 LOC).
+│   └── myth-place-cut/         # Current production-style mystery example:
+│                               # Engine.unlock + unlockAndDepart-shaped shim
+│                               # leaves the level for a place.html scene.
 ├── package.json
 └── CLAUDE.md
 ```
@@ -92,6 +100,7 @@ Ported from `~/projects/god-games/` (engine.js, manga/, api/) on 2026-05-07. The
 
 | Date       | Change                                                | Author |
 |------------|-------------------------------------------------------|--------|
+| 2026-05-08 | Added the `myth-place-cut` example and clarified `Manga.fx.cinematic` as the overlay fallback factory. | codex  |
 | 2026-05-07 | Added `Engine.timeScale` + `Engine.setTimeScale(factor, dur)` for slo-mo dips. Engine multiplies dt by `timeScale` while `state==='playing'`; particles, floaters, time, and `config.onUpdate` all slow together. Shake decay stays on raw dt. | jim    |
 | 2026-05-07 | Added manga `daedalus.js` + `orca.js`. See `manga/CLAUDE.md`.        | jim    |
 | 2026-05-07 | Initial port from god-games. Engine + manga + api.    | jim    |

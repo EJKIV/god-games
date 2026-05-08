@@ -27,7 +27,8 @@
     "dialogue/",
     "level/",
     "api/",
-    "CLAUDE.md"
+    "CLAUDE.md",
+    "LICENSE"
   ],
   "keywords": [
     "tellandshow",
@@ -36,7 +37,7 @@
     "kids",
     "education"
   ],
-  "license": "UNLICENSED",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/EJKIV/tellandshow",
