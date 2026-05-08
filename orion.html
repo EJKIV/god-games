@@ -983,16 +983,31 @@ function renderHUD() {
     ctx.restore();
   }
 
-  // Boss HP bar
-  ctx.fillStyle='rgba(0,0,0,0.55)';
+  // Boss HP bar — manga route gets bold ink + halftone scrim on the empty
+  // portion so the bar reads like a comic gauge rather than a UI rectangle.
+  const bossMangaOn = !!Engine.manga;
+  ctx.fillStyle = bossMangaOn ? '#0a0a0a' : 'rgba(0,0,0,0.55)';
   ctx.beginPath(); ctx.roundRect(W/2-155,14,310,26,4); ctx.fill();
   const bfrac = Math.max(0, boss.hp/BOSS_HP);
   const bc = bfrac>0.6?'#44dd44':bfrac>0.3?'#ffcc00':'#ff2200';
   ctx.fillStyle = bc;
   ctx.beginPath(); ctx.roundRect(W/2-155,14,310*bfrac,26,4); ctx.fill();
-  ctx.strokeStyle='rgba(255,255,255,0.3)'; ctx.lineWidth=1.5;
+  if (bossMangaOn && window.Manga && Manga.effects && Manga.effects.halftone) {
+    ctx.save();
+    ctx.beginPath(); ctx.roundRect(W/2-155 + 310*bfrac, 14, 310 - 310*bfrac, 26, 4);
+    ctx.clip();
+    Manga.effects.halftone(ctx, W/2-155, 14, 310, 26, { density: 4, dotSize: 1.4, alpha: 0.55, color: '#0a0a0a' });
+    ctx.restore();
+  }
+  ctx.strokeStyle = bossMangaOn ? '#0a0a0a' : 'rgba(255,255,255,0.3)';
+  ctx.lineWidth = bossMangaOn ? 3 : 1.5;
   ctx.beginPath(); ctx.roundRect(W/2-155,14,310,26,4); ctx.stroke();
-  ctx.fillStyle='#fff'; ctx.font='bold 12px monospace'; ctx.textAlign='center';
+  ctx.font='bold 12px monospace'; ctx.textAlign='center';
+  if (bossMangaOn) {
+    ctx.lineJoin = 'round'; ctx.strokeStyle = '#0a0a0a'; ctx.lineWidth = 4;
+    ctx.strokeText('GIANT SCORPION', W/2, 31);
+  }
+  ctx.fillStyle = bossMangaOn ? '#fff5c0' : '#fff';
   ctx.fillText('GIANT SCORPION', W/2, 31);
 
   if(boss.phase>1){

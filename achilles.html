@@ -117,6 +117,10 @@ let mangaDeathT = 0;         // Engine.time when death entered (drives panel-spl
 // ── Manga abilities (player) ──────────────────────────────────────────────
 let bashT  = 0, bashCD  = 0;       // shield bash: deflect window + cooldown
 let bowT   = 0, bowCD   = 0;       // counter shot: bow-pose anim + cooldown
+let heelT  = 0, heelCD  = 0;       // Heel Strike: invuln + AoE downs all archers
+const HEEL_DUR = 1.5, HEEL_CD = 30;
+let heelOneHpAccumulator = 0;       // tenths-of-a-second accumulator for the
+                                    // achilles_one_hp_seconds_x10 counter
 const BASH_DUR = 0.4, BASH_CD = 5; // tunable
 const BOW_POSE = 0.30, BOW_CD = 2.5;
 let returnArrows = [];             // arrows player has fired UPWARD at archers
@@ -219,6 +223,8 @@ function resetGame() {
   mangaDeathT = 0;
   bashT = 0; bashCD = 0;
   bowT = 0; bowCD = 0;
+  heelT = 0; heelCD = 0;
+  heelOneHpAccumulator = 0;
   pendingSpecial = null;
   mangaTexts.length = 0;
   if (archers) for (const a of archers) { a.downT = 0; a.glow = 0; a.releaseT = 0; a.drawT = 0; }
@@ -347,6 +353,10 @@ function update(dt) {
   bashCD = Math.max(0, bashCD - dt);
   bowT   = Math.max(0, bowT   - dt);
   bowCD  = Math.max(0, bowCD  - dt);
+  heelT  = Math.max(0, heelT  - dt);
+  heelCD = Math.max(0, heelCD - dt);
+  // Heel Strike grants invuln while active.
+  if (heelT > 0) player.iframes = Math.max(player.iframes, heelT);
   if (archers) for (const a of archers) {
     a.downT    = Math.max(0, a.downT    - dt);
     a.glow     = Math.max(0, a.glow     - dt);
@@ -411,6 +421,19 @@ function update(dt) {
 
   if (player.iframes  > 0) player.iframes  -= dt;
   if (player.hitFlash > 0) player.hitFlash -= dt;
+
+  // Mystery: Heel of Achilles — accumulate time spent at 1 HP across runs.
+  // Tallies in tenths of a second so Engine.unlock's integer counter can
+  // track sub-second progress. 50 ticks (= 5s cumulative) → 'heel_of_achilles' solves.
+  if (player.hp === 1) {
+    heelOneHpAccumulator += dt;
+    while (heelOneHpAccumulator >= 0.1) {
+      heelOneHpAccumulator -= 0.1;
+      if (window.GodGames && GodGames.Mysteries) {
+        GodGames.Mysteries.tally('achilles_one_hp_seconds_x10');
+      }
+    }
+  }
 
   // Wave spawn
   const interval = Math.max(WAVE_MIN, WAVE_BASE - playTime * RAMP);
@@ -1044,8 +1067,12 @@ function drawWorldFrame() {
 
   // Manga ability HUD — bottom-right ring icons for X (shield) + Z (bow).
   if (Engine.manga) {
-    drawAbilityIcon(W - 88, H - 76, 'X', '🛡', bashCD, BASH_CD, bashT > 0);
-    drawAbilityIcon(W - 32, H - 76, 'Z', '🏹', bowCD,  BOW_CD,  bowT  > 0);
+    drawAbilityIcon(W - 144, H - 76, 'X', '🛡', bashCD, BASH_CD, bashT > 0);
+    drawAbilityIcon(W -  88, H - 76, 'Z', '🏹', bowCD,  BOW_CD,  bowT  > 0);
+    // Heel Strike ring only appears once the heel_of_achilles mystery solves.
+    if (window.GodGames && GodGames.Mysteries && GodGames.Mysteries.isSolved('heel_of_achilles')) {
+      drawAbilityIcon(W - 32, H - 76, 'C', '⚔', heelCD, HEEL_CD, heelT > 0);
+    }
   }
 
   // Manga texts — telegraph warnings and ability shouts (sfxText style)
@@ -1389,6 +1416,25 @@ Engine.boot({
             mangaTexts.push({ text: 'SHOT!', x: player.x, y: PLAYER_Y - 110, t: 0.4, color: '#ffd54a', size: 30 });
           }
         }
+      }
+      // Heel Strike — manga only, gated by the heel_of_achilles mystery.
+      // Downs every alive archer + grants ~1.5s invuln. Long cooldown.
+      const heelEarned = window.GodGames && GodGames.Mysteries
+        && GodGames.Mysteries.isSolved('heel_of_achilles');
+      if (e.manga && heelEarned && (ev.key === 'c' || ev.key === 'C') && heelCD <= 0) {
+        heelT = HEEL_DUR; heelCD = HEEL_CD;
+        player.iframes = Math.max(player.iframes, HEEL_DUR + 0.2);
+        for (const a of archers) {
+          if (a.downT <= 0) {
+            a.downT = 8;
+            a.releaseT = 0; a.drawT = 0;
+            burst(a.x, 28, '#ff8800', 14, 1.0);
+          }
+        }
+        Engine.shake(8);
+        Engine.setTimeScale(0.45, 0.40);
+        mangaTexts.push({ text: 'HEEL!', x: player.x, y: PLAYER_Y - 100, t: 0.6, color: '#ffd54a', size: 56 });
+        if (e.audio._ctx) Engine.audio.tone(120, 'sawtooth', 0.4, 0.5, 60);
       }
     }
   },

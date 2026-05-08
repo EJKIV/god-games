@@ -158,6 +158,17 @@
         solvedFlavor: 'Carved among the immortals.',
       },
       {
+        id: 'heel_of_achilles',
+        requires: 'manga_mode',
+        lockedTitle: '???',
+        lockedFlavor: 'The hero, brought to his vulnerable wound.',
+        hints: [
+          { id: 'hint.heel_one_hp', fragment: 'One breath from oblivion. He did not fall.', target: { counter: 'achilles_one_hp_seconds_x10', goal: 50 } },
+        ],
+        solvedTitle: 'THE HEEL OF ACHILLES',
+        solvedFlavor: 'The wound that kills him is the wound that empowers him.',
+      },
+      {
         id: 'glyph_hunter',
         lockedTitle: '???',
         lockedFlavor: 'Three marks bear the seal of three myths.',

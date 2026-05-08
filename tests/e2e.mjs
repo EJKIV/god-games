@@ -89,7 +89,9 @@ async function testIcarus() {
   await page.keyboard.press('ArrowUp');     // start
   await new Promise(r => setTimeout(r, 300));
   await page.keyboard.down('ArrowUp');      // hold to fly
-  await new Promise(r => setTimeout(r, 2200));
+  // Long enough for the player to reach peak altitude AND hold for the
+  // SUN_EMBRACE_GOAL dwell window. ~3.5s = climb (~2s) + dwell + slack.
+  await new Promise(r => setTimeout(r, 3500));
 
   const mid = await probe(page);
   await page.screenshot({ path: `${SHOTS}/icarus_play.png` });
@@ -178,6 +180,34 @@ async function testZeusInvocation() {
   await close();
 }
 
+// ── 7b. Heel of Achilles mystery — counter-driven solve ─────────────────
+// Pre-seed manga_mode unlocked (it's a prereq) and tally the counter to its
+// goal. The mystery should auto-solve via the maybeSolveByHints chain.
+async function testHeelMystery() {
+  const { page, close } = await freshPage();
+  await page.evaluateOnNewDocument(() => {
+    localStorage.setItem('tns.unlocks', JSON.stringify({ manga_mode: Date.now() }));
+    localStorage.setItem('godgames_playerName', 'TEST');
+    localStorage.setItem('godgames_manga', '1');
+  });
+  await page.goto(`${BASE}/achilles.html`, { waitUntil: 'load' });
+  await new Promise(r => setTimeout(r, 600));
+
+  const r = await page.evaluate(() => {
+    // Drive the counter to goal directly.
+    for (let i = 0; i < 50; i++) {
+      window.GodGames.Mysteries.tally('achilles_one_hp_seconds_x10');
+    }
+    return {
+      heelSolved: window.GodGames.Mysteries.isSolved('heel_of_achilles'),
+      counter: window.Engine.unlock.count('achilles_one_hp_seconds_x10'),
+    };
+  });
+  if (r.heelSolved && r.counter >= 50) pass('Heel of Achilles: counter → mystery solves', `count=${r.counter}`);
+  else fail('Heel of Achilles', JSON.stringify(r));
+  await close();
+}
+
 // ── 7. Hub mysteries panel reflects earned hints ─────────────────────────
 async function testPanel() {
   const { page, close } = await freshPage();
@@ -199,7 +229,7 @@ async function testPanel() {
 }
 
 // ── Run all ──────────────────────────────────────────────────────────────
-const tests = [testEngineUnlock, testIcarus, testOrion, testAchilles, testPanel, testShankleBypass, testZeusInvocation];
+const tests = [testEngineUnlock, testIcarus, testOrion, testAchilles, testPanel, testShankleBypass, testZeusInvocation, testHeelMystery];
 for (const t of tests) {
   try { await t(); }
   catch (e) { fail(t.name, 'threw: ' + e.message); }
