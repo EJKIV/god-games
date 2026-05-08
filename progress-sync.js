@@ -1,0 +1,117 @@
+// progress-sync.js — backs Engine.unlock state with Redis via /api/progress.
+//
+// Lifecycle:
+//   1. On script load, look up the player's name (localStorage.godgames_playerName).
+//      If missing or empty, do nothing — no auth, no name, no sync.
+//   2. GET /api/progress?name=<player>. Merge remote state into Engine.unlock:
+//      • set every remote unlock id (no-op if local already has it)
+//      • for every remote counter, take max(local, remote) and write back
+//   3. Subscribe to Engine.unlock.onChange. On any change, debounce ~700ms and
+//      POST the full local state to /api/progress. Server merges (max, union).
+//
+// Why this is safe:
+//   • All operations are merges, never replaces. A divergent device never
+//     loses progress; both sides converge to the union.
+//   • Mysteries are forever-state. Counters never decrease (Engine.unlock has
+//     no decrement). So max-merge is correct.
+//   • Player name is the only identity. No accounts, no auth. The Workshop
+//     usage pattern: kid types name once, progress follows them across
+//     devices on the same name.
+
+(function () {
+  if (typeof window === 'undefined') return;
+  if (window.__progressSyncLoaded) return;
+  window.__progressSyncLoaded = true;
+
+  const NAME_KEY = 'godgames_playerName';
+  const ENDPOINT = '/api/progress';
+  const DEBOUNCE_MS = 700;
+
+  function getName() {
+    try { return (localStorage.getItem(NAME_KEY) || '').trim(); }
+    catch (_e) { return ''; }
+  }
+
+  function getLocalState() {
+    let unlocks = {}, counters = {};
+    try { unlocks  = JSON.parse(localStorage.getItem('tns.unlocks')  || '{}') || {}; } catch (_e) {}
+    try { counters = JSON.parse(localStorage.getItem('tns.counters') || '{}') || {}; } catch (_e) {}
+    return { unlocks, counters };
+  }
+
+  // Merge remote into Engine.unlock (the local state). Returns true if the
+  // merge actually changed anything locally (so we know whether to POST).
+  function mergeRemoteIntoLocal(remote) {
+    if (!window.Engine || !Engine.unlock) return false;
+    let changed = false;
+    if (remote.unlocks) {
+      for (const id of Object.keys(remote.unlocks)) {
+        if (!Engine.unlock.has(id)) {
+          Engine.unlock.set(id);
+          changed = true;
+        }
+      }
+    }
+    if (remote.counters) {
+      for (const [k, n] of Object.entries(remote.counters)) {
+        const localN = Engine.unlock.count(k);
+        if (n > localN) { Engine.unlock.setCount(k, n); changed = true; }
+      }
+    }
+    return changed;
+  }
+
+  // ── Initial pull on load ─────────────────────────────────────────────
+  async function pullInitial() {
+    const name = getName();
+    if (!name) return;
+    try {
+      const r = await fetch(`${ENDPOINT}?name=${encodeURIComponent(name)}`, { method: 'GET' });
+      if (!r.ok) return;
+      const remote = await r.json();
+      mergeRemoteIntoLocal(remote);
+    } catch (_e) { /* offline / cors / 4xx — silent */ }
+  }
+
+  // ── Debounced push on change ─────────────────────────────────────────
+  let pushTimer = null;
+  function schedulePush() {
+    if (pushTimer) clearTimeout(pushTimer);
+    pushTimer = setTimeout(pushNow, DEBOUNCE_MS);
+  }
+  async function pushNow() {
+    pushTimer = null;
+    const name = getName();
+    if (!name) return;
+    const { unlocks, counters } = getLocalState();
+    if (!Object.keys(unlocks).length && !Object.keys(counters).length) return;
+    try {
+      await fetch(ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, unlocks, counters }),
+        keepalive: true,
+      });
+    } catch (_e) { /* offline — try again on next change */ }
+  }
+
+  // Run as soon as Engine.unlock is available. The script loads after
+  // unlock/index.js so this is normally synchronous, but be defensive in
+  // case the load order shifts.
+  function start() {
+    if (!window.Engine || !Engine.unlock) {
+      setTimeout(start, 50);
+      return;
+    }
+    pullInitial();
+    Engine.unlock.onChange(schedulePush);
+    // Best-effort flush on page hide so we don't lose a freshly-earned hint.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
+        pushNow();
+      }
+    });
+  }
+  start();
+})();

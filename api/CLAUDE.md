@@ -94,8 +94,31 @@ curl -sS -X POST "$KV_REST_API_URL" \
 | Change name sanitization              | `sanitizeName()` here AND every game file's `saveNameFromModal` (kept in lock-step) |
 | Inspect / clean up a leaderboard      | Use `vercel env pull` + the curl commands above             |
 
+## progress.js — mystery progress sync
+
+Companion endpoint to `leaderboard.js`. Stores each player's
+`Engine.unlock` state (unlocks + counters) in Redis keyed by sanitized
+player name, so a kid who unlocks a clue at home can see it when they
+return on a different device.
+
+- `GET  /api/progress?name=<player>` → `{ unlocks: {id: ts, ...}, counters: {key: int, ...} }`
+- `POST /api/progress` body `{ name, unlocks, counters }` → merges incoming
+  into stored. Merge strategy is **union of unlocks (max ts) + max of
+  counters** — divergent devices never lose progress, both converge to
+  the union. Mysteries are forever-state, so this is correct.
+
+Storage key: `progress:<name>` → JSON. Rate-limit `rl:progress:<ip>` at
+30/min (higher than the leaderboard's 5 because progress writes are
+debounced + frequent).
+
+Same `sanitizeName` regex as `leaderboard.js` so player names round-trip
+identically. The client-side bridge is `progress-sync.js` at the repo
+root — it pulls on load + debounce-pushes on every `Engine.unlock`
+change.
+
 ## Updates
 
 | Date       | Change                                                                          | Author |
 |------------|---------------------------------------------------------------------------------|--------|
+| 2026-05-08 | Added `progress.js` for mystery state sync (Engine.unlock + counters).          | jim    |
 | 2026-05-07 | Created subtree router. Achilles registered in `GAMES` (order:desc, 0..10M).    | jim    |
