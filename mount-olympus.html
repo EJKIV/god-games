@@ -462,6 +462,7 @@ let lightning = 0; // brightness flash
 let nextStrike = 4 + Math.random()*8;
 
 function drawMountains(t) {
+  if (_mangaUnlocked) { drawMangaMountains(t); return; }
   // Far back range — soft purple, distant
   const skyTop = '#04071a', skyMid = '#0e1438', skyBot = '#1a2654';
   const sky = bx.createLinearGradient(0, 0, 0, BH);
@@ -574,7 +575,197 @@ function drawMountains(t) {
   bx.closePath(); bx.fill();
 }
 
+// ── Manga theme ──────────────────────────────────────────────────────────
+// Inline manga renderer for Mt. Olympus. Bold flat ink + halftone screen-tone
+// + sharp lightning. Inlined (rather than pulling in the full Manga library)
+// because this is a single static page and the manga library would otherwise
+// load 30+ scripts just to use halftone + ink outlines.
+const MANGA_INK   = '#0a0a0a';
+const MANGA_PAPER = '#f0e8d0';
+const MANGA_GOLD  = '#D4AF37';
+let _mangaHalftonePat = null;
+function mangaHalftone(ctx, x, y, w, h, alpha = 0.40) {
+  if (!_mangaHalftonePat) {
+    const tile = document.createElement('canvas');
+    tile.width = tile.height = 6;
+    const tc = tile.getContext('2d');
+    tc.fillStyle = '#000';
+    tc.beginPath(); tc.arc(3, 3, 1.2, 0, Math.PI * 2); tc.fill();
+    _mangaHalftonePat = ctx.createPattern(tile, 'repeat');
+  }
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = _mangaHalftonePat;
+  ctx.fillRect(x, y, w, h);
+  ctx.restore();
+}
+function mangaInk(ctx, w) {
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  ctx.strokeStyle = MANGA_INK;
+  ctx.lineWidth = w;
+}
+
+function drawMangaMountains(t) {
+  // Flat sky — single tone (no gradient), the manga aesthetic.
+  bx.fillStyle = '#101428';
+  bx.fillRect(0, 0, BW, BH);
+
+  // Stars — bigger, fewer, with bold ink outlines. (Sparser than realist.)
+  for (let i = 0; i < stars.length; i += 4) {
+    const s = stars[i];
+    const b = Math.sin(t * 1.4 + s.ph) * 0.4 + 0.6;
+    bx.globalAlpha = b * 0.95;
+    bx.fillStyle = '#fff5c0';
+    bx.beginPath(); bx.arc(s.x * BW, s.y * BH, s.r * 1.6 + 0.6, 0, Math.PI * 2); bx.fill();
+  }
+  bx.globalAlpha = 1;
+
+  // Lightning: bold zigzag forks, manga ink + bright core. Scaled by `lightning`.
+  if (lightning > 0.05) {
+    bx.save();
+    bx.globalAlpha = lightning;
+    // Atmospheric glow behind the bolt
+    const flash = bx.createRadialGradient(BW * 0.5, BH * 0.30, 20, BW * 0.5, BH * 0.30, BH * 0.65);
+    flash.addColorStop(0, `rgba(255,245,200,${0.40 * lightning})`);
+    flash.addColorStop(0.6, `rgba(60,40,80,${0.18 * lightning})`);
+    flash.addColorStop(1, 'rgba(0,0,0,0)');
+    bx.fillStyle = flash; bx.fillRect(0, 0, BW, BH);
+    // Bolt — three forks with random jitter, ink-outlined
+    const bx0 = BW * 0.5, by0 = 40;
+    const tip = { x: BW * 0.5 + (Math.sin(t * 6) * 12), y: BH * 0.20 };
+    const segments = [];
+    let cx = bx0, cy = by0;
+    while (cy < tip.y) {
+      const nx = cx + (Math.random() - 0.5) * 30;
+      const ny = cy + 18 + Math.random() * 14;
+      segments.push([cx, cy, nx, ny]);
+      cx = nx; cy = ny;
+    }
+    bx.shadowColor = '#fff5c0'; bx.shadowBlur = 20;
+    bx.strokeStyle = '#fff5c0'; bx.lineWidth = 4; bx.lineCap = 'round'; bx.lineJoin = 'round';
+    for (const [x1, y1, x2, y2] of segments) { bx.beginPath(); bx.moveTo(x1, y1); bx.lineTo(x2, y2); bx.stroke(); }
+    bx.shadowBlur = 0;
+    bx.strokeStyle = '#ffffff'; bx.lineWidth = 1.5;
+    for (const [x1, y1, x2, y2] of segments) { bx.beginPath(); bx.moveTo(x1, y1); bx.lineTo(x2, y2); bx.stroke(); }
+    bx.restore();
+  }
+
+  // Distant range — flat dark with ink outline.
+  const back = [[0,0.78],[0.08,0.62],[0.16,0.70],[0.24,0.55],[0.34,0.65],[0.44,0.58],[0.55,0.66],[0.66,0.54],[0.76,0.66],[0.86,0.60],[0.94,0.70],[1,0.66]];
+  bx.fillStyle = '#1c2444';
+  bx.beginPath(); bx.moveTo(0, BH);
+  for (const [px, py] of back) bx.lineTo(px * BW, py * BH);
+  bx.lineTo(BW, BH); bx.closePath(); bx.fill();
+  // Halftone scrim across distant range
+  bx.save();
+  bx.beginPath(); bx.moveTo(0, BH);
+  for (const [px, py] of back) bx.lineTo(px * BW, py * BH);
+  bx.lineTo(BW, BH); bx.closePath();
+  bx.clip();
+  mangaHalftone(bx, 0, BH * 0.5, BW, BH * 0.4, 0.30);
+  bx.restore();
+  // Distant range ink outline
+  mangaInk(bx, 2);
+  bx.beginPath(); bx.moveTo(0, BH * 0.78);
+  for (const [px, py] of back) bx.lineTo(px * BW, py * BH);
+  bx.stroke();
+
+  // Central peak — flat fill + bold ink outline + halftone shading on the
+  // shaded side.
+  const mid = [
+    [0.00, 0.80], [0.10, 0.72], [0.18, 0.78],
+    [0.28, 0.60], [0.38, 0.52],
+    [0.48, 0.28], [0.50, 0.20], [0.54, 0.30],
+    [0.62, 0.50], [0.72, 0.58],
+    [0.82, 0.66], [0.90, 0.62], [1.00, 0.78],
+  ];
+  bx.fillStyle = '#2a3258';
+  bx.beginPath(); bx.moveTo(0, BH);
+  for (const [px, py] of mid) bx.lineTo(px * BW, py * BH);
+  bx.lineTo(BW, BH); bx.closePath(); bx.fill();
+  // Halftone right-shoulder shadow on the central peak
+  bx.save();
+  bx.beginPath(); bx.moveTo(BW * 0.50, BH * 0.20);
+  bx.lineTo(BW * 0.54, BH * 0.30); bx.lineTo(BW * 0.62, BH * 0.50);
+  bx.lineTo(BW * 0.72, BH * 0.58); bx.lineTo(BW * 0.50, BH * 0.95);
+  bx.closePath(); bx.clip();
+  mangaHalftone(bx, BW * 0.5, BH * 0.20, BW * 0.5, BH * 0.8, 0.55);
+  bx.restore();
+  // Bold ink outline on the central range
+  mangaInk(bx, 3.5);
+  bx.beginPath();
+  for (let i = 0; i < mid.length; i++) {
+    const [px, py] = mid[i];
+    if (i === 0) bx.moveTo(px * BW, py * BH);
+    else         bx.lineTo(px * BW, py * BH);
+  }
+  bx.stroke();
+
+  // Snowcap — flat bright + bold ink (manga, no gradient)
+  const snow = [
+    [0.45, 0.34], [0.46, 0.32], [0.475, 0.30], [0.49, 0.25],
+    [0.50, 0.20], [0.51, 0.24], [0.525, 0.28], [0.54, 0.32],
+    [0.55, 0.36], [0.535, 0.36], [0.515, 0.30], [0.50, 0.27],
+    [0.485, 0.30], [0.465, 0.36],
+  ];
+  bx.fillStyle = '#f5f8ff';
+  bx.beginPath();
+  for (let i = 0; i < snow.length; i++) {
+    const [px, py] = snow[i];
+    if (i === 0) bx.moveTo(px * BW, py * BH);
+    else         bx.lineTo(px * BW, py * BH);
+  }
+  bx.closePath(); bx.fill();
+  mangaInk(bx, 2.6); bx.stroke();
+
+  // Divine aura at the summit — halftone radial instead of gradient.
+  bx.save();
+  const auraR = BH * 0.16 + lightning * BH * 0.08;
+  bx.beginPath(); bx.arc(BW * 0.5, BH * 0.20, auraR, 0, Math.PI * 2);
+  bx.clip();
+  bx.fillStyle = `rgba(212,175,55,${0.18 + lightning * 0.18})`;
+  bx.fillRect(BW * 0.5 - auraR, BH * 0.20 - auraR, auraR * 2, auraR * 2);
+  mangaHalftone(bx, BW * 0.5 - auraR, BH * 0.20 - auraR, auraR * 2, auraR * 2, 0.20);
+  bx.restore();
+
+  // Front-most ridge — pure ink silhouette.
+  bx.fillStyle = MANGA_INK;
+  bx.beginPath();
+  bx.moveTo(0, BH);
+  bx.lineTo(0, BH * 0.92);
+  const front = [[0.05, 0.86],[0.12, 0.88],[0.22, 0.82],[0.30, 0.86],[0.42, 0.78],[0.55, 0.80],[0.66, 0.74],[0.78, 0.82],[0.88, 0.78],[0.95, 0.84],[1, 0.86]];
+  for (const [px, py] of front) bx.lineTo(px * BW, py * BH);
+  bx.lineTo(BW, BH); bx.closePath(); bx.fill();
+}
+
+function drawMangaCloud(c) {
+  // Halftone-banded cloud — flat dark grey ellipses with screen-tone overlay.
+  const x = c.x * BW, y = c.y * BH, s = c.scale;
+  bx.save();
+  bx.globalAlpha = Math.min(1, c.alpha * 1.6);
+  bx.fillStyle = '#cdd5e5';
+  bx.beginPath(); bx.ellipse(x, y, 60 * s, 14 * s, 0, 0, Math.PI * 2); bx.fill();
+  bx.beginPath(); bx.ellipse(x - 30 * s, y + 4 * s, 32 * s, 10 * s, 0, 0, Math.PI * 2); bx.fill();
+  bx.beginPath(); bx.ellipse(x + 28 * s, y + 3 * s, 36 * s, 11 * s, 0, 0, Math.PI * 2); bx.fill();
+  // Bold ink under-edge
+  mangaInk(bx, 2);
+  bx.beginPath(); bx.ellipse(x, y, 60 * s, 14 * s, 0, 0, Math.PI * 2); bx.stroke();
+  bx.beginPath(); bx.ellipse(x - 30 * s, y + 4 * s, 32 * s, 10 * s, 0, 0, Math.PI * 2); bx.stroke();
+  bx.beginPath(); bx.ellipse(x + 28 * s, y + 3 * s, 36 * s, 11 * s, 0, 0, Math.PI * 2); bx.stroke();
+  // Halftone shadow on the bottom half
+  bx.save();
+  bx.beginPath();
+  bx.ellipse(x - 30 * s, y + 4 * s, 32 * s, 10 * s, 0, 0, Math.PI * 2);
+  bx.ellipse(x,           y,         60 * s, 14 * s, 0, 0, Math.PI * 2);
+  bx.ellipse(x + 28 * s,  y + 3 * s, 36 * s, 11 * s, 0, 0, Math.PI * 2);
+  bx.clip();
+  mangaHalftone(bx, x - 90 * s, y, 180 * s, 30 * s, 0.45);
+  bx.restore();
+  bx.restore();
+}
+
 function drawCloud(c) {
+  if (_mangaUnlocked) { drawMangaCloud(c); return; }
   const x = c.x * BW, y = c.y * BH, s = c.scale;
   bx.save();
   bx.globalAlpha = c.alpha;
