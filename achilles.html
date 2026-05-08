@@ -58,7 +58,9 @@ canvas { display:block; }
   </div>
 </div>
 <script src="vendor/@tns/game-engine/core/engine.js"></script>
+<script src="vendor/@tns/game-engine/unlock/index.js"></script>
 <script src="vendor/@tns/game-engine/manga/manga.js"></script>
+<script src="mysteries.js"></script>
 <script>
 // ── Constants ─────────────────────────────────────────────────────────────
 const PLAYER_R = 26;
@@ -152,6 +154,11 @@ async function submitToHall(finalScore) {
     const json = await res.json();
     hallRank = json.rank;
     hallStatus = 'ok';
+    // Pantheon mystery hint + top-10 progress.
+    if (window.GodGames && GodGames.Mysteries) {
+      GodGames.Mysteries.earnHint('first_score');
+      if (hallRank && hallRank <= 10) GodGames.Mysteries.tally('olympus_top10_count');
+    }
   } catch {
     hallStatus = 'fail';
   }
@@ -345,6 +352,11 @@ function update(dt) {
       burst(target.x, 28, '#fff5c0', 14, 1.0);
       burst(target.x, 28, '#ffd54a', 8, 0.6);
       mangaTexts.push({ text: 'HIT!', x: target.x, y: 14, t: 0.4, color: '#fff5c0', size: 26 });
+      // Mystery: archer downs count toward the 'lay' syllable + a 25-kill goal.
+      if (window.GodGames && GodGames.Mysteries) {
+        const kills = GodGames.Mysteries.tally('achilles_kills');
+        if (kills >= 25) GodGames.Mysteries.earnHint('lay');
+      }
       returnArrows.splice(i, 1);
     } else if (ra.y < -40) {
       returnArrows.splice(i, 1);

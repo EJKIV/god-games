@@ -58,7 +58,9 @@ canvas { display: block; }
   </div>
 </div>
 <script src="vendor/@tns/game-engine/core/engine.js"></script>
+<script src="vendor/@tns/game-engine/unlock/index.js"></script>
 <script src="vendor/@tns/game-engine/manga/manga.js"></script>
+<script src="mysteries.js"></script>
 <script>
 // Canvas + ctx are owned by Engine; aliased after boot.
 let canvas, ctx;
@@ -78,7 +80,9 @@ const ISLAND_SINK_TIME = 1.1; // s for island to sink after claiming
 const WING_MAX         = 50;  // wing HP cap; subtracted by burn/wet/direct damage
 
 // ── Tutorial dialogue ──────────────────────────────────────────────────────
-const TUTORIAL_LINES = [
+// Built per-run via buildTutorial(): the rescue-introduction line only
+// appears once the daedalus_compassion mystery has been earned (manga mode).
+const BASE_TUTORIAL = [
   { speaker: 'DAEDALUS', text: 'Icarus, my son. I have crafted these wings myself — feathers gathered one by one, bound together with wax. They will carry you into the sky.' },
   { speaker: 'DAEDALUS', text: 'Hold ↑ to beat the wings and climb. Release the key and you will fall. You will fly forward on your own — guide your height to avoid sun and sea.' },
   { speaker: 'DAEDALUS', text: 'Islands rest upon the sea below. Land on them to gather honour — each one will reward you with glory before it sinks beneath your feet.' },
@@ -86,6 +90,22 @@ const TUTORIAL_LINES = [
   { speaker: 'DAEDALUS', text: 'The sea is cold and will weigh your wings with water. Fly too low and they will turn blue and heavy — seek the middle skies when that happens.' },
   { speaker: 'DAEDALUS', text: 'Fly neither too high nor too low. Follow me, keep your course steady, and we will reach freedom. Now — are you ready?' },
 ];
+function buildTutorial() {
+  const lines = BASE_TUTORIAL.slice();
+  // Manga rescue foreshadowing: only after Daedalus's Compassion has been
+  // earned (the mystery's hint trail makes this feel like a discovered secret).
+  const showRescue = !!(Engine && Engine.manga
+    && window.GodGames && GodGames.Mysteries
+    && GodGames.Mysteries.isSolved('daedalus_compassion'));
+  if (showRescue) {
+    lines.splice(lines.length - 1, 0, {
+      speaker: 'DAEDALUS',
+      text: 'And know this — should the wax fail you, I will not let you fall. Once. The gods will permit me one outstretched hand. Make it count.',
+    });
+  }
+  return lines;
+}
+let TUTORIAL_LINES = BASE_TUTORIAL;
 
 // ── State ──────────────────────────────────────────────────────────────────
 // `state` is the game phase ('title' | 'tutorial' | 'playing' | 'dying' | 'dead').
@@ -956,9 +976,20 @@ function updatePlaying(dt) {
   // shake decay is handled by the engine
 
   if (player.wingHealth <= 0) {
-    if (Engine.manga && !rescueUsed) {
+    // Rescue is gated by the daedalus_compassion mystery — the player has to
+    // burn against the sun 3 times in manga mode to earn it. Until then the
+    // rescue is invisible / inactive.
+    const rescueEarned = window.GodGames && GodGames.Mysteries
+      && GodGames.Mysteries.isSolved('daedalus_compassion');
+    if (Engine.manga && rescueEarned && !rescueUsed) {
       triggerDaedalusRescue();
       return;
+    }
+    // Mystery counters: sun-dominant deaths drive the daedalus_compassion hint.
+    if (window.GodGames && GodGames.Mysteries) {
+      if (player.burnDmg > player.wetDmg && player.burnDmg > player.directDmg) {
+        GodGames.Mysteries.tally('icarus_sun_deaths');
+      }
     }
     state = 'dying';
     player.spinV = (Math.random() > 0.5 ? 1 : -1) * 4;
@@ -2336,7 +2367,10 @@ function renderHUD(W, H) {
   // Manga ability HUD — bottom-right rings: ↓ Icarian Dive + Daedalus rescue.
   if (Engine.manga) {
     drawIcarusAbilityRing(W - 32, H - 76, '↓', diveCD, DIVE_CD, diveT > 0);
-    drawRescueRing(W - 32, H - 132);
+    // Rescue ring only appears once the daedalus_compassion mystery is earned.
+    if (window.GodGames && GodGames.Mysteries && GodGames.Mysteries.isSolved('daedalus_compassion')) {
+      drawRescueRing(W - 32, H - 132);
+    }
   }
 
   // Manga telegraph + ability shouts
@@ -2880,6 +2914,11 @@ async function submitToHall(score) {
     const json = await res.json();
     hallRank = json.rank;
     hallStatus = 'ok';
+    // Pantheon mystery: any submission earns the first hint, top-10 progresses goal.
+    if (window.GodGames && GodGames.Mysteries) {
+      GodGames.Mysteries.earnHint('first_score');
+      if (hallRank && hallRank <= 10) GodGames.Mysteries.tally('olympus_top10_count');
+    }
   } catch {
     hallStatus = 'fail';
   }
@@ -2942,6 +2981,7 @@ function beginFromTitle() {
     startGame();
   } else {
     tutorialStep = 0;
+    TUTORIAL_LINES = buildTutorial();
     state = 'tutorial';
     // engine state is already 'title' here; tutorial renders via onTitleRender.
   }
@@ -2951,6 +2991,7 @@ function beginFromDead() {
     startGame();
   } else {
     tutorialStep = 0;
+    TUTORIAL_LINES = buildTutorial();
     state = 'tutorial';
     Engine.setState('title');  // from 'dead' back to 'title' so tutorial renders
   }
@@ -3046,6 +3087,8 @@ Engine.boot({
     if (e.state === 'title' && state === 'tutorial' && (ev.key === 'ArrowUp' || ev.key === ' ')) {
       tutorialStep++;
       if (tutorialStep >= TUTORIAL_LINES.length) {
+        // Mystery hint: completing Daedalus's tutorial earns the first manga syllable.
+        if (window.GodGames && GodGames.Mysteries) GodGames.Mysteries.earnHint('shan');
         e.audio.init();
         initAudio();
         e.setState('playing');

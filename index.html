@@ -105,7 +105,9 @@ canvas { display:block; cursor:default; }
     <br><button id="nameSave">ENTER OLYMPUS</button>
   </div>
 </div>
+<script src="vendor/@tns/game-engine/unlock/index.js"></script>
 <script src="vendor/@tns/game-engine/manga/manga.js"></script>
+<script src="mysteries.js"></script>
 <script>
 const canvas = document.getElementById('c');
 const ctx    = canvas.getContext('2d');
@@ -227,6 +229,20 @@ function update(dt) {
   // manga toast lifetime
   if (_mangaToast.t > 0) _mangaToast.t = Math.max(0, _mangaToast.t - dt);
 
+  // Storm-brewing intensity eases toward the codeword progress fraction.
+  // Mid-codeword → builds; broken sequence → dissipates.
+  const target = _codewordIdx / CODEWORD.length;
+  _stormIntensity += (target - _stormIntensity) * Math.min(1, dt * 4);
+  // Spawn lightning flashes more often as intensity climbs.
+  if (_stormIntensity > 0.15) {
+    const rate = _stormIntensity * _stormIntensity * 4;   // 0..4 flashes/sec
+    if (Math.random() < dt * rate) spawnStormFlash();
+  }
+  for (let i = _stormFlashes.length - 1; i >= 0; i--) {
+    _stormFlashes[i].life -= dt;
+    if (_stormFlashes[i].life <= 0) _stormFlashes.splice(i, 1);
+  }
+
   // Zeus cinematic
   if (_zeusStrike) _zeusStrike.update(dt);
 
@@ -241,6 +257,213 @@ function update(dt) {
       m.vy    = -12 - Math.random()*18;
     }
   }
+}
+
+// ── Storm-brewing helpers ────────────────────────────────────────────────
+function spawnStormFlash() {
+  const olympus = portals.find(p => p.kind === 'mountain') || portals[0];
+  if (!olympus) return;
+  const cx = olympus.x + (Math.random() - 0.5) * 140;
+  const cy = GY - 200 - Math.random() * 60;
+  // Branching ink path drawn during render — pre-roll the segments now.
+  const branches = [];
+  let x = cx, y = cy;
+  while (y < GY - 60 + Math.random() * 30) {
+    const nx = x + (Math.random() - 0.5) * 30;
+    const ny = y + 12 + Math.random() * 20;
+    branches.push([x, y, nx, ny]);
+    x = nx; y = ny;
+  }
+  // Side fork
+  if (branches.length > 2 && Math.random() < 0.5) {
+    const [, , bx, by] = branches[Math.floor(branches.length * 0.4)];
+    let fx = bx, fy = by;
+    for (let k = 0; k < 3; k++) {
+      const nx = fx + (Math.random() < 0.5 ? -1 : 1) * (8 + Math.random() * 16);
+      const ny = fy + 8 + Math.random() * 12;
+      branches.push([fx, fy, nx, ny]);
+      fx = nx; fy = ny;
+    }
+  }
+  _stormFlashes.push({ life: 0.18, maxLife: 0.18, branches });
+}
+
+function renderStorm() {
+  if (_stormIntensity < 0.02) return;
+  const olympus = portals.find(p => p.kind === 'mountain') || portals[0];
+  if (!olympus) return;
+  const cx = olympus.x;
+  const ay = GY - 240;
+  const intensity = _stormIntensity;
+
+  ctx.save();
+  // Dark cloud bank above the mountain — alpha + size scale with intensity.
+  const cloudAlpha = Math.min(0.85, 0.15 + intensity * 0.85);
+  for (let i = 0; i < 7; i++) {
+    const ox = (i - 3) * 60 + Math.sin(time * 0.6 + i) * 14;
+    const oy = Math.cos(time * 0.5 + i * 1.3) * 6;
+    const r  = 60 + intensity * 26 + Math.sin(time * 0.4 + i * 2) * 6;
+    const g = ctx.createRadialGradient(cx + ox, ay + oy, 4, cx + ox, ay + oy, r);
+    const dark = `rgba(20,18,38,${cloudAlpha})`;
+    g.addColorStop(0,    dark);
+    g.addColorStop(0.6,  `rgba(35,30,60,${cloudAlpha * 0.6})`);
+    g.addColorStop(1,    'rgba(20,18,38,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(cx + ox, ay + oy, r, 0, Math.PI * 2); ctx.fill();
+  }
+  // Distant orange glow on the mountain peak (fire light from the storm).
+  ctx.globalAlpha = Math.min(1, intensity);
+  ctx.shadowColor = '#ff8800'; ctx.shadowBlur = 20 * intensity;
+  ctx.fillStyle = `rgba(255,140,40,${0.06 + intensity * 0.18})`;
+  ctx.beginPath(); ctx.arc(cx, GY - 50, 90 + intensity * 40, 0, Math.PI * 2); ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.globalAlpha = 1;
+  // Lightning flashes — bright ink branches with bloom.
+  for (const fl of _stormFlashes) {
+    const a = fl.life / fl.maxLife;
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.shadowColor = '#fff5c0'; ctx.shadowBlur = 18;
+    ctx.strokeStyle = '#fff5c0';
+    ctx.lineWidth = 3.5;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    for (const [x1, y1, x2, y2] of fl.branches) {
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    }
+    // Inner core
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.lineWidth = 1.5;
+    for (const [x1, y1, x2, y2] of fl.branches) {
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    }
+    ctx.restore();
+  }
+  // Codeword progress strip ("sh-a-n-..." showing typed letters in gold,
+  // remaining as faint outlines). Sits just above the mountain.
+  if (_codewordIdx > 0) {
+    const stripY = GY - 320;
+    const cellW = 22;
+    const total = CODEWORD.length;
+    ctx.font = 'bold 22px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (let i = 0; i < total; i++) {
+      const ch = CODEWORD[i].toUpperCase();
+      const x = cx + (i - (total - 1) / 2) * cellW;
+      if (i < _codewordIdx) {
+        ctx.fillStyle = GOLD;
+        ctx.shadowColor = '#fff5c0'; ctx.shadowBlur = 10;
+        ctx.fillText(ch, x, stripY);
+        ctx.shadowBlur = 0;
+      } else {
+        ctx.fillStyle = 'rgba(220,200,150,0.25)';
+        ctx.fillText('·', x, stripY);
+      }
+    }
+  }
+  ctx.restore();
+}
+
+// ── Mysteries panel ──────────────────────────────────────────────────────
+// Right-edge parchment listing each mystery with progress + reveal text.
+// Polls localStorage every render so progress made in another tab/game
+// shows up the next time the player returns to the hub.
+function renderMysteriesPanel() {
+  const Mysteries = window.GodGames && window.GodGames.Mysteries;
+  if (!Mysteries) return;
+  const panelW = 240;
+  const x0 = W - panelW - 20;
+  const y0 = 80;
+  const items = Mysteries.list;
+  const lineH = 18;
+  // Compute panel height roughly by counting lines we'll render.
+  let totalLines = 1; // header
+  for (const m of items) totalLines += 3 + (m.hints ? m.hints.length : 0);
+  const panelH = Math.min(H - 100, totalLines * lineH + 30);
+
+  ctx.save();
+  // Background scroll
+  ctx.fillStyle = 'rgba(15,10,4,0.78)';
+  ctx.strokeStyle = 'rgba(212,175,55,0.45)';
+  ctx.lineWidth = 1.4;
+  ctx.beginPath(); ctx.roundRect(x0, y0, panelW, panelH, 6);
+  ctx.fill(); ctx.stroke();
+
+  // Header
+  ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  ctx.fillStyle = GOLD; ctx.font = 'bold 13px monospace';
+  ctx.shadowColor = GOLD; ctx.shadowBlur = 6;
+  ctx.fillText('MYSTERIES OF THE GODS', x0 + 12, y0 + 10);
+  ctx.shadowBlur = 0;
+
+  let y = y0 + 30;
+  for (const m of items) {
+    if (y + 60 > y0 + panelH) break;
+    const solved = Mysteries.isSolved(m.id);
+    const blocked = m.requires && !Mysteries.isSolved(m.requires);
+    const allHintsSolved = (m.hints || []).every(h => Mysteries.hasHint(h.id));
+    // Title
+    ctx.font = 'bold 11px monospace';
+    if (solved) {
+      ctx.fillStyle = '#44dd66';
+      ctx.fillText('✦ ' + m.title.toUpperCase(), x0 + 12, y);
+    } else if (blocked) {
+      ctx.fillStyle = 'rgba(180,160,120,0.45)';
+      ctx.fillText('???', x0 + 12, y);
+    } else {
+      ctx.fillStyle = allHintsSolved ? '#ffd54a' : 'rgba(220,200,150,0.85)';
+      ctx.fillText((allHintsSolved ? '◆ ' : '◇ ') + (allHintsSolved ? m.title.toUpperCase() : m.lockedTitle), x0 + 12, y);
+    }
+    y += lineH;
+    // Hints
+    ctx.font = '10px monospace';
+    for (const h of m.hints || []) {
+      const earned = Mysteries.hasHint(h.id);
+      ctx.fillStyle = earned ? 'rgba(220,200,150,0.95)' : 'rgba(160,150,130,0.45)';
+      const txt = earned ? ('• ' + h.text) : ('• ' + h.earnedBy);
+      // Wrap to panel width
+      wrapAndDraw(txt, x0 + 16, y, panelW - 24, 13);
+      const linesUsed = Math.max(1, Math.ceil(ctx.measureText(txt).width / (panelW - 24)));
+      y += linesUsed * 13 + 1;
+    }
+    // Final-step / reward (only when relevant)
+    if (!blocked) {
+      if (m.id === 'manga_mode' && allHintsSolved && !solved) {
+        ctx.fillStyle = '#ff88cc';
+        wrapAndDraw('▸ Type "' + CODEWORD + '" anywhere on the hub.', x0 + 16, y, panelW - 24, 13);
+        y += 26;
+      } else if (m.target && !solved) {
+        const cur = Mysteries.count(m.target.counter);
+        ctx.fillStyle = 'rgba(200,180,120,0.7)';
+        ctx.fillText(`▸ Progress: ${Math.min(cur, m.target.goal)} / ${m.target.goal}`, x0 + 16, y);
+        y += 14;
+      } else if (solved && m.reward) {
+        ctx.fillStyle = 'rgba(150,220,170,0.85)';
+        wrapAndDraw('✓ ' + m.reward, x0 + 16, y, panelW - 24, 13);
+        y += 26;
+      }
+    }
+    y += 6;
+  }
+  ctx.restore();
+}
+
+function wrapAndDraw(text, x, y, maxW, lh) {
+  const words = text.split(' ');
+  let line = '';
+  let cy = y;
+  for (const w of words) {
+    const test = line ? line + ' ' + w : w;
+    if (ctx.measureText(test).width > maxW && line) {
+      ctx.fillText(line, x, cy);
+      cy += lh;
+      line = w;
+    } else {
+      line = test;
+    }
+  }
+  if (line) ctx.fillText(line, x, cy);
 }
 
 // ── Draw helpers ──────────────────────────────────────────────────────────
@@ -820,8 +1043,14 @@ function render() {
   const desiredFilter = _mangaOn ? 'contrast(1.18) saturate(0.78)' : 'none';
   if (canvas.style.filter !== desiredFilter) canvas.style.filter = desiredFilter;
 
+  // Storm brewing over Olympus as the codeword is typed.
+  renderStorm();
+
   // Zeus cinematic — drawn on top of atmosphere so the bolt + flash dominate.
   if (_zeusStrike) _zeusStrike.render(ctx, W, H);
+
+  // Mysteries panel — stays visible at the right edge of the screen.
+  renderMysteriesPanel();
 
   // Title
   ctx.save();
@@ -875,9 +1104,17 @@ function inputBusy(e) {
 // Persisted in localStorage so the toggle survives navigation to game pages,
 // where engine.js reads it at boot and exposes Engine.manga.
 const MANGA_KEY = 'godgames_manga';
+const CODEWORD = (window.GodGames && window.GodGames.Mysteries && window.GodGames.Mysteries.MANGA_CODEWORD) || 'shankle';
 let _typedBuf = '';
 let _mangaToast = { text: '', t: 0, color: '#D4AF37' };
 function showMangaToast(text, color) { _mangaToast = { text, t: 2.6, color: color || '#D4AF37' }; }
+
+// Storm-brewing state — progress through each letter of CODEWORD darkens
+// the sky over Olympus and increases lightning frequency. Wrong key dissipates.
+let _codewordIdx     = 0;        // how many letters of CODEWORD typed in sequence
+let _stormIntensity  = 0;        // 0..1, eased toward _codewordIdx / CODEWORD.length
+let _stormFlashes    = [];       // {x, y, life, maxLife, branches}
+let _lastStormTickT  = 0;
 
 // Active Zeus strike instance (only present during the cinematic).
 let _zeusStrike = null;
@@ -914,17 +1151,27 @@ window.addEventListener('keydown', e => {
   }
   // Sequence-detector: append printable chars, keep last 12.
   if (e.key && e.key.length === 1) {
-    _typedBuf = (_typedBuf + e.key.toLowerCase()).slice(-12);
-    if (_typedBuf.endsWith('shankle')) {
-      _typedBuf = '';
-      // Already manga or already striking — ignore re-trigger.
-      if (localStorage.getItem(MANGA_KEY) !== '1' && !_zeusStrike) {
-        startZeusStrike();
+    const ch = e.key.toLowerCase();
+    _typedBuf = (_typedBuf + ch).slice(-12);
+    // Per-letter progress through CODEWORD — drives the Olympus storm.
+    if (ch === CODEWORD[_codewordIdx]) {
+      _codewordIdx++;
+      if (_codewordIdx >= CODEWORD.length) {
+        _codewordIdx = 0;
+        if (localStorage.getItem(MANGA_KEY) !== '1' && !_zeusStrike) {
+          startZeusStrike();
+        }
       }
-    } else if (_typedBuf.endsWith('normal')) {
+    } else if (_codewordIdx > 0) {
+      // Broken sequence — let the storm dissipate. (If the wrong char happens
+      // to be the FIRST letter of CODEWORD, restart progress at 1.)
+      _codewordIdx = (ch === CODEWORD[0]) ? 1 : 0;
+    }
+    if (_typedBuf.endsWith('normal')) {
       localStorage.removeItem(MANGA_KEY);
       showMangaToast('NORMAL MODE', '#D4AF37');
       _typedBuf = '';
+      _codewordIdx = 0;
     }
   }
   keys[e.key]=true;
