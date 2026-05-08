@@ -115,13 +115,15 @@ let state = 'title';
 let tutorialStep = 0;
 let time = 0;     // mirror of Engine.time, synced before each frame's logic
 // Mystery: The Sun's Embrace — Icarus mirrors his own myth by flying
-// *into* the sun. Cumulative seconds at heat ≥ SUN_EMBRACE_HEAT (the upper
-// danger band, reachable but only at peak altitude). Counter accumulates
-// across the run so the player can dip in, take some burn, dive away to
-// recover, and dip again — exactly the wax-failure spiral from the myth.
+// *into* the sun. Trigger uses altitude (player.y) directly instead of the
+// derived heat ratio because the heat ramp depends on canvas height and
+// caps below 1.0 due to the y=80 clamp — so heat-based thresholds were
+// unreachable on smaller viewports. The y-clamp itself IS the "into the
+// sun" geometry: at y ≤ SUN_EMBRACE_Y the player is inside the sun's
+// drawn radius. Cumulative within a run.
 let sunEmbraceT = 0;
-const SUN_EMBRACE_HEAT = 0.80;  // heat threshold (max reachable on screen ≈ 0.85)
-const SUN_EMBRACE_GOAL = 2;     // cumulative seconds in the band → 'z'
+const SUN_EMBRACE_Y    = 100;   // px — player at peak altitude (clamp is 80)
+const SUN_EMBRACE_GOAL = 1;     // cumulative seconds in the sun → 'z'
 // Glyph: The Labyrinth Mark — Daedalus designed the labyrinth before the
 // wings. A faint spiral is etched at a fixed worldX/y; flying through it
 // claims it. Persistent unlock so it only collects once per profile.
@@ -693,7 +695,7 @@ function updatePlaying(dt) {
   // Mystery: The Sun's Embrace — Icarus mirrors his own myth by flying
   // *directly into* the sun. Sustain heat ≥ 0.95 for SUN_EMBRACE_GOAL seconds
   // and the syllable is whispered as the wax begins to fail.
-  if (heat >= SUN_EMBRACE_HEAT) {
+  if (player.y <= SUN_EMBRACE_Y) {
     sunEmbraceT += dt;
     if (sunEmbraceT >= SUN_EMBRACE_GOAL) {
       sunEmbraceT = 0;

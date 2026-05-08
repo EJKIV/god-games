@@ -225,10 +225,11 @@ function resetGame() {
   patroclusKills.length = 0;
 }
 
-// Mystery: Shade of Patroclus — three counter-shot kills that all fall within
-// 2 seconds of each other earn the 'lay' syllable. Ring buffer of timestamps,
-// trimmed every call so it stays bounded.
-const PATROCLUS_WINDOW_MS = 2000;
+// Mystery: Shade of Patroclus — three counter-shot kills bunched together.
+// The bow cooldown is 2.5s, so 3 shots take ≥5s minimum — window is wide
+// enough to be reachable through deliberate play but tight enough that
+// random play won't trigger it. Ring buffer of timestamps trimmed each call.
+const PATROCLUS_WINDOW_MS = 6500;
 const PATROCLUS_GOAL = 3;
 const patroclusKills = [];
 function recordPatroclusKill() {
