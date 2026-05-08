@@ -282,6 +282,352 @@
     },
 
     // ────────────────────────────────────────────────────────────────────
+    lethe: {
+      name: 'LETHE',
+      flavor: 'the river of forgetting',
+      palette: { sky: '#101824', deep: '#0d2532', accent: '#5a8db0', mist: 'rgba(145,180,205,0.22)' },
+      silhouette(ctx, W, H, t) {
+        ctx.fillStyle = '#101824';
+        ctx.fillRect(0, 0, W, H);
+        halftone(ctx, 0, 0, W, H * 0.58, 0.22, INK);
+
+        const riverY = H * 0.56;
+        ctx.fillStyle = '#071821';
+        ctx.fillRect(0, riverY, W, H - riverY);
+        ctx.fillStyle = '#102c3b';
+        ctx.beginPath();
+        ctx.moveTo(0, riverY + 18);
+        for (let x = 0; x <= W; x += 28) {
+          ctx.lineTo(x, riverY + Math.sin(x * 0.013 + t * 0.45) * 7 + 18);
+        }
+        ctx.lineTo(W, H);
+        ctx.lineTo(0, H);
+        ctx.closePath();
+        ctx.fill();
+        halftone(ctx, 0, riverY + 8, W, H - riverY, 0.28, INK);
+
+        // Black banks pressing the river into a narrow path.
+        ctx.fillStyle = INK;
+        ctx.beginPath();
+        ctx.moveTo(0, riverY + 10);
+        ctx.lineTo(W * 0.22, riverY + 42);
+        ctx.lineTo(W * 0.10, H);
+        ctx.lineTo(0, H);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(W, riverY + 4);
+        ctx.lineTo(W * 0.75, riverY + 46);
+        ctx.lineTo(W * 0.90, H);
+        ctx.lineTo(W, H);
+        ctx.closePath();
+        ctx.fill();
+
+        // Slow memory ripples, almost erased as they widen.
+        ctx.strokeStyle = 'rgba(120,175,205,0.52)';
+        ctx.lineWidth = 1.5;
+        for (let i = 0; i < 7; i++) {
+          const rx = (i * 181 + Math.sin(i * 4.1) * 35) % W;
+          const ry = riverY + 38 + ((i * 43) % (H - riverY - 72));
+          const pulse = ((t * 0.28 + i * 0.17) % 1);
+          ctx.globalAlpha = 0.42 * (1 - pulse);
+          ctx.beginPath();
+          ctx.ellipse(rx, ry, 18 + pulse * 56, 5 + pulse * 12, 0, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+
+        // Reed silhouettes and forgetful mist.
+        ctx.strokeStyle = 'rgba(150,185,205,0.34)';
+        ctx.lineWidth = 1.2;
+        for (let i = 0; i < 36; i++) {
+          const side = i % 2 ? W * 0.18 : W * 0.82;
+          const sx = side + Math.sin(i * 2.4) * 42;
+          const sy = riverY + 20 + ((i * 23) % (H - riverY - 36));
+          ctx.beginPath();
+          ctx.moveTo(sx, sy + 28);
+          ctx.quadraticCurveTo(sx + Math.sin(i) * 8, sy + 12, sx + Math.sin(i * 1.7) * 11, sy);
+          ctx.stroke();
+        }
+        ctx.fillStyle = 'rgba(170,205,225,0.12)';
+        for (let i = 0; i < 6; i++) {
+          const mx = ((i * 190 + t * 12) % (W + 180)) - 90;
+          ctx.beginPath();
+          ctx.ellipse(mx, riverY - 14 + Math.sin(t * 0.35 + i) * 6, 120, 15, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      },
+      characterTransform(_ctx, W, H) {
+        return { x: W * 0.50, y: H * 0.62, scale: 1.0 };
+      },
+      // Slow water + a fading memory tone.
+      ambience: makeAmbience((ac) => {
+        const current = tone(ac, 73,  'sine',     0.11, { rate: 0.10, depth: 0.06 });
+        const memory  = tone(ac, 392, 'triangle', 0.035, { rate: 0.04, depth: 0.045 });
+        const echo    = tone(ac, 196, 'sine',     0.03, { rate: 0.06, depth: 0.03 });
+        const water   = noise(ac, 'lowpass');
+        return [current, memory, echo, water];
+      }),
+    },
+
+    // ────────────────────────────────────────────────────────────────────
+    tartarus: {
+      name: 'TARTARUS',
+      flavor: 'the deep prison of titans',
+      palette: { sky: '#12050a', deep: '#050102', accent: '#702030', mist: 'rgba(112,32,48,0.28)' },
+      silhouette(ctx, W, H, t) {
+        ctx.fillStyle = '#12050a';
+        ctx.fillRect(0, 0, W, H);
+        halftone(ctx, 0, 0, W, H, 0.40, INK);
+
+        const pitY = H * 0.42;
+        ctx.fillStyle = '#050102';
+        ctx.beginPath();
+        ctx.moveTo(W * 0.18, pitY);
+        ctx.lineTo(W * 0.82, pitY);
+        ctx.lineTo(W * 0.96, H);
+        ctx.lineTo(W * 0.04, H);
+        ctx.closePath();
+        ctx.fill();
+
+        // Jagged prison walls, black against red stone.
+        ctx.fillStyle = '#1d080b';
+        for (let i = 0; i < 9; i++) {
+          const x = i * W / 8;
+          const h = H * (0.18 + (i % 3) * 0.05);
+          ctx.beginPath();
+          ctx.moveTo(x - W * 0.08, pitY);
+          ctx.lineTo(x + W * 0.04, pitY - h);
+          ctx.lineTo(x + W * 0.14, pitY);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(W * 0.18, pitY);
+        ctx.lineTo(W * 0.82, pitY);
+        ctx.stroke();
+
+        // Heavy bars in the foreground.
+        ctx.fillStyle = INK;
+        for (let i = 0; i < 8; i++) {
+          const bx = W * 0.24 + i * W * 0.074;
+          ctx.fillRect(bx, H * 0.20, 9, H * 0.62);
+        }
+        ctx.fillRect(W * 0.22, H * 0.32, W * 0.58, 8);
+        ctx.fillRect(W * 0.22, H * 0.62, W * 0.58, 8);
+
+        // Chain links, slightly trembling in the hot dark.
+        ctx.strokeStyle = '#702030';
+        ctx.lineWidth = 4;
+        for (let c = 0; c < 3; c++) {
+          const cx = W * (0.30 + c * 0.20);
+          for (let i = 0; i < 6; i++) {
+            const cy = H * 0.18 + i * 34 + Math.sin(t * 1.3 + i + c) * 1.5;
+            ctx.save();
+            ctx.translate(cx + Math.sin(i) * 8, cy);
+            ctx.rotate((i % 2 ? 0.35 : -0.35));
+            ctx.beginPath();
+            ctx.ellipse(0, 0, 9, 17, 0, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+          }
+        }
+
+        // Titan-scale forms, barely visible behind the bars.
+        ctx.fillStyle = 'rgba(112,32,48,0.26)';
+        ctx.beginPath();
+        ctx.ellipse(W * 0.50, H * 0.72, W * 0.26, H * 0.22, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(W * 0.35, H * 0.58, W * 0.10, H * 0.07, -0.4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(W * 0.65, H * 0.58, W * 0.10, H * 0.07, 0.4, 0, Math.PI * 2);
+        ctx.fill();
+      },
+      characterTransform(_ctx, W, H) {
+        return { x: W * 0.50, y: H * 0.78, scale: 0.90 };
+      },
+      // Chain clatter over a deep sub-rumble.
+      ambience: makeAmbience((ac) => {
+        const sub     = tone(ac, 36,   'sine',     0.32, { rate: 0.07, depth: 0.10 });
+        const iron    = tone(ac, 147,  'sawtooth', 0.035, { rate: 0.90, depth: 0.06 });
+        const clatter = tone(ac, 1175, 'square',   0.018, { rate: 1.40, depth: 0.045 });
+        const grit    = noise(ac, 'bandpass');
+        return [sub, iron, clatter, grit];
+      }),
+    },
+
+    // ────────────────────────────────────────────────────────────────────
+    elysium: {
+      name: 'ELYSIUM',
+      flavor: 'the bright fields of the blessed',
+      palette: { sky: '#202538', deep: '#2f321c', accent: '#ffd54a', mist: 'rgba(255,213,74,0.18)' },
+      silhouette(ctx, W, H, t) {
+        ctx.fillStyle = '#202538';
+        ctx.fillRect(0, 0, W, H);
+        halftone(ctx, 0, 0, W, H * 0.55, 0.18, INK);
+
+        const fieldY = H * 0.58;
+        ctx.fillStyle = '#2f321c';
+        ctx.fillRect(0, fieldY, W, H - fieldY);
+        ctx.fillStyle = '#4a4721';
+        ctx.beginPath();
+        ctx.moveTo(0, fieldY + 24);
+        for (let x = 0; x <= W; x += 40) {
+          ctx.lineTo(x, fieldY + 18 + Math.sin(x * 0.01 + t * 0.25) * 5);
+        }
+        ctx.lineTo(W, H);
+        ctx.lineTo(0, H);
+        ctx.closePath();
+        ctx.fill();
+        halftone(ctx, 0, fieldY, W, H - fieldY, 0.20, INK);
+
+        // Distant grove and simple blessed figures.
+        ctx.fillStyle = INK;
+        for (let i = 0; i < 8; i++) {
+          const tx = W * 0.08 + i * W * 0.12;
+          const ty = fieldY - 12 + Math.sin(i) * 4;
+          ctx.fillRect(tx - 3, ty - 44, 6, 44);
+          ctx.beginPath();
+          ctx.ellipse(tx, ty - 48, 18, 26, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.fillStyle = 'rgba(255,235,150,0.32)';
+        for (let i = 0; i < 7; i++) {
+          const px = ((i * 170 + t * 5) % (W + 140)) - 70;
+          const py = fieldY - 18 + Math.sin(t * 0.35 + i) * 3;
+          ctx.beginPath();
+          ctx.ellipse(px, py - 18, 8, 18, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillRect(px - 5, py - 20, 10, 28);
+        }
+
+        // Flower sparks in the foreground.
+        for (let i = 0; i < 115; i++) {
+          const fx = (i * 157) % W;
+          const fy = fieldY + 30 + ((i * 31) % (H - fieldY - 42));
+          ctx.fillStyle = i % 3 === 0 ? '#ffd54a' : 'rgba(245,232,180,0.50)';
+          ctx.beginPath();
+          ctx.arc(fx, fy, 1.3 + (i % 2), 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // A still gold horizon, like daylight without a visible sun.
+        ctx.strokeStyle = 'rgba(255,213,74,0.70)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(W * 0.08, fieldY - 8);
+        ctx.lineTo(W * 0.92, fieldY - 8);
+        ctx.stroke();
+      },
+      characterTransform(_ctx, W, H) {
+        return { x: W * 0.48, y: H * 0.62, scale: 1.05 };
+      },
+      // Bright major triad + light wind.
+      ambience: makeAmbience((ac) => {
+        const root  = tone(ac, 262, 'sine',     0.045, { rate: 0.08, depth: 0.025 });
+        const third = tone(ac, 330, 'sine',     0.035, { rate: 0.07, depth: 0.020 });
+        const fifth = tone(ac, 392, 'triangle', 0.030, { rate: 0.06, depth: 0.018 });
+        const wind  = noise(ac, 'highpass');
+        return [root, third, fifth, wind];
+      }),
+    },
+
+    // ────────────────────────────────────────────────────────────────────
+    olympus: {
+      name: 'MOUNT OLYMPUS',
+      flavor: 'the seat of the gods',
+      palette: { sky: '#161b2a', deep: '#261d16', accent: '#ffe080', mist: 'rgba(255,224,128,0.22)' },
+      silhouette(ctx, W, H, t) {
+        ctx.fillStyle = '#161b2a';
+        ctx.fillRect(0, 0, W, H);
+        halftone(ctx, 0, 0, W, H * 0.62, 0.20, INK);
+
+        const baseY = H * 0.78;
+        ctx.fillStyle = '#0a0a0a';
+        ctx.beginPath();
+        ctx.moveTo(W * 0.08, baseY);
+        ctx.lineTo(W * 0.30, H * 0.56);
+        ctx.lineTo(W * 0.42, H * 0.66);
+        ctx.lineTo(W * 0.55, H * 0.34);
+        ctx.lineTo(W * 0.70, H * 0.62);
+        ctx.lineTo(W * 0.88, H * 0.48);
+        ctx.lineTo(W, baseY);
+        ctx.lineTo(W, H);
+        ctx.lineTo(0, H);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.fillStyle = '#2a261b';
+        ctx.beginPath();
+        ctx.moveTo(W * 0.27, baseY);
+        ctx.lineTo(W * 0.55, H * 0.37);
+        ctx.lineTo(W * 0.80, baseY);
+        ctx.closePath();
+        ctx.fill();
+        halftone(ctx, W * 0.28, H * 0.38, W * 0.50, H * 0.40, 0.24, INK);
+
+        // Palace columns on the high ridge.
+        const colBase = H * 0.43;
+        ctx.fillStyle = '#e5c870';
+        for (let i = 0; i < 6; i++) {
+          const x = W * 0.43 + i * W * 0.035;
+          ctx.fillRect(x, colBase - 54, 8, 54);
+        }
+        ctx.fillRect(W * 0.415, colBase - 64, W * 0.22, 10);
+        ctx.fillRect(W * 0.405, colBase, W * 0.24, 8);
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = 2.5;
+        ctx.strokeRect(W * 0.415, colBase - 64, W * 0.22, 72);
+
+        // Thunderclouds and lightning cuts.
+        ctx.fillStyle = 'rgba(12,14,22,0.86)';
+        for (let i = 0; i < 5; i++) {
+          const cx = W * (0.18 + i * 0.18) + Math.sin(t * 0.18 + i) * 8;
+          const cy = H * (0.20 + (i % 2) * 0.05);
+          ctx.beginPath();
+          ctx.ellipse(cx, cy, W * 0.11, H * 0.035, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.strokeStyle = '#ffe080';
+        ctx.lineWidth = 2.2;
+        ctx.globalAlpha = 0.35 + Math.max(0, Math.sin(t * 1.7)) * 0.25;
+        for (let i = 0; i < 3; i++) {
+          const lx = W * (0.28 + i * 0.22);
+          ctx.beginPath();
+          ctx.moveTo(lx, H * 0.24);
+          ctx.lineTo(lx - 12, H * 0.32);
+          ctx.lineTo(lx + 10, H * 0.31);
+          ctx.lineTo(lx - 6, H * 0.43);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+
+        ctx.fillStyle = 'rgba(255,224,128,0.12)';
+        for (let i = 0; i < 4; i++) {
+          const mx = ((i * 250 + t * 10) % (W + 160)) - 80;
+          ctx.beginPath();
+          ctx.ellipse(mx, H * 0.50 + Math.sin(t * 0.3 + i) * 5, 120, 17, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      },
+      characterTransform(_ctx, W, H) {
+        return { x: W * 0.50, y: H * 0.78, scale: 0.98 };
+      },
+      // High airy drone + distant lightning.
+      ambience: makeAmbience((ac) => {
+        const air     = tone(ac, 523, 'sine',     0.035, { rate: 0.05, depth: 0.025 });
+        const crown   = tone(ac, 784, 'triangle', 0.020, { rate: 0.04, depth: 0.018 });
+        const thunder = tone(ac, 49,  'sine',     0.24, { rate: 0.12, depth: 0.12 });
+        const storm   = noise(ac, 'lowpass');
+        return [air, crown, thunder, storm];
+      }),
+    },
+
+    // ────────────────────────────────────────────────────────────────────
     // Reserved for future mysteries — silhouettes are stubs that future
     // commits can flesh out. Left here so adding a mystery only needs a
     // mysteries.clues entry, not a fresh place too.

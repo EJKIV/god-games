@@ -55,6 +55,8 @@ When `@tns/game-engine` is published to npm, both the `file:` dep and the `vendo
 - **Hub & Mt. Olympus do *not* use the engine** — they have their own loops. They duplicate the landscape-overlay CSS inline (single source not feasible without a build step).
 - **Mobile contract**: each game declares `mobile: { movement, actions }` in its `Engine.boot` config. Engine renders translucent on-screen buttons that synthesize keydown/keyup, so existing keyboard branches run unchanged. Modes per action: `'tap'` (default), `'hold'` (sustained), `'doubleTap'` (fires two presses ~80ms apart for double-tap detectors).
 - **Manga easter egg**: typing `'shankle'` on the hub sets `localStorage.godgames_manga='1'`; `'normal'` clears. The engine reads at boot and exposes `Engine.manga`. Game render branches on it. The manga library is portable — see `vendor/@tns/game-engine/manga/CLAUDE.md`.
+- **Mystery scene-cuts**: game secrets call `GodGames.Mysteries.unlockAndDepart({ hintId, placeId, fromGame })`, which earns the hint, advances the clue chain, and navigates to `place.html`. `places.js` is the data-driven catalog consumed by that page; see its top-of-file docs before adding locations.
+- **Progress sync**: `progress-sync.js` bridges `Engine.unlock` state to `/api/progress` using the player name as identity. Server-side merge policy lives in `api/progress.js`.
 - **Score submission contract**: each game submits to `/api/leaderboard` POST `{ game, name, score }` on death/victory. Game must be registered in `api/leaderboard.js` `GAMES` table — see `api/CLAUDE.md`.
 - **Name modal pattern**: every interactive page reads `localStorage.godgames_playerName`; if missing, opens a modal that sanitizes (`replace(/[\x00-\x1f\x7f]/g, '')`, clamp to 20) and stores. Sanitization regex must match `api/leaderboard.js` exactly.
 
@@ -97,9 +99,14 @@ god-games/
 ├── icarus.html                 Flight game — sun/sea wing damage, tutorial.
 ├── orion.html                  Boss fight — scorpion vs spear/stab/dodge.
 ├── mount-olympus.html          Leaderboard display (Icarus / Orion / Achilles tablets).
+├── place.html                  Cinematic mystery destination; consumes places.js.
+├── olympus-clues.html          Toad's clue review page on Mt. Olympus.
+├── places.js                   Data-driven place catalog; see top-of-file docs.
+├── mysteries.js                Mysteries.unlockAndDepart + clue-chain definitions.
+├── progress-sync.js            Redis sync bridge for Engine.unlock progress.
 ├── template.html               Skeleton: copy this when adding a new game.
 ├── package.json                Declares dep on @tns/game-engine (file: link to sibling tellandshow clone).
-├── api/                        Vercel serverless functions (leaderboard) — stays here for Vercel routing.
+├── api/                        Vercel serverless functions (leaderboard + progress) — stays here for Vercel routing.
 └── node_modules/@tns/game-engine/   Symlinked engine + manga (managed by npm; populated by `npm install`).
 ```
 
@@ -162,6 +169,7 @@ god-games/
 
 | Date       | Change                                                                                     | Author |
 |------------|--------------------------------------------------------------------------------------------|--------|
+| 2026-05-08 | Documented the data-driven mystery scene-cut flow, place catalog, clue review page, and Redis progress sync. | codex  |
 | 2026-05-07 | Added `vendor/@tns/game-engine/` for Vercel deploys (Vercel excludes `node_modules` from static output). HTMLs now load from `vendor/`. `npm run sync-engine` refreshes from `node_modules`. | jim    |
 | 2026-05-07 | Engine + manga moved out to `@tns/game-engine` (consumed via npm link). god-games is now a *consumer* of the published engine. | jim    |
 | 2026-05-07 | Restructured to cascading router pattern. Subtree files under `manga/` and `api/`. Polish library v2. | jim    |
