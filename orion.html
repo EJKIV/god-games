@@ -85,10 +85,12 @@ const CONSTELLATION_CHARGE = 0.35;
 const CONSTELLATION_CD     = 8;
 let mangaTexts = [];              // { text, x, y, t, color, size }
 // Mystery: Constellation's Gaze — the hunter looks up at his own image.
-// Accumulates seconds spent stationary in the horizontal band beneath the
-// rendered Orion constellation while the boss is alive. 5s → 'kuh'.
+// Cumulative seconds spent stationary beneath the rendered constellation
+// while the boss is alive. The boss attacks every few seconds and forces
+// motion, so this counter accumulates rather than reset on motion — the
+// player just has to find quiet windows totalling 4s across a fight.
 let gazeT = 0;
-const GAZE_GOAL = 5;
+const GAZE_GOAL = 4;
 // Scorpio Dodge — perfect-timing window grants Engine.setTimeScale slo-mo (manga only).
 
 // ── Hall of Mount Olympus (leaderboard) ──────────────────────────────────
@@ -608,9 +610,8 @@ function updateConstellationGaze(dt){
       gazeT = 0;
       if (window.GodGames && GodGames.Mysteries) GodGames.Mysteries.earnHint('e');
     }
-  } else {
-    gazeT = 0;
   }
+  // No else-reset — gaze accumulates across the fight. Resets per run via initGame.
 }
 
 function updatePhantoms(dt){
