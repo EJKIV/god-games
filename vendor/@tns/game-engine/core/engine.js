@@ -687,3 +687,9 @@ Engine.hud = {
     ctx.restore();
   },
 };
+
+// Expose on window so companion modules (unlock, save, manga fx, mysteries)
+// can extend the same Engine object. Without this, top-level `const Engine`
+// is a lexical binding only — external IIFE modules see an undefined
+// `window.Engine` and unintentionally create a separate empty object.
+if (typeof window !== 'undefined') window.Engine = Engine;

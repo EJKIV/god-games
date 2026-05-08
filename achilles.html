@@ -924,6 +924,26 @@ function drawPlayer() {
 
 function drawHUD() {
   const W = Engine.W, H = Engine.H;
+
+  // ── DEBUG: mystery state overlay. localStorage.godgames_debug='1' to enable.
+  if (true) { // DEBUG: always-on while diagnosing
+    const now = performance.now();
+    const recent = patroclusKills.filter(t => now - t <= PATROCLUS_WINDOW_MS).length;
+    const earnedU = window.Engine && Engine.unlock && Engine.unlock.has('hint.u');
+    ctx.save();
+    ctx.font = '12px monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(8, 60, 320, 76);
+    ctx.fillStyle = '#ffd54a';
+    ctx.fillText('— DEBUG: Achilles —', 14, 64);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(`window = ${PATROCLUS_WINDOW_MS}ms  goal = ${PATROCLUS_GOAL}`, 14, 80);
+    ctx.fillStyle = recent > 0 ? '#88ff88' : '#888';
+    ctx.fillText(`kills in window = ${recent} / ${PATROCLUS_GOAL}`, 14, 96);
+    ctx.fillStyle = earnedU ? '#44dd66' : '#cc6666';
+    ctx.fillText(`hint.u earned = ${!!earnedU}`, 14, 112);
+    ctx.restore();
+  }
+
   ctx.textAlign = 'left'; ctx.font = 'bold 24px serif';
   ctx.shadowColor = '#ff2222'; ctx.shadowBlur = 10;
   for (let i = 0; i < HP_MAX; i++) {
@@ -1333,13 +1353,18 @@ Engine.boot({
       window.location.href = 'mount-olympus.html';
     }
 
-    // ── Manga abilities (only during play, manga mode) ───────────────
-    if (e.state === 'playing' && e.manga) {
+    // ── Combat abilities (X bash, Z counter-shot). Available in normal mode
+    // too so the Shade-of-Patroclus mystery (counter-shoot 3 archers in 6.5s)
+    // can be solved before manga mode is unlocked. Manga-only polish layers
+    // (sfxText, layered audio) gate themselves on `e.manga` below.
+    if (e.state === 'playing') {
       if ((ev.key === 'x' || ev.key === 'X') && bashCD <= 0) {
         bashT = BASH_DUR; bashCD = BASH_CD;
-        const polish = Manga.characters.achilles.polish.onBash;
-        if (e.audio._ctx && Manga.fx.sfxLayered) Manga.fx.sfxLayered(e.audio._ctx, polish.audioLayers);
-        mangaTexts.push({ text: polish.sfxText, x: player.x, y: PLAYER_Y - 90, t: 0.45, color: '#fff5c0', size: 36 });
+        if (e.manga && window.Manga && Manga.characters && Manga.characters.achilles) {
+          const polish = Manga.characters.achilles.polish.onBash;
+          if (e.audio._ctx && Manga.fx.sfxLayered) Manga.fx.sfxLayered(e.audio._ctx, polish.audioLayers);
+          mangaTexts.push({ text: polish.sfxText, x: player.x, y: PLAYER_Y - 90, t: 0.45, color: '#fff5c0', size: 36 });
+        }
       }
       if ((ev.key === 'z' || ev.key === 'Z') && bowCD <= 0) {
         // Counter shot: fires one arrow at the nearest alive archer.
@@ -1358,9 +1383,11 @@ Engine.boot({
             targetIdx: bestIdx,
             trailT: 0,
           });
-          const polish = Manga.characters.achilles.polish.onBow;
-          if (e.audio._ctx && Manga.fx.sfxLayered) Manga.fx.sfxLayered(e.audio._ctx, polish.audioLayers);
-          mangaTexts.push({ text: 'SHOT!', x: player.x, y: PLAYER_Y - 110, t: 0.4, color: '#ffd54a', size: 30 });
+          if (e.manga && window.Manga && Manga.characters && Manga.characters.achilles) {
+            const polish = Manga.characters.achilles.polish.onBow;
+            if (e.audio._ctx && Manga.fx.sfxLayered) Manga.fx.sfxLayered(e.audio._ctx, polish.audioLayers);
+            mangaTexts.push({ text: 'SHOT!', x: player.x, y: PLAYER_Y - 110, t: 0.4, color: '#ffd54a', size: 30 });
+          }
         }
       }
     }

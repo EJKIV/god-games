@@ -123,7 +123,10 @@ let time = 0;     // mirror of Engine.time, synced before each frame's logic
 // drawn radius. Cumulative within a run.
 let sunEmbraceT = 0;
 const SUN_EMBRACE_Y    = 100;   // px — player at peak altitude (clamp is 80)
-const SUN_EMBRACE_GOAL = 1;     // cumulative seconds in the sun → 'z'
+const SUN_EMBRACE_GOAL = 0.4;   // cumulative seconds in the sun → 'z'
+                                // (the wing burns fully in ~0.8s at peak heat,
+                                //  so the goal is short enough to fire before
+                                //  death gates the player out of updatePlaying)
 // Glyph: The Labyrinth Mark — Daedalus designed the labyrinth before the
 // wings. A faint spiral is etched at a fixed worldX/y; flying through it
 // claims it. Persistent unlock so it only collects once per profile.
@@ -695,14 +698,15 @@ function updatePlaying(dt) {
   // Mystery: The Sun's Embrace — Icarus mirrors his own myth by flying
   // *directly into* the sun. Sustain heat ≥ 0.95 for SUN_EMBRACE_GOAL seconds
   // and the syllable is whispered as the wax begins to fail.
+  // Sun's Embrace fires the moment Icarus touches the peak altitude band.
+  // The mythological beat: he's *into* the sun, the wax begins to fail. No
+  // dwell time needed — reaching the height is the choice.
   if (player.y <= SUN_EMBRACE_Y) {
     sunEmbraceT += dt;
-    if (sunEmbraceT >= SUN_EMBRACE_GOAL) {
-      sunEmbraceT = 0;
-      if (window.GodGames && GodGames.Mysteries) GodGames.Mysteries.earnHint('z');
+    if (window.GodGames && GodGames.Mysteries && !GodGames.Mysteries.hasHint('z')) {
+      GodGames.Mysteries.earnHint('z');
     }
   }
-  // Note: no else-reset — accumulates across the run. Resets per run via initGame.
 
   // Glyph collection — fly through the spiral if not already found.
   if (window.Engine && Engine.unlock && !Engine.unlock.has('glyph_icarus_found')) {
@@ -2474,6 +2478,27 @@ function renderHUD(W, H) {
     ctx.shadowColor = '#ff4400';
     ctx.shadowBlur = 12;
     ctx.fillText('⚠  TOO CLOSE TO THE SUN  ⚠', W/2, H - 30);
+    ctx.restore();
+  }
+
+  // ── DEBUG: mystery state overlay (top-left). Toggle by setting
+  // localStorage.godgames_debug = '1'. Helps diagnose unreachable triggers.
+  if (true) { // DEBUG: always-on while diagnosing
+    ctx.save();
+    ctx.font = '12px monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(8, 92, 280, 92);
+    ctx.fillStyle = '#ffd54a';
+    const inSun = player.y <= SUN_EMBRACE_Y;
+    const heatNow = dangerHeat();
+    const earnedZ = window.Engine && Engine.unlock && Engine.unlock.has('hint.z');
+    ctx.fillText('— DEBUG: Icarus —', 14, 96);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(`player.y = ${player.y.toFixed(1)}  threshold = ${SUN_EMBRACE_Y}`, 14, 112);
+    ctx.fillText(`inSun = ${inSun}   heat = ${heatNow.toFixed(2)}`, 14, 128);
+    ctx.fillStyle = inSun ? '#88ff88' : '#ff8888';
+    ctx.fillText(`sunEmbraceT = ${sunEmbraceT.toFixed(2)} / ${SUN_EMBRACE_GOAL}s`, 14, 144);
+    ctx.fillStyle = earnedZ ? '#44dd66' : '#cc6666';
+    ctx.fillText(`hint.z earned = ${!!earnedZ}`, 14, 160);
     ctx.restore();
   }
 

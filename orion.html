@@ -956,6 +956,33 @@ function drawPhantomClaw(p) {
 function renderHUD() {
   const W = Engine.W, H = Engine.H, time = Engine.time;
   ctx.save();
+
+  // ── DEBUG: mystery state overlay. localStorage.godgames_debug='1' to enable.
+  if (true) { // DEBUG: always-on while diagnosing
+    const beneath = orion.x > W * 0.04 && orion.x < W * 0.20;
+    const still   = Math.abs(orion.vx) < 5;
+    const alive   = boss.state !== 'dead';
+    const earnedE = window.Engine && Engine.unlock && Engine.unlock.has('hint.e');
+    ctx.save();
+    ctx.font = '12px monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(8, 60, 320, 110);
+    ctx.fillStyle = '#aaddff';
+    ctx.fillText('— DEBUG: Orion —', 14, 64);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(`orion.x = ${orion.x.toFixed(0)}  band = ${(W*0.04).toFixed(0)}..${(W*0.20).toFixed(0)}`, 14, 80);
+    ctx.fillStyle = beneath ? '#88ff88' : '#ff8888';
+    ctx.fillText(`beneathConstellation = ${beneath}`, 14, 96);
+    ctx.fillStyle = still ? '#88ff88' : '#ff8888';
+    ctx.fillText(`stillEnough (|vx|<5) = ${still}  vx=${orion.vx.toFixed(1)}`, 14, 112);
+    ctx.fillStyle = alive ? '#88ff88' : '#ff8888';
+    ctx.fillText(`bossAlive = ${alive}  proneT = ${orion.proneT.toFixed(2)}`, 14, 128);
+    ctx.fillStyle = '#ffd54a';
+    ctx.fillText(`gazeT = ${gazeT.toFixed(2)} / ${GAZE_GOAL}s`, 14, 144);
+    ctx.fillStyle = earnedE ? '#44dd66' : '#cc6666';
+    ctx.fillText(`hint.e earned = ${!!earnedE}`, 14, 160);
+    ctx.restore();
+  }
+
   // Boss HP bar
   ctx.fillStyle='rgba(0,0,0,0.55)';
   ctx.beginPath(); ctx.roundRect(W/2-155,14,310,26,4); ctx.fill();
