@@ -42,6 +42,68 @@
     ctx.restore();
   }
 
+  // Ambient audio factory per place. Each returns an object with
+  //   .start(audioCtx) — wires oscillators/noise into audioCtx.destination
+  //   .stop()           — fades out + disconnects everything
+  // The pattern: layered low-volume oscillators + (optional) filtered noise
+  // for texture. Player on the place page can hear the location's mood.
+  function makeAmbience(setup) {
+    return function (audioCtx) {
+      const nodes = setup(audioCtx);
+      const masterGain = audioCtx.createGain();
+      masterGain.gain.value = 0;
+      masterGain.connect(audioCtx.destination);
+      for (const n of nodes) n.gain.connect(masterGain);
+      masterGain.gain.linearRampToValueAtTime(1, audioCtx.currentTime + 1.2);
+      return {
+        stop() {
+          masterGain.gain.cancelScheduledValues(audioCtx.currentTime);
+          masterGain.gain.setValueAtTime(masterGain.gain.value, audioCtx.currentTime);
+          masterGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.6);
+          setTimeout(() => {
+            for (const n of nodes) try { n.osc.stop(); } catch (_e) {}
+            try { masterGain.disconnect(); } catch (_e) {}
+          }, 700);
+        },
+      };
+    };
+  }
+  function tone(ac, freq, type, vol, slowMod) {
+    const osc = ac.createOscillator(), gain = ac.createGain();
+    osc.type = type; osc.frequency.value = freq;
+    gain.gain.value = vol;
+    if (slowMod) {
+      // Gentle LFO on gain so the tone breathes
+      const lfo = ac.createOscillator(), lfoGain = ac.createGain();
+      lfo.type = 'sine'; lfo.frequency.value = slowMod.rate;
+      lfoGain.gain.value = slowMod.depth;
+      lfo.connect(lfoGain); lfoGain.connect(gain.gain);
+      lfo.start();
+    }
+    osc.connect(gain);
+    osc.start();
+    return { osc, gain };
+  }
+  function noise(ac, color) {
+    const buf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    let last = 0;
+    for (let i = 0; i < d.length; i++) {
+      // Pink-ish noise via simple lowpass on white
+      const w = Math.random() * 2 - 1;
+      last = (last + 0.02 * w) / 1.02;
+      d[i] = last * 3;
+    }
+    const src = ac.createBufferSource(); src.buffer = buf; src.loop = true;
+    const filt = ac.createBiquadFilter();
+    filt.type = color || 'bandpass';
+    filt.frequency.value = 480;
+    const gain = ac.createGain(); gain.gain.value = 0.09;
+    src.connect(filt); filt.connect(gain);
+    src.start();
+    return { osc: src, gain };
+  }
+
   window.GodGames.places = {
     // ────────────────────────────────────────────────────────────────────
     oceanus: {
@@ -101,6 +163,14 @@
       characterTransform(_ctx, W, H) {
         return { x: W * 0.5, y: H * 0.62 - 4, scale: 1.05 };
       },
+      // Low ocean swell + a single distant ringing bell — boundary of the world
+      ambience: makeAmbience((ac) => {
+        const swell = tone(ac, 55,  'sine',     0.20, { rate: 0.15, depth: 0.10 });
+        const drone = tone(ac, 110, 'sine',     0.08, { rate: 0.08, depth: 0.04 });
+        const bell  = tone(ac, 880, 'triangle', 0.04, { rate: 0.05, depth: 0.04 });
+        const surf  = noise(ac, 'lowpass');
+        return [swell, drone, bell, surf];
+      }),
     },
 
     // ────────────────────────────────────────────────────────────────────
@@ -145,6 +215,13 @@
       characterTransform(_ctx, W, H) {
         return { x: W * 0.45, y: H * 0.65 - 6, scale: 1.0 };
       },
+      // Grey hush — soft pink noise with a barely-there midrange drone
+      ambience: makeAmbience((ac) => {
+        const drone = tone(ac, 165, 'sine',  0.05, { rate: 0.10, depth: 0.03 });
+        const fifth = tone(ac, 247, 'sine',  0.03, { rate: 0.07, depth: 0.02 });
+        const hush  = noise(ac, 'bandpass');
+        return [drone, fifth, hush];
+      }),
     },
 
     // ────────────────────────────────────────────────────────────────────
@@ -195,6 +272,13 @@
       characterTransform(_ctx, W, H) {
         return { x: W * 0.5, y: H * 0.78, scale: 0.95 };
       },
+      // Deep drone + sub-rumble — the gloom before Hades
+      ambience: makeAmbience((ac) => {
+        const sub   = tone(ac, 41,  'sine',     0.30, { rate: 0.08, depth: 0.10 });
+        const drone = tone(ac, 82,  'sawtooth', 0.06, { rate: 0.06, depth: 0.04 });
+        const ghost = tone(ac, 220, 'triangle', 0.03, { rate: 0.18, depth: 0.10 });
+        return [sub, drone, ghost];
+      }),
     },
 
     // ────────────────────────────────────────────────────────────────────
@@ -221,6 +305,13 @@
         }
       },
       characterTransform(_ctx, W, H) { return { x: W * 0.5, y: H * 0.7, scale: 1.0 }; },
+      // Airy chimes — the dream-realm
+      ambience: makeAmbience((ac) => {
+        const a = tone(ac, 392, 'sine', 0.04, { rate: 0.20, depth: 0.06 });
+        const b = tone(ac, 587, 'sine', 0.03, { rate: 0.16, depth: 0.05 });
+        const c = tone(ac, 784, 'sine', 0.02, { rate: 0.13, depth: 0.04 });
+        return [a, b, c];
+      }),
     },
   };
 })();

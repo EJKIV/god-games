@@ -68,34 +68,60 @@ const P = place || SAFE_PLACE;
 // Route the character draw call to the correct manga character. fromGame
 // values map onto the canonical engine-package character names.
 const CHARACTER_MAP = { icarus: 'icarus', orion: 'orion', achilles: 'achilles' };
-function drawCharacterAt(x, y, scale) {
+
+// Slow walk drift: the character traces a long sine across the scene at
+// gentle speed, never running, never still. They reach the edge, fade,
+// then re-enter from the other side. The whole point is contemplation.
+function characterDriftX(t, baseX, ampX) {
+  const period = 14; // seconds per full pass — slow
+  const phase  = (t % period) / period;
+  // Triangle wave so motion is linear, not eased — feels like walking.
+  const tri = phase < 0.5 ? phase * 2 : 2 - phase * 2;  // 0..1..0
+  return baseX + (tri - 0.5) * 2 * ampX;
+}
+function characterFacing(t) {
+  const period = 14;
+  const phase  = (t % period) / period;
+  return phase < 0.5 ? 1 : -1;
+}
+function characterWalkPhase(t) { return t * 4.2; }       // gait speed
+function characterVx(t)        { return characterFacing(t) * 80; } // for hubWalker-style anims
+
+function drawCharacterAt(baseX, baseY, scale) {
   const char = CHARACTER_MAP[fromGame];
+  const W = canvas.width;
+  const t = performance.now() / 1000;
+  const driftX = characterDriftX(t, baseX, W * 0.18);
+  const facing = characterFacing(t);
+  const walkPhase = characterWalkPhase(t);
+
   if (!char || !window.Manga || !Manga.characters || !Manga.characters[char]) {
     // Tiny fallback figure
     ctx.save();
-    ctx.translate(x, y);
+    ctx.translate(driftX, baseY);
+    ctx.scale(facing, 1);
     ctx.fillStyle = '#e8d8b8';
     ctx.fillRect(-8, -32, 16, 32);
     ctx.beginPath(); ctx.arc(0, -38, 8, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
     return;
   }
+
   ctx.save();
-  ctx.translate(x, y);
+  ctx.translate(driftX, baseY);
   ctx.scale(scale, scale);
-  // Draw an idle pose using each character's defaults.
-  const t = performance.now() / 1000;
   if (char === 'icarus') {
+    // Icarus floats — walk-equivalent is gentle wing flap + horizontal drift
     Manga.characters.icarus.draw(ctx, {
-      x: 0, y: 0, facingRight: 1,
-      vx: 0, vy: 0, flapPhase: t * 0.6,
+      x: 0, y: 0, facingRight: facing > 0 ? 1 : 0,
+      vx: facing * 60, vy: 0, flapPhase: t * 0.9,
       wingHealth: 50, burnDmg: 0, wetDmg: 0,
       thrusting: false, dying: false, angle: 0, diving: false,
     });
   } else if (char === 'orion') {
     Manga.characters.orion.draw(ctx, {
-      x: 0, y: 0, facing: 1, walkPhase: 0,
-      vx: 0, vy: 0, onGround: true,
+      x: 0, y: 0, facing, walkPhase,
+      vx: characterVx(t), vy: 0, onGround: true,
       hp: 3, hurtFlash: 0, invincible: 0,
       proneT: 0, proneDmg: 0,
       spearCount: 7, stabFlash: 0, dodgeT: 0,
@@ -103,8 +129,8 @@ function drawCharacterAt(x, y, scale) {
     });
   } else if (char === 'achilles') {
     Manga.characters.achilles.draw(ctx, {
-      x: 0, y: 0, facing: 1, walkPhase: 0,
-      vx: 0, hp: 5, hitFlash: 0, iframes: 0, t,
+      x: 0, y: 0, facing, walkPhase,
+      vx: characterVx(t), hp: 5, hitFlash: 0, iframes: 0, t,
     });
   }
   ctx.restore();
@@ -122,6 +148,24 @@ function maybeShowReturn() {
   }
 }
 returnBtn.addEventListener('click', () => { location.href = 'index.html'; });
+
+// Ambient audio per place — kicks in on the first user gesture (key, click,
+// pointer) per browser autoplay rules. Stops cleanly on departure.
+let audioCtx = null;
+let ambience = null;
+function maybeStartAmbience() {
+  if (audioCtx) return;
+  if (!P.ambience) return;
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    ambience = P.ambience(audioCtx);
+  } catch (_e) { /* ignore — silent place is acceptable */ }
+}
+window.addEventListener('keydown', maybeStartAmbience, { once: true });
+window.addEventListener('pointerdown', maybeStartAmbience, { once: true });
+window.addEventListener('beforeunload', () => {
+  try { ambience && ambience.stop(); } catch (_e) {}
+});
 
 // Esc / Space / Enter all also return.
 window.addEventListener('keydown', (e) => {
