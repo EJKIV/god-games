@@ -296,21 +296,34 @@
     // Steps: earn hint → tally solve count → reveal next chain clue → save
     // any silent unlocks → submit score (best-effort) → navigate. Set
     // window.GodGames.suppressDepart = true to skip navigation in tests.
+    // Per-page-load guard so a trigger that fires on consecutive frames
+    // doesn't queue multiple navigations. Reset naturally when the page
+    // navigates away.
+    _firedThisLoad: false,
+
     unlockAndDepart(opts) {
+      if (M._firedThisLoad) return;
       opts = opts || {};
       let revealedClueId = null;
       if (window.Engine && Engine.unlock) {
-        if (opts.hintId) M.earnHint(opts.hintId, { silent: true });
-        for (const id of opts.extraUnlocks || []) Engine.unlock.set(String(id));
-        const newCount = Engine.unlock.tally('mysteries_solved_count');
-        const clue = M.clues.find(c => c.revealAt === newCount);
-        if (clue) {
-          Engine.unlock.set(clue.id);
-          revealedClueId = clue.id;
+        // Only the first-ever discovery advances the chain. Re-triggers on
+        // subsequent runs still navigate to the place (so the player can
+        // re-experience the cinematic) but don't double-count or re-reveal.
+        const isNew = opts.hintId && !Engine.unlock.has('hint.' + (opts.hintId.startsWith('hint.') ? opts.hintId.slice(5) : opts.hintId));
+        if (isNew) {
+          M.earnHint(opts.hintId, { silent: true });
+          for (const id of opts.extraUnlocks || []) Engine.unlock.set(String(id));
+          const newCount = Engine.unlock.tally('mysteries_solved_count');
+          const clue = M.clues.find(c => c.revealAt === newCount);
+          if (clue) {
+            Engine.unlock.set(clue.id);
+            revealedClueId = clue.id;
+          }
         }
       }
       try { if (typeof window.GodGames.submitNow === 'function') window.GodGames.submitNow(); }
       catch (_e) {}
+      M._firedThisLoad = true;
       if (window.GodGames && window.GodGames.suppressDepart) return;
       const params = new URLSearchParams();
       if (opts.placeId)  params.set('id',   opts.placeId);

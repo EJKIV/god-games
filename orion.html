@@ -606,8 +606,7 @@ function updateConstellationGaze(dt){
   const bossAlive = boss.state !== 'dead';
   if (beneathConstellation && stillEnough && bossAlive && orion.proneT <= 0) {
     gazeT += dt;
-    if (gazeT >= GAZE_GOAL
-      && window.GodGames && GodGames.Mysteries && !GodGames.Mysteries.hasHint('e')) {
+    if (gazeT >= GAZE_GOAL && window.GodGames && GodGames.Mysteries) {
       gazeT = 0;
       GodGames.Mysteries.unlockAndDepart({
         hintId:   'e',

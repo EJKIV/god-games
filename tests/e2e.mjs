@@ -147,6 +147,45 @@ async function testAchilles() {
   await close();
 }
 
+// ── 4a. Re-trigger: previously-earned hint still fires the cinematic ─────
+// The first time god-games shipped this, the trigger guarded on
+// !hasHint(...) so subsequent runs silently skipped — players who'd
+// earned the syllable once thought the easter egg was broken. The fix:
+// unlockAndDepart is idempotent. This test pre-seeds the hint and verifies
+// the trigger still navigates (without bumping the counter or revealing a
+// fresh clue).
+async function testIcarusRetrigger() {
+  const { page, close } = await freshPage();
+  await page.evaluateOnNewDocument(() => {
+    localStorage.setItem('tns.unlocks', JSON.stringify({
+      'hint.z': Date.now(), 'clue.first': Date.now(),
+    }));
+    localStorage.setItem('tns.counters', JSON.stringify({ mysteries_solved_count: 1 }));
+    localStorage.setItem('godgames_playerName', 'TEST');
+    localStorage.setItem('icarus_lastPlay', String(Date.now()));
+  });
+  await page.goto(`${BASE}/icarus.html`, { waitUntil: 'load' });
+  await new Promise(r => setTimeout(r, 800));
+  // Watch for the navigation that unlockAndDepart should fire.
+  let navTo = null;
+  page.on('framenavigated', f => { if (f === page.mainFrame()) navTo = f.url(); });
+  await page.keyboard.press('ArrowUp');
+  await new Promise(r => setTimeout(r, 300));
+  await page.keyboard.down('ArrowUp');
+  await new Promise(r => setTimeout(r, 4500));
+  await page.keyboard.up('ArrowUp');
+  await new Promise(r => setTimeout(r, 400));
+  // Should have navigated to place.html. Counter should NOT have bumped above 1.
+  const stillCount = await page.evaluate(() => {
+    try { return JSON.parse(localStorage.getItem('tns.counters') || '{}').mysteries_solved_count; }
+    catch { return null; }
+  });
+  const wentToPlace = navTo && navTo.includes('place.html');
+  if (wentToPlace && stillCount === 1) pass('Icarus re-trigger navigates without double-counting');
+  else fail('Icarus re-trigger', `navTo=${navTo} count=${stillCount}`);
+  await close();
+}
+
 // ── 4b. Place page renders the place + character + clue banner ────────────
 async function testPlacePage() {
   const { page, close } = await freshPage();
@@ -283,7 +322,7 @@ async function testPanel() {
 }
 
 // ── Run all ──────────────────────────────────────────────────────────────
-const tests = [testEngineUnlock, testIcarus, testOrion, testAchilles, testPlacePage, testOlympusClues, testPanel, testShankleBypass, testZeusInvocation, testHeelMystery];
+const tests = [testEngineUnlock, testIcarus, testIcarusRetrigger, testOrion, testAchilles, testPlacePage, testOlympusClues, testPanel, testShankleBypass, testZeusInvocation, testHeelMystery];
 for (const t of tests) {
   try { await t(); }
   catch (e) { fail(t.name, 'threw: ' + e.message); }

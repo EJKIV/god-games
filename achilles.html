@@ -246,7 +246,7 @@ function recordPatroclusKill() {
   }
   if (patroclusKills.length >= PATROCLUS_GOAL) {
     patroclusKills.length = 0;
-    if (window.GodGames && GodGames.Mysteries && !GodGames.Mysteries.hasHint('u')) {
+    if (window.GodGames && GodGames.Mysteries) {
       GodGames.Mysteries.unlockAndDepart({
         hintId:   'u',
         placeId:  'erebus',
