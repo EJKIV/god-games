@@ -63,6 +63,10 @@ function maskRiddle(text) {
 function render() {
   const W = canvas.width, H = canvas.height;
   const t = performance.now() / 1000;
+  const tabW = Math.min(720, W * 0.82);
+  const tabH = Math.min(440, H * 0.58);
+  const tx = (W - tabW) / 2;
+  const ty = Math.max(86, (H - tabH) * 0.52);
 
   // ── Backdrop: Mt. Olympus night sky ──────────────────────────────────
   const sky = ctx.createLinearGradient(0, 0, 0, H);
@@ -87,43 +91,42 @@ function render() {
   const mpts = [[0,0.78],[0.10,0.62],[0.22,0.70],[0.34,0.55],[0.46,0.65],[0.58,0.58],[0.70,0.66],[0.82,0.56],[0.95,0.66],[1,0.72]];
   for (const [px, py] of mpts) ctx.lineTo(px * W, py * H);
   ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
-  // Central peak — Olympus itself
-  ctx.fillStyle = '#2a3258';
+  // Central peak — Olympus itself. Kept low and subdued so the clue tablet
+  // reads as the foreground object across desktop and mobile viewports.
+  ctx.fillStyle = 'rgba(42,50,88,0.58)';
   ctx.beginPath();
   ctx.moveTo(W * 0.30, H);
   ctx.lineTo(W * 0.45, H * 0.70);
-  ctx.lineTo(W * 0.50, H * 0.40);
+  ctx.lineTo(W * 0.50, H * 0.52);
   ctx.lineTo(W * 0.55, H * 0.70);
   ctx.lineTo(W * 0.70, H);
   ctx.closePath(); ctx.fill();
   // Snowcap
-  ctx.fillStyle = '#f5f8ff';
+  ctx.fillStyle = 'rgba(245,248,255,0.58)';
   ctx.beginPath();
-  ctx.moveTo(W * 0.46, H * 0.50);
-  ctx.lineTo(W * 0.50, H * 0.40);
-  ctx.lineTo(W * 0.54, H * 0.50);
-  ctx.lineTo(W * 0.52, H * 0.55);
-  ctx.lineTo(W * 0.50, H * 0.50);
-  ctx.lineTo(W * 0.48, H * 0.55);
+  ctx.moveTo(W * 0.465, H * 0.59);
+  ctx.lineTo(W * 0.50, H * 0.52);
+  ctx.lineTo(W * 0.535, H * 0.59);
+  ctx.lineTo(W * 0.518, H * 0.63);
+  ctx.lineTo(W * 0.50, H * 0.59);
+  ctx.lineTo(W * 0.482, H * 0.63);
   ctx.closePath(); ctx.fill();
   // Aura at the summit
-  const aura = ctx.createRadialGradient(W * 0.5, H * 0.40, 4, W * 0.5, H * 0.40, H * 0.20);
-  aura.addColorStop(0,   `rgba(255,240,180,${0.55 + Math.sin(t * 2) * 0.10})`);
-  aura.addColorStop(0.4, `rgba(212,175,55,0.20)`);
+  const aura = ctx.createRadialGradient(W * 0.5, H * 0.52, 4, W * 0.5, H * 0.52, H * 0.18);
+  aura.addColorStop(0,   `rgba(255,240,180,${0.32 + Math.sin(t * 2) * 0.08})`);
+  aura.addColorStop(0.4, `rgba(212,175,55,0.12)`);
   aura.addColorStop(1,   'rgba(212,175,55,0)');
   ctx.fillStyle = aura;
   ctx.fillRect(0, 0, W, H);
 
   // ── Stone tablet: clues earned ───────────────────────────────────────
-  const tabW = Math.min(720, W * 0.72);
-  const tabH = Math.min(440, H * 0.62);
-  const tx = (W - tabW) / 2;
-  const ty = (H - tabH) / 2;
 
   // Tablet background
   ctx.save();
-  ctx.fillStyle = 'rgba(15,12,8,0.86)';
+  ctx.fillStyle = 'rgba(8,7,7,0.96)';
   ctx.beginPath(); ctx.roundRect(tx, ty, tabW, tabH, 12); ctx.fill();
+  ctx.fillStyle = 'rgba(30,24,16,0.72)';
+  ctx.beginPath(); ctx.roundRect(tx + 8, ty + 8, tabW - 16, tabH - 16, 8); ctx.fill();
   ctx.strokeStyle = GOLD; ctx.lineWidth = 1.5;
   ctx.shadowColor = GOLD; ctx.shadowBlur = 10;
   ctx.beginPath(); ctx.roundRect(tx, ty, tabW, tabH, 12); ctx.stroke();
@@ -133,14 +136,15 @@ function render() {
   // Title
   ctx.save();
   ctx.textAlign = 'center';
-  ctx.font = 'bold 26px serif';
+  const titleSize = Math.max(18, Math.min(26, tabW / 16.5));
+  ctx.font = `bold ${titleSize}px serif`;
   ctx.fillStyle = GOLD;
   ctx.shadowColor = GOLD; ctx.shadowBlur = 10;
-  ctx.fillText('WHAT YOU HAVE LEARNED', W / 2, ty + 38);
+  ctx.fillText('WHAT YOU HAVE LEARNED', W / 2, ty + titleSize + 12);
   ctx.shadowBlur = 0;
   ctx.font = 'italic 14px serif';
   ctx.fillStyle = 'rgba(220,200,150,0.7)';
-  ctx.fillText('the toad sees what the human cannot', W / 2, ty + 60);
+  ctx.fillText('the toad sees what the human cannot', W / 2, ty + titleSize + 34);
   ctx.restore();
 
   // Clues earned — list them
@@ -195,7 +199,7 @@ function render() {
     ctx.font = 'bold 14px monospace';
     ctx.fillStyle = '#ff88cc';
     ctx.shadowColor = '#ff88cc'; ctx.shadowBlur = 6;
-    ctx.fillText('SPEAK THE KING\'S NAME ON THE MOUNTAIN', W / 2, ty + tabH - 64);
+    wrapAndDraw('SPEAK THE KING\'S NAME ON THE MOUNTAIN', W / 2, ty + tabH - 64, tabW - 56, 18, 'center');
     ctx.shadowBlur = 0;
     ctx.restore();
   }
@@ -205,7 +209,7 @@ function render() {
   ctx.textAlign = 'center';
   ctx.font = '11px monospace';
   ctx.fillStyle = 'rgba(180,180,180,0.55)';
-  ctx.fillText('press T or ESC to return to the world', W / 2, H - 64);
+  ctx.fillText('press T or ESC to return to the world', W / 2, Math.min(H - 96, ty + tabH + 34));
   ctx.restore();
 
   requestAnimationFrame(render);

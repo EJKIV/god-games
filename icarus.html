@@ -84,6 +84,11 @@ const WING_MAX         = 50;  // wing HP cap; subtracted by burn/wet/direct dama
 // ── Tutorial dialogue ──────────────────────────────────────────────────────
 // Built per-run via buildTutorial(): the rescue-introduction line only
 // appears once the daedalus_compassion mystery has been earned (manga mode).
+function hasDaedalusRescue() {
+  return !!(window.Engine && Engine.manga
+    && window.GodGames && GodGames.Mysteries
+    && GodGames.Mysteries.isSolved('daedalus_compassion'));
+}
 const BASE_TUTORIAL = [
   { speaker: 'DAEDALUS', text: 'Icarus, my son. I have crafted these wings myself — feathers gathered one by one, bound together with wax. They will carry you into the sky.' },
   { speaker: 'DAEDALUS', text: 'Hold ↑ to beat the wings and climb. Release the key and you will fall. You will fly forward on your own — guide your height to avoid sun and sea.' },
@@ -96,10 +101,7 @@ function buildTutorial() {
   const lines = BASE_TUTORIAL.slice();
   // Manga rescue foreshadowing: only after Daedalus's Compassion has been
   // earned (the mystery's hint trail makes this feel like a discovered secret).
-  const showRescue = !!(Engine && Engine.manga
-    && window.GodGames && GodGames.Mysteries
-    && GodGames.Mysteries.isSolved('daedalus_compassion'));
-  if (showRescue) {
+  if (hasDaedalusRescue()) {
     lines.splice(lines.length - 1, 0, {
       speaker: 'DAEDALUS',
       text: 'And know this — should the wax fail you, I will not let you fall. Once. The gods will permit me one outstretched hand. Make it count.',
@@ -1066,9 +1068,7 @@ function updatePlaying(dt) {
     // Rescue is gated by the daedalus_compassion mystery — the player has to
     // burn against the sun 3 times in manga mode to earn it. Until then the
     // rescue is invisible / inactive.
-    const rescueEarned = window.GodGames && GodGames.Mysteries
-      && GodGames.Mysteries.isSolved('daedalus_compassion');
-    if (Engine.manga && rescueEarned && rescueAvailable > 0) {
+    if (hasDaedalusRescue() && rescueAvailable > 0) {
       triggerDaedalusRescue();
       return;
     }
@@ -2535,7 +2535,7 @@ function renderHUD(W, H) {
   if (Engine.manga) {
     drawIcarusAbilityRing(W - 32, H - 76, '↓', diveCD, DIVE_CD, diveT > 0);
     // Rescue ring only appears once the daedalus_compassion mystery is earned.
-    if (window.GodGames && GodGames.Mysteries && GodGames.Mysteries.isSolved('daedalus_compassion')) {
+    if (hasDaedalusRescue()) {
       drawRescueRing(W - 32, H - 132);
     }
   }

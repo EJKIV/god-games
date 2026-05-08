@@ -6,7 +6,7 @@
 //   2. GET /api/progress?name=<player>. Merge remote state into Engine.unlock:
 //      • set every remote unlock id (no-op if local already has it)
 //      • for every remote counter, take max(local, remote) and write back
-//   3. Subscribe to Engine.unlock.onChange. On any change, debounce ~700ms and
+//   3. Subscribe to Engine.unlock.onChange. On any change, debounce ~2s and
 //      POST the full local state to /api/progress. Server merges (max, union).
 //
 // Why this is safe:
@@ -25,7 +25,7 @@
 
   const NAME_KEY = 'godgames_playerName';
   const ENDPOINT = '/api/progress';
-  const DEBOUNCE_MS = 700;
+  const DEBOUNCE_MS = 2000;
 
   function getName() {
     try { return (localStorage.getItem(NAME_KEY) || '').trim(); }
