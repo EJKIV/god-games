@@ -19,17 +19,43 @@ The runtime engine kids' games consume. Ported verbatim from `god-games/engine.j
 packages/game-engine/
 ├── core/
 │   └── engine.js               # Engine.boot, lifecycle, particles, shake, audio, mobile, state
+├── unlock/                     # Engine.unlock — boolean flags + integer counters for
+│   └── index.js                # cross-run progression (achievements, mystery solves).
+│                               # Storage: tns.unlocks + tns.counters.
+├── save/                       # Engine.save — versioned in-game state checkpoints
+│   └── index.js                # (per-game-id, per-slot). Migrations between versions.
+│                               # Storage: tns.save.<gameId>.<slot>. Distinct from
+│                               # unlock — answer different questions.
+├── dialogue/                   # Engine.dialogue — JSON-script cutscene runtime AND
+│   └── index.js                # the lighter-weight `drawBubble` helper for inline
+│                               # character speech bubbles.
 ├── manga/                      # Visual library — see manga/CLAUDE.md
 │   ├── manga.js                # Module loader + INK constant
 │   ├── characters/             # Character draw + polish profiles
 │   ├── effects/                # Stateless render helpers (halftone, ink, vignette, ...)
-│   ├── fx/                     # Stateful per-frame fx (camerapunch, slomo, sfxlayered, zeusstrike)
+│   ├── fx/                     # Stateful per-frame fx (camerapunch, slomo, sfxlayered,
+│   │                           # zeusstrike, cinematic) — cinematic powers GodGames
+│   │                           # MythCinematic but is portable to any kid game.
 │   └── scenes/                 # Cinematic scene drawables
+├── animation/, audio/, level/, physics/  # Reserved for future helpers
 ├── api/
 │   └── leaderboard.js          # Vercel serverless. See api/CLAUDE.md
 ├── package.json
 └── CLAUDE.md
 ```
+
+### Engine.unlock vs. Engine.save
+
+These look similar but answer different questions and stay separate:
+
+| Module          | What it stores                                     | Storage key                       |
+|-----------------|----------------------------------------------------|-----------------------------------|
+| `Engine.unlock` | Cross-run progression flags + counters             | `tns.unlocks`, `tns.counters`     |
+| `Engine.save`   | Versioned in-game state checkpoints (per slot)     | `tns.save.<gameId>.<slot>`        |
+
+A typical kid game uses both. Example: `Engine.unlock` records "completed the
+tutorial once" so it never replays; `Engine.save` records "you were at x=240,
+hp=3 when you closed the tab so we can resume."
 
 ## Subtree dispatch
 

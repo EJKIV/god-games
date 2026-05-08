@@ -21,65 +21,41 @@
   if (typeof window === 'undefined') return;
   window.GodGames = window.GodGames || {};
 
-  // ── MythCinematic overlay ────────────────────────────────────────────────
-  // Portable 3-second vignette: name (big serif) + flavor (italic) on a
-  // dark backdrop with the location's color. Games wire .update(dt) and
-  // .render(ctx, W, H) into their loops. .trigger fires once per solve.
+  // MythCinematic uses the portable Manga.fx.cinematic factory if the manga
+  // library has loaded. Falls back to a minimal stub if it hasn't (so tests
+  // and bare pages still work).
+  function makeCinematic() {
+    if (window.Manga && Manga.fx && typeof Manga.fx.cinematic === 'function') {
+      return Manga.fx.cinematic();
+    }
+    return {
+      active: null,
+      trigger(name, flavor, color) {
+        this.active = { name, flavor, color: color || '#ffd54a', t: 0, dur: 3.0 };
+      },
+      update(dt) {
+        if (!this.active) return;
+        this.active.t += dt;
+        if (this.active.t >= this.active.dur) this.active = null;
+      },
+      render(_ctx, _W, _H) { /* no-op without manga library */ },
+    };
+  }
+  // Lazy-init so Manga.fx.cinematic has time to load.
+  let _cinematic = null;
   const MythCinematic = {
-    active: null, // { name, flavor, color, t, dur }
-    trigger(name, flavor, color) {
-      this.active = { name, flavor, color: color || '#ffd54a', t: 0, dur: 3.0 };
+    get active()  { return (_cinematic = _cinematic || makeCinematic()).active; },
+    trigger(name, flavor, color, opts) {
+      _cinematic = _cinematic || makeCinematic();
+      _cinematic.trigger(name, flavor, color, opts);
     },
     update(dt) {
-      if (!this.active) return;
-      this.active.t += dt;
-      if (this.active.t >= this.active.dur) this.active = null;
+      _cinematic = _cinematic || makeCinematic();
+      _cinematic.update(dt);
     },
     render(ctx, W, H) {
-      if (!this.active) return;
-      const { name, flavor, color, t, dur } = this.active;
-      const fadeIn = 0.45, fadeOut = 0.6;
-      const hold = dur - fadeIn - fadeOut;
-      let alpha;
-      if (t < fadeIn) alpha = t / fadeIn;
-      else if (t < fadeIn + hold) alpha = 1;
-      else alpha = Math.max(0, 1 - (t - fadeIn - hold) / fadeOut);
-      ctx.save();
-      // Dark backdrop with a vignette feel
-      ctx.globalAlpha = alpha * 0.92;
-      const bg = ctx.createRadialGradient(W/2, H/2, 80, W/2, H/2, Math.max(W, H));
-      bg.addColorStop(0, 'rgba(8, 4, 14, 0.50)');
-      bg.addColorStop(1, 'rgba(2, 0, 6, 0.97)');
-      ctx.fillStyle = bg;
-      ctx.fillRect(0, 0, W, H);
-
-      // Decorative ink frame — top + bottom borders
-      ctx.globalAlpha = alpha;
-      ctx.strokeStyle = color;
-      ctx.shadowColor = color;
-      ctx.shadowBlur = 14;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(W * 0.12, H * 0.30); ctx.lineTo(W * 0.88, H * 0.30);
-      ctx.moveTo(W * 0.12, H * 0.62); ctx.lineTo(W * 0.88, H * 0.62);
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-
-      // Location name — big serif, glowing in the location's color
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'alphabetic';
-      ctx.font = 'bold 56px serif';
-      ctx.shadowColor = color; ctx.shadowBlur = 28;
-      ctx.fillStyle = color;
-      ctx.fillText(name, W / 2, H * 0.46);
-      ctx.shadowBlur = 0;
-
-      // Subtitle — italic flavor text
-      ctx.font = 'italic 20px serif';
-      ctx.fillStyle = 'rgba(240, 230, 200, 0.88)';
-      ctx.fillText(flavor, W / 2, H * 0.54);
-
-      ctx.restore();
+      _cinematic = _cinematic || makeCinematic();
+      _cinematic.render(ctx, W, H);
     },
   };
 

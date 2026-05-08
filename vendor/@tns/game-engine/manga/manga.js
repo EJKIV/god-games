@@ -38,6 +38,7 @@
     'fx/slomo.js',
     'fx/sfxlayered.js',
     'fx/zeusstrike.js',
+    'fx/cinematic.js',
     // Scenes (environmental drawables — portals, mountains, columns)
     'scenes/hub.js',
     'scenes/orion-arena.js',

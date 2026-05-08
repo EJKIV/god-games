@@ -207,6 +207,98 @@
     if (line) ctx.fillText(line, x, y);
   }
 
+  // -------- Inline character speech bubble --------
+  //
+  // Lighter-weight than the full script runtime above. Use this when a NPC
+  // floats in world-space and just needs to say one short line — no choices,
+  // no typewriter, no JSON. The caller positions the bubble + the tail
+  // anchor (typically just above the character's head).
+  //
+  //   Engine.dialogue.drawBubble(ctx, {
+  //     x, y,                 // top-left of the bubble
+  //     anchorX, anchorY,     // where the tail points (the speaker's head)
+  //     w: 178, h: 44,        // bubble size (defaults shown)
+  //     speaker: 'DAEDALUS',  // optional small label inside the bubble
+  //     text: 'Fly, my son.', // body text — wraps to bubble width
+  //     color: '#D4AF37',     // accent (border + speaker tag)
+  //     bg: 'rgba(5,10,22,0.90)',
+  //     bodyColor: 'rgba(240,230,200,0.95)',
+  //     speakerFont: 'bold 10px monospace',
+  //     bodyFont: '12px serif',
+  //   });
+
+  D.drawBubble = function (ctx, opts) {
+    if (!opts || !opts.text) return;
+    const w = opts.w != null ? opts.w : 178;
+    const h = opts.h != null ? opts.h : 44;
+    const bx = opts.x;
+    const by = opts.y;
+    const color = opts.color || '#D4AF37';
+    const bg = opts.bg || 'rgba(5,10,22,0.90)';
+    const bodyColor = opts.bodyColor || 'rgba(240,230,200,0.95)';
+    const speakerFont = opts.speakerFont || 'bold 10px monospace';
+    const bodyFont = opts.bodyFont || '12px serif';
+
+    ctx.save();
+    ctx.globalAlpha = opts.alpha != null ? opts.alpha : 0.92;
+    ctx.fillStyle = bg;
+    ctx.shadowColor = color; ctx.shadowBlur = 6;
+    ctx.beginPath(); ctx.roundRect(bx, by, w, h, 7); ctx.fill();
+    ctx.strokeStyle = color; ctx.lineWidth = 1.3;
+    ctx.beginPath(); ctx.roundRect(bx, by, w, h, 7); ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Tail pointing to (anchorX, anchorY)
+    if (opts.anchorX != null && opts.anchorY != null) {
+      const tx = Math.max(bx + 14, Math.min(bx + w - 14, opts.anchorX));
+      ctx.fillStyle = bg;
+      ctx.strokeStyle = color; ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      ctx.moveTo(tx - 7, by + h);
+      ctx.lineTo(tx, opts.anchorY);
+      ctx.lineTo(tx + 7, by + h);
+      ctx.closePath();
+      ctx.fill(); ctx.stroke();
+    }
+
+    // Speaker tag (optional, top-centred)
+    if (opts.speaker) {
+      ctx.fillStyle = color;
+      ctx.font = speakerFont;
+      ctx.textAlign = 'center';
+      ctx.shadowColor = color; ctx.shadowBlur = 3;
+      ctx.fillText(opts.speaker, bx + w / 2, by + 13);
+      ctx.shadowBlur = 0;
+    }
+
+    // Body text — wrap to bubble width
+    ctx.fillStyle = bodyColor;
+    ctx.font = bodyFont;
+    ctx.textAlign = 'center';
+    const startY = opts.speaker ? by + 27 : by + 18;
+    const lines = wrapBubbleText(ctx, opts.text, w - 18);
+    lines.forEach((l, i) => ctx.fillText(l, bx + w / 2, startY + i * 14));
+
+    ctx.restore();
+  };
+
+  function wrapBubbleText(ctx, text, maxW) {
+    const words = String(text).split(' ');
+    const out = [];
+    let line = '';
+    for (const word of words) {
+      const test = line ? line + ' ' + word : word;
+      if (ctx.measureText(test).width > maxW && line) {
+        out.push(line);
+        line = word;
+      } else {
+        line = test;
+      }
+    }
+    if (line) out.push(line);
+    return out;
+  }
+
   // -------- Input integration helper --------
   // Kids' games can call this from onKeyDown to forward keys to the dialogue.
   // Returns true if dialogue handled the key (so the caller can skip game input).
