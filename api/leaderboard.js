@@ -168,6 +168,6 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'method not allowed' });
   } catch (err) {
     console.error('leaderboard error:', err);
-    return res.status(500).json({ error: 'internal error', detail: String(err.message || err) });
+    return res.status(500).json({ error: 'internal error' });
   }
 }

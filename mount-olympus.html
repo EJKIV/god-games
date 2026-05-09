@@ -402,6 +402,12 @@ const HALL_SUB = {
   manga:  '— I M M O R T A L &nbsp; H A L L &nbsp; · &nbsp; M A N G A &nbsp; M O D E —',
 };
 
+async function fetchBoard(baseGame) {
+  const res = await fetch('/api/leaderboard?game=' + gameId(baseGame));
+  if (!res.ok) throw new Error(`${baseGame} leaderboard returned ${res.status}`);
+  return res.json();
+}
+
 async function load() {
   $('hallSub').innerHTML = HALL_SUB[currentHall];
   const icarusList   = $('list-icarus');
@@ -412,10 +418,10 @@ async function load() {
     '<li class="loading">Consulting the Fates…</li>';
   try {
     const [iRes, oRes, aRes, pRes] = await Promise.all([
-      fetch('/api/leaderboard?game=' + gameId('icarus')).then(r => r.json()),
-      fetch('/api/leaderboard?game=' + gameId('orion')).then(r => r.json()),
-      fetch('/api/leaderboard?game=' + gameId('achilles')).then(r => r.json()),
-      fetch('/api/leaderboard?game=' + gameId('perseus')).then(r => r.json()),
+      fetchBoard('icarus'),
+      fetchBoard('orion'),
+      fetchBoard('achilles'),
+      fetchBoard('perseus'),
     ]);
     cachedIcarus   = iRes.entries || [];
     cachedOrion    = oRes.entries || [];

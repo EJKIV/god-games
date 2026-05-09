@@ -237,6 +237,24 @@ async function testPlacePage() {
   await close();
 }
 
+// ── 4e. Perseus place scene uses Perseus, not an Achilles placeholder ────
+async function testPerseusPlaceCharacter() {
+  const { page, close } = await freshPage();
+  await page.evaluateOnNewDocument(() => {
+    localStorage.setItem('tns.unlocks', JSON.stringify({
+      'mystery.perseus_solved': Date.now(),
+      'clue.fourth': Date.now(),
+    }));
+  });
+  await page.goto(`${BASE}/place.html?id=tartarus&from=perseus&clue=clue.fourth&testHooks=1`, { waitUntil: 'load' });
+  await new Promise(r => setTimeout(r, 1400));
+  await page.screenshot({ path: `${SHOTS}/place_tartarus_perseus.png` });
+  const probe = await page.evaluate(() => window.GodGames?.PlaceTest || null);
+  if (probe?.character === 'perseus' && probe?.hasPerseusTraveler) pass('place.html renders Perseus traveler');
+  else fail('place.html Perseus traveler', JSON.stringify(probe));
+  await close();
+}
+
 // ── 4d. Olympus clues page surfaces earned clues ─────────────────────────
 async function testOlympusClues() {
   const { page, close } = await freshPage();
@@ -356,7 +374,7 @@ async function testPanel() {
 }
 
 // ── Run all ──────────────────────────────────────────────────────────────
-const tests = [testEngineUnlock, testIcarus, testIcarusRetrigger, testOrion, testAchilles, testPerseus, testPlacePage, testOlympusClues, testPanel, testShankleBypass, testZeusInvocation, testHeelMystery];
+const tests = [testEngineUnlock, testIcarus, testIcarusRetrigger, testOrion, testAchilles, testPerseus, testPlacePage, testPerseusPlaceCharacter, testOlympusClues, testPanel, testShankleBypass, testZeusInvocation, testHeelMystery];
 for (const t of tests) {
   try { await t(); }
   catch (e) { fail(t.name, 'threw: ' + e.message); }

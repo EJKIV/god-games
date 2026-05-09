@@ -17,6 +17,7 @@ const GAMES = {
   icarus:   { order: 'desc', min: 0,    max: 10_000_000 },
   orion:    { order: 'asc',  min: 1000, max: 3_600_000 },   // time in ms
   achilles: { order: 'desc', min: 0,    max: 10_000_000 },
+  perseus:  { order: 'desc', min: 0,    max: 10_000_000 },
 };
 ```
 
@@ -116,9 +117,15 @@ identically. The client-side bridge is `progress-sync.js` at the repo
 root — it pulls on load + debounce-pushes on every `Engine.unlock`
 change.
 
+Progress sync answers CORS preflight only for same-host origins and localhost
+development origins. Do not switch it back to `Access-Control-Allow-Origin: *`:
+progress is name-keyed and unauthenticated, so broad CORS would let unrelated
+sites write unlocks for a guessed player name.
+
 ## Updates
 
 | Date       | Change                                                                          | Author |
 |------------|---------------------------------------------------------------------------------|--------|
+| 2026-05-09 | Restricted progress CORS to same-host/localhost origins and clamped incoming keys. | codex |
 | 2026-05-08 | Added `progress.js` for mystery state sync (Engine.unlock + counters).          | jim    |
 | 2026-05-07 | Created subtree router. Achilles registered in `GAMES` (order:desc, 0..10M).    | jim    |

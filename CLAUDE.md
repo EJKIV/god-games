@@ -171,6 +171,7 @@ god-games/
 | Date       | Change                                                                                     | Author |
 |------------|--------------------------------------------------------------------------------------------|--------|
 | 2026-05-09 | Tuned Perseus around mirror focus, shield heat, serpent reflection, and upgraded the ZEUS invocation payoff so it solves `manga_mode` through the mystery system. | codex  |
+| 2026-05-09 | Replaced the Perseus reward-scene placeholder with a local Perseus traveler drawing, hardened progress CORS, and made Olympus leaderboard API failures visible. | codex  |
 | 2026-05-09 | Added Perseus as the fourth god-game, extended the ZEUS mystery chain to four letters, and added place ambience reverb. | codex  |
 | 2026-05-08 | Documented the data-driven mystery scene-cut flow, place catalog, clue review page, and Redis progress sync. | codex  |
 | 2026-05-07 | Added `vendor/@tns/game-engine/` for Vercel deploys (Vercel excludes `node_modules` from static output). HTMLs now load from `vendor/`. `npm run sync-engine` refreshes from `node_modules`. | jim    |

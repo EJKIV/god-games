@@ -23,6 +23,8 @@ const RATE_MAX = 30;          // higher than leaderboard — progress writes are
 const MAX_UNLOCKS = 200;      // upper bound on a player's unlock count
 const MAX_COUNTER_KEYS = 100; // upper bound on counter keys
 const MAX_PAYLOAD_BYTES = 12_000;
+const CORS_METHODS = 'GET, POST, OPTIONS';
+const CORS_HEADERS = 'Content-Type';
 
 async function redis(...command) {
   if (!REDIS_URL || !REDIS_TOKEN) {
@@ -55,6 +57,31 @@ function clientIp(req) {
   return req.socket?.remoteAddress || 'unknown';
 }
 
+function isLocalHost(hostname) {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+}
+
+function originAllowed(req, origin) {
+  if (!origin) return true;
+  let parsed;
+  try { parsed = new URL(origin); } catch (_e) { return false; }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+  if (isLocalHost(parsed.hostname)) return true;
+  const host = String(req.headers.host || '').toLowerCase();
+  return host && parsed.host.toLowerCase() === host;
+}
+
+function applyCors(req, res) {
+  const origin = String(req.headers.origin || '');
+  res.setHeader('Vary', 'Origin');
+  res.setHeader('Access-Control-Allow-Methods', CORS_METHODS);
+  res.setHeader('Access-Control-Allow-Headers', CORS_HEADERS);
+  if (!origin) return true;
+  if (!originAllowed(req, origin)) return false;
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  return true;
+}
+
 async function rateLimit(ip) {
   const key = `rl:progress:${ip}`;
   const count = await redis('INCR', key);
@@ -64,10 +91,15 @@ async function rateLimit(ip) {
 
 async function readJsonBody(req) {
   if (req.body && typeof req.body === 'object') return req.body;
-  if (typeof req.body === 'string') { try { return JSON.parse(req.body); } catch { return null; } }
+  if (typeof req.body === 'string') {
+    if (req.body.length > MAX_PAYLOAD_BYTES) return null;
+    try { return JSON.parse(req.body); } catch { return null; }
+  }
   let buf = '';
-  for await (const chunk of req) buf += chunk;
-  if (buf.length > MAX_PAYLOAD_BYTES) return null;
+  for await (const chunk of req) {
+    buf += chunk;
+    if (buf.length > MAX_PAYLOAD_BYTES) return null;
+  }
   try { return JSON.parse(buf || '{}'); } catch { return null; }
 }
 
@@ -81,10 +113,7 @@ async function loadProgress(name) {
   try {
     const data = JSON.parse(raw);
     if (!data || typeof data !== 'object') return { unlocks: {}, counters: {} };
-    return {
-      unlocks:  (data.unlocks  && typeof data.unlocks  === 'object') ? data.unlocks  : {},
-      counters: (data.counters && typeof data.counters === 'object') ? data.counters : {},
-    };
+    return sanitizeIncoming(data);
   } catch (_e) { return { unlocks: {}, counters: {} }; }
 }
 
@@ -95,12 +124,12 @@ async function saveProgress(name, state) {
 
 // Validate + clamp incoming side. Drop anything that's not the right shape.
 function sanitizeIncoming(side) {
-  const out = { unlocks: {}, counters: {} };
+  const out = { unlocks: Object.create(null), counters: Object.create(null) };
   if (!side || typeof side !== 'object') return out;
   if (side.unlocks && typeof side.unlocks === 'object') {
     let n = 0;
     for (const [k, v] of Object.entries(side.unlocks)) {
-      if (typeof k !== 'string' || k.length > 80) continue;
+      if (!safeProgressKey(k)) continue;
       if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) continue;
       out.unlocks[k] = v;
       if (++n >= MAX_UNLOCKS) break;
@@ -109,13 +138,22 @@ function sanitizeIncoming(side) {
   if (side.counters && typeof side.counters === 'object') {
     let n = 0;
     for (const [k, v] of Object.entries(side.counters)) {
-      if (typeof k !== 'string' || k.length > 80) continue;
+      if (!safeProgressKey(k)) continue;
       if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) continue;
       out.counters[k] = Math.floor(v);
       if (++n >= MAX_COUNTER_KEYS) break;
     }
   }
   return out;
+}
+
+function safeProgressKey(k) {
+  return typeof k === 'string'
+    && k.length > 0
+    && k.length <= 80
+    && k !== '__proto__'
+    && k !== 'constructor'
+    && k !== 'prototype';
 }
 
 function mergeStates(stored, incoming) {
@@ -131,10 +169,11 @@ function mergeStates(stored, incoming) {
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
-  // Permissive CORS so this works from any local dev port too.
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (!applyCors(req, res)) {
+    res.statusCode = 403;
+    res.end(JSON.stringify({ error: 'origin not allowed' }));
+    return;
+  }
   if (req.method === 'OPTIONS') { res.statusCode = 204; res.end(); return; }
 
   try {
