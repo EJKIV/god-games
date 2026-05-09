@@ -27,6 +27,7 @@ const GAMES = {
 const TOP_N = 25;
 const RATE_WINDOW_S = 60;
 const RATE_MAX = 5;
+const MAX_PAYLOAD_BYTES = 4_000;
 
 // ── Redis helpers ──────────────────────────────────────────────────────────
 async function redis(...command) {
@@ -113,11 +114,15 @@ async function fetchTop(game, limit) {
 async function readJsonBody(req) {
   if (req.body && typeof req.body === 'object') return req.body;
   if (typeof req.body === 'string') {
+    if (req.body.length > MAX_PAYLOAD_BYTES) return null;
     try { return JSON.parse(req.body); } catch { return null; }
   }
   // raw stream fallback
   let buf = '';
-  for await (const chunk of req) buf += chunk;
+  for await (const chunk of req) {
+    buf += chunk;
+    if (buf.length > MAX_PAYLOAD_BYTES) return null;
+  }
   try { return JSON.parse(buf || '{}'); } catch { return null; }
 }
 
