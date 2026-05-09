@@ -270,10 +270,13 @@ async function testShankleBypass() {
   }
   await new Promise(r => setTimeout(r, 6000)); // wait for Zeus strike
 
-  const manga = await page.evaluate(() => localStorage.getItem('godgames_manga'));
+  const r = await page.evaluate(() => ({
+    manga: localStorage.getItem('godgames_manga'),
+    solved: !!window.Engine?.unlock?.has('manga_mode'),
+  }));
   await page.screenshot({ path: `${SHOTS}/shankle_bypass.png` });
-  if (manga === '1') pass('Hub: shankle dev bypass → manga unlocked');
-  else fail('Hub: shankle dev bypass', `manga=${manga}`);
+  if (r.manga === '1' && r.solved) pass('Hub: shankle dev bypass → manga unlocked');
+  else fail('Hub: shankle dev bypass', JSON.stringify(r));
   await close();
 }
 
@@ -294,10 +297,13 @@ async function testZeusInvocation() {
   }
   await new Promise(r => setTimeout(r, 6000));
 
-  const manga = await page.evaluate(() => localStorage.getItem('godgames_manga'));
+  const r = await page.evaluate(() => ({
+    manga: localStorage.getItem('godgames_manga'),
+    solved: !!window.Engine?.unlock?.has('manga_mode'),
+  }));
   await page.screenshot({ path: `${SHOTS}/zeus_invocation.png` });
-  if (manga === '1') pass('Hub: typing ZEUS triggers manga unlock');
-  else fail('Hub: typing ZEUS', `manga=${manga}`);
+  if (r.manga === '1' && r.solved) pass('Hub: typing ZEUS triggers manga unlock');
+  else fail('Hub: typing ZEUS', JSON.stringify(r));
   await close();
 }
 

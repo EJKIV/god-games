@@ -73,6 +73,11 @@ let sparks = [];
 let floaters = [];
 let playTime = 0;
 let mirrorHits = 0;
+let mirrorFocus = 0;
+let mirrorHeat = 0;
+let mirrorDullT = 0;
+let mirrorFlashT = 0;
+let reflectedSerpents = 0;
 let submittedThisRun = false;
 let hallStatus = null;
 let hallRank = null;
@@ -97,6 +102,8 @@ function beep(freq, dur, type, vol, slide) {
 }
 const sfx = {
   mirror() { beep(520, 0.12, 'triangle', 0.16, 420); beep(980, 0.18, 'sine', 0.10, -180); },
+  reflect(){ beep(680, 0.08, 'triangle', 0.10, 260); },
+  dull()   { beep(150, 0.22, 'sawtooth', 0.09, -70); },
   hit()    { beep(95, 0.24, 'sawtooth', 0.20, -20); },
   slash()  { beep(360, 0.07, 'square', 0.09, 300); },
   gaze()   { beep(190, 0.16, 'sawtooth', 0.07, -40); },
@@ -132,6 +139,11 @@ function resetGame() {
   floaters = [];
   playTime = 0;
   mirrorHits = 0;
+  mirrorFocus = 0;
+  mirrorHeat = 0;
+  mirrorDullT = 0;
+  mirrorFlashT = 0;
+  reflectedSerpents = 0;
   submittedThisRun = false;
   hallStatus = null;
   hallRank = null;
@@ -139,7 +151,12 @@ function resetGame() {
 
 function finalScore() {
   const timeBonus = Math.max(0, 90000 - Math.floor(playTime * 1000));
-  return Math.max(0, Math.floor(mirrorHits * 2500 + player.hp * 900 + timeBonus));
+  return Math.max(0, Math.floor(
+    mirrorHits * 2500
+    + reflectedSerpents * 650
+    + player.hp * 900
+    + timeBonus
+  ));
 }
 
 async function submitToHall(score) {
@@ -192,8 +209,26 @@ function setGazePhase(next) {
   medusa.phase = next;
   if (next === 'watch') { medusa.phaseT = 1.15 + Math.random() * 0.45; medusa.strikeReady = true; }
   if (next === 'windup') { medusa.phaseT = 0.72; medusa.strikeReady = true; sfx.gaze(); }
-  if (next === 'gaze') { medusa.phaseT = 1.35; medusa.strikeReady = true; }
+  if (next === 'gaze') { medusa.phaseT = 1.35; medusa.strikeReady = true; mirrorFocus = Math.max(0, mirrorFocus - 0.12); }
   if (next === 'rest') { medusa.phaseT = 1.05; medusa.strikeReady = false; }
+}
+
+function mirrorAlignment() {
+  if (!player || !medusa) return 0;
+  const distance = Math.abs(medusa.x - player.x);
+  const ideal = Math.max(360, Math.min(560, Engine.W * 0.34));
+  const tolerance = Math.max(260, Engine.W * 0.25);
+  return Math.max(0, 1 - Math.abs(distance - ideal) / tolerance);
+}
+
+function dullMirror() {
+  if (mirrorDullT > 0) return;
+  mirrorDullT = 1.2;
+  mirrorHeat = 0.82;
+  mirrorFocus = Math.max(0, mirrorFocus - 0.35);
+  floater(player.x, player.y - 96, 'MIRROR DULLED', '#9fb2b8');
+  burst(player.x + player.facing * 24, player.y - 48, '#9fb2b8', 10, 0.65);
+  sfx.dull();
 }
 
 function spawnSnake() {
@@ -203,6 +238,7 @@ function spawnSnake() {
     y,
     vx: -210 - Math.random() * 70 - playTime * 1.5,
     wobble: Math.random() * Math.PI * 2,
+    returning: false,
     alive: true,
   });
 }
@@ -222,15 +258,18 @@ function slash() {
   }
 }
 
-function recordMirrorStrike() {
+function recordMirrorStrike(source = 'gaze') {
   if (!player || !medusa || mirrorHits >= 3) return;
   mirrorHits++;
   medusa.hp = Math.max(0, 3 - mirrorHits);
   medusa.hurtFlash = 0.35;
   medusa.strikeReady = false;
+  mirrorFocus = 0;
+  mirrorHeat = Math.max(0, mirrorHeat - 0.18);
+  mirrorFlashT = 0.38;
   player.petrify = Math.max(0, player.petrify - 0.35);
   burst(medusa.x - 38, medusa.y - 84, '#d6fbff', 24, 1.15);
-  floater(medusa.x - 20, medusa.y - 112, 'MIRROR STRIKE', '#d6fbff');
+  floater(medusa.x - 20, medusa.y - 112, source === 'serpent' ? 'SERPENT OMEN' : 'MIRROR STRIKE', '#d6fbff');
   Engine.shake(8);
   sfx.mirror();
 
@@ -279,6 +318,7 @@ function update(dt) {
   const left = Engine.keys.ArrowLeft || Engine.keys.a || Engine.keys.A;
   const right = Engine.keys.ArrowRight || Engine.keys.d || Engine.keys.D;
   const shieldHeld = Engine.keys.z || Engine.keys.Z;
+  const shieldUsable = shieldHeld && mirrorDullT <= 0;
 
   player.vx = 0;
   if (left) player.vx -= 310;
@@ -289,11 +329,21 @@ function update(dt) {
     player.facing = player.vx > 0 ? 1 : -1;
     player.walkPhase += dt * 9.5;
   }
-  player.shield += ((shieldHeld ? 1 : 0) - player.shield) * Math.min(1, dt * 12);
+  player.shield += ((shieldUsable ? 1 : 0) - player.shield) * Math.min(1, dt * 12);
   player.slashT = Math.max(0, player.slashT - dt);
   player.iframes = Math.max(0, player.iframes - dt);
   player.hitFlash = Math.max(0, player.hitFlash - dt);
   medusa.hurtFlash = Math.max(0, medusa.hurtFlash - dt);
+  mirrorDullT = Math.max(0, mirrorDullT - dt);
+  mirrorFlashT = Math.max(0, mirrorFlashT - dt);
+
+  if (shieldHeld && mirrorDullT <= 0) {
+    const usefulGaze = medusa.phase === 'gaze' && player.facing > 0 && player.x < medusa.x;
+    mirrorHeat = Math.min(1.12, mirrorHeat + dt * (usefulGaze ? 0.20 : 0.42));
+    if (mirrorHeat >= 1) dullMirror();
+  } else {
+    mirrorHeat = Math.max(0, mirrorHeat - dt * (mirrorDullT > 0 ? 0.42 : 0.78));
+  }
 
   medusa.phaseT -= dt;
   if (medusa.phaseT <= 0) {
@@ -312,16 +362,22 @@ function update(dt) {
 
   const playerFacingMedusa = player.facing > 0 && player.x < medusa.x;
   if (medusa.phase === 'gaze' && playerFacingMedusa) {
-    if (shieldHeld) {
+    if (shieldUsable && player.shield > 0.45) {
+      const align = mirrorAlignment();
       player.petrify = Math.max(0, player.petrify - dt * 0.45);
-      if (medusa.strikeReady && player.shield > 0.72 && medusa.phaseT < 0.82) {
-        recordMirrorStrike();
+      if (medusa.strikeReady && player.shield > 0.72) {
+        mirrorFocus = Math.min(1.02, mirrorFocus + dt * (0.42 + align * 1.15));
+        if (mirrorFocus >= 1 && medusa.phaseT < 1.04) {
+          recordMirrorStrike('gaze');
+        }
       }
     } else {
+      mirrorFocus = Math.max(0, mirrorFocus - dt * 0.55);
       player.petrify = Math.min(1.12, player.petrify + dt * 0.68);
       if (player.petrify >= 1) damagePlayer(1);
     }
   } else {
+    mirrorFocus = Math.max(0, mirrorFocus - dt * 0.48);
     player.petrify = Math.max(0, player.petrify - dt * 0.34);
   }
 
@@ -329,15 +385,37 @@ function update(dt) {
     if (!s.alive) continue;
     s.x += s.vx * dt;
     s.wobble += dt * 11;
+    if (s.returning) {
+      const hx = medusa.x - 16;
+      const hy = medusa.y - 58;
+      if (Math.abs(s.x - hx) < 44 && Math.abs(s.y - hy) < 82) {
+        s.alive = false;
+        reflectedSerpents++;
+        medusa.hurtFlash = 0.24;
+        medusa.phaseT = Math.min(medusa.phaseT, 0.58);
+        mirrorFocus = Math.min(0.96, mirrorFocus + 0.34);
+        burst(s.x, s.y, '#d6fbff', 14, 0.9);
+        floater(s.x, s.y - 22, 'OMEN', '#d6fbff');
+        Engine.shake(4);
+        if (medusa.phase === 'gaze' && medusa.strikeReady && mirrorFocus >= 0.92) {
+          recordMirrorStrike('serpent');
+        }
+      }
+      if (s.x > Engine.W + 90) s.alive = false;
+      continue;
+    }
     const dx = s.x - player.x;
     const dy = s.y - (player.y - 30);
-    const shieldBlock = shieldHeld && player.facing > 0
+    const shieldBlock = shieldUsable && player.facing > 0 && player.shield > 0.55
       && s.x > player.x - 18 && s.x < player.x + 58
       && Math.abs(dy) < 62;
     if (shieldBlock) {
-      s.alive = false;
+      s.returning = true;
+      s.vx = 330 + mirrorHits * 44 + Math.random() * 42;
+      mirrorFocus = Math.min(0.92, mirrorFocus + 0.12);
       burst(s.x, s.y, '#d6fbff', 9, 0.8);
-      floater(s.x, s.y - 18, 'TURNED', '#d6fbff');
+      floater(s.x, s.y - 18, 'REFLECT', '#d6fbff');
+      sfx.reflect();
       continue;
     }
     if (Math.hypot(dx, dy) < 28) {
@@ -440,6 +518,36 @@ function drawGazeCone(t) {
   ctx.restore();
 }
 
+function drawMirrorBeam(t) {
+  const active = mirrorFocus > 0.02 || mirrorFlashT > 0;
+  if (!active || !player || !medusa) return;
+  const flash = mirrorFlashT > 0 ? Math.min(1, mirrorFlashT / 0.18) : 0;
+  const a = Math.min(0.85, 0.14 + mirrorFocus * 0.42 + flash * 0.45);
+  const sx = player.x + player.facing * (22 + player.shield * 16);
+  const sy = player.y - 44;
+  const ex = medusa.x - 30;
+  const ey = medusa.y - 92;
+  ctx.save();
+  ctx.globalAlpha = a;
+  ctx.lineCap = 'round';
+  ctx.shadowColor = '#d6fbff';
+  ctx.shadowBlur = 12 + flash * 18;
+  ctx.strokeStyle = '#d6fbff';
+  ctx.lineWidth = 3 + flash * 5;
+  ctx.beginPath();
+  ctx.moveTo(sx, sy);
+  ctx.quadraticCurveTo((sx + ex) / 2, sy - 18 - Math.sin(t * 12) * 8, ex, ey);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+  ctx.lineWidth = 1.2 + flash * 1.5;
+  ctx.beginPath();
+  ctx.moveTo(sx, sy);
+  ctx.quadraticCurveTo((sx + ex) / 2, sy - 18, ex, ey);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawPerseus(t) {
   const f = player.facing;
   const walk = Math.sin(player.walkPhase) * (Math.abs(player.vx) > 0 ? 1 : 0);
@@ -477,15 +585,16 @@ function drawPerseus(t) {
   ctx.strokeStyle = '#c0a16a'; ctx.lineWidth = 6;
   ctx.beginPath(); ctx.moveTo(-11, -50); ctx.lineTo(-26, -38); ctx.stroke();
   ctx.save();
-  ctx.translate(-31, -42);
+  const shieldSide = -31 + player.shield * 58;
+  ctx.translate(shieldSide, -42);
   ctx.rotate(-0.18 + player.shield * 0.28);
-  ctx.globalAlpha = 0.78 + player.shield * 0.22;
+  ctx.globalAlpha = (mirrorDullT > 0 ? 0.48 : 0.78) + player.shield * 0.22;
   const shieldG = ctx.createRadialGradient(-6, -4, 2, 0, 0, 24);
-  shieldG.addColorStop(0, '#ffffff');
-  shieldG.addColorStop(0.35, '#d6fbff');
-  shieldG.addColorStop(1, '#4a8896');
+  shieldG.addColorStop(0, mirrorDullT > 0 ? '#9fb2b8' : '#ffffff');
+  shieldG.addColorStop(0.35, mirrorDullT > 0 ? '#5f7378' : '#d6fbff');
+  shieldG.addColorStop(1, mirrorDullT > 0 ? '#30464c' : '#4a8896');
   ctx.fillStyle = shieldG;
-  ctx.strokeStyle = player.shield > 0.7 ? '#e8ffff' : '#819da6';
+  ctx.strokeStyle = mirrorDullT > 0 ? '#435a60' : (player.shield > 0.7 ? '#e8ffff' : '#819da6');
   ctx.lineWidth = 2.5;
   ctx.beginPath(); ctx.ellipse(0, 0, 19, 24, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   if (player.shield > 0.55) {
@@ -555,7 +664,8 @@ function drawSnakes(t) {
   for (const s of snakes) {
     ctx.save();
     ctx.translate(s.x, s.y + Math.sin(s.wobble) * 5);
-    ctx.strokeStyle = '#76c96c';
+    if (s.returning) ctx.scale(-1, 1);
+    ctx.strokeStyle = s.returning ? '#d6fbff' : '#76c96c';
     ctx.lineWidth = 7;
     ctx.lineCap = 'round';
     ctx.beginPath();
@@ -563,7 +673,7 @@ function drawSnakes(t) {
     ctx.quadraticCurveTo(-8, -8, 0, 0);
     ctx.quadraticCurveTo(8, 8, 18, 0);
     ctx.stroke();
-    ctx.fillStyle = '#b9f69c';
+    ctx.fillStyle = s.returning ? '#ffffff' : '#b9f69c';
     ctx.beginPath(); ctx.arc(-20, 0, 5, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#111';
     ctx.beginPath(); ctx.arc(-22, -1, 1.2, 0, Math.PI * 2); ctx.fill();
@@ -592,6 +702,7 @@ function drawWorld() {
   const t = Engine.time;
   drawBackground(t);
   drawGazeCone(t);
+  drawMirrorBeam(t);
   drawSnakes(t);
   drawMedusa(t);
   drawPerseus(t);
@@ -616,19 +727,35 @@ function drawHud() {
   ctx.font = 'bold 14px monospace';
   ctx.fillStyle = '#d6fbff';
   ctx.fillText('MIRROR STRIKES ' + mirrorHits + '/3', W - 22, 28);
-  ctx.fillStyle = 'rgba(214,251,255,0.24)';
-  ctx.fillRect(W - 222, 40, 200, 8);
+  ctx.fillStyle = 'rgba(214,251,255,0.20)';
+  ctx.fillRect(W - 222, 38, 200, 7);
   ctx.fillStyle = '#d6fbff';
-  ctx.fillRect(W - 222, 40, 200 * Math.min(1, player.shield), 8);
+  ctx.fillRect(W - 222, 38, 200 * Math.min(1, mirrorFocus), 7);
+  ctx.fillStyle = mirrorHeat > 0.78 ? '#ff9b5f' : 'rgba(212,175,55,0.85)';
+  ctx.fillRect(W - 222, 49, 200 * Math.min(1, mirrorHeat), 6);
+  ctx.fillStyle = 'rgba(214,251,255,0.24)';
+  ctx.fillRect(W - 222, 60, 200, 6);
+  ctx.fillStyle = mirrorDullT > 0 ? '#788b90' : '#d6fbff';
+  ctx.fillRect(W - 222, 60, 200 * Math.min(1, player.shield), 6);
   if (player.petrify > 0.01) {
     ctx.fillStyle = 'rgba(170,178,176,0.32)';
-    ctx.fillRect(W - 222, 56, 200, 8);
+    ctx.fillRect(W - 222, 70, 200, 8);
     ctx.fillStyle = '#c7d0cd';
-    ctx.fillRect(W - 222, 56, 200 * Math.min(1, player.petrify), 8);
+    ctx.fillRect(W - 222, 70, 200 * Math.min(1, player.petrify), 8);
   }
   ctx.textAlign = 'left';
   ctx.fillStyle = medusa.phase === 'gaze' ? '#dcff9b' : '#8bc88d';
   ctx.fillText(medusa.phase.toUpperCase(), 20, 62);
+  if (mirrorDullT > 0) {
+    ctx.fillStyle = '#ff9b5f';
+    ctx.fillText('MIRROR DULLED', 20, 82);
+  } else if (medusa.phase === 'gaze') {
+    ctx.fillStyle = '#d6fbff';
+    ctx.fillText('ALIGN ' + Math.round(mirrorAlignment() * 100) + '%', 20, 82);
+  } else if (reflectedSerpents > 0) {
+    ctx.fillStyle = 'rgba(214,251,255,0.78)';
+    ctx.fillText('SERPENTS TURNED ' + reflectedSerpents, 20, 82);
+  }
   ctx.restore();
 }
 
@@ -669,9 +796,9 @@ Engine.boot({
   subtitle: 'The Gorgon\'s Mirror',
   instructions: [
     'Left / Right: move',
-    'Hold Z: raise the mirrored shield',
-    'X: cut serpents',
-    'Do not meet the Gorgon\'s gaze without the mirror',
+    'Hold Z during the gaze to focus the mirror',
+    'Release between gazes or the shield dulls',
+    'X cuts serpents; Z reflects them back',
   ],
   deadTitle: 'PERSEUS IS STONE',
   deadSubtitle: 'The cave keeps another statue.',

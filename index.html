@@ -296,6 +296,7 @@ function update(dt) {
 
   // Zeus cinematic
   if (_zeusStrike) _zeusStrike.update(dt);
+  if (_mangaAwakenT > 0) _mangaAwakenT = Math.max(0, _mangaAwakenT - dt);
 
   // motes drift upward, reset at bottom
   for (const m of motes) {
@@ -460,6 +461,100 @@ function renderStorm() {
       }
     }
   }
+  ctx.restore();
+}
+
+function renderInvocationSeal() {
+  const ready = codewordReady();
+  const mangaOn = localStorage.getItem(MANGA_KEY) === '1';
+  if ((!ready || mangaOn) && _codewordIdx <= 0) return;
+  const olympus = portals.find(p => p.kind === 'mountain') || portals[0];
+  if (!olympus) return;
+  const cx = olympus.x;
+  const cy = Math.max(120, GY - 320);
+  const pulse = 0.5 + 0.5 * Math.sin(time * 5.2);
+  const a = ready && !mangaOn ? 0.82 + pulse * 0.18 : 0.36 + _codewordIdx * 0.12;
+
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, a);
+  ctx.translate(cx, cy);
+  ctx.strokeStyle = ready ? '#ffeeaa' : 'rgba(212,175,55,0.55)';
+  ctx.lineWidth = 2;
+  ctx.shadowColor = ready ? '#ffeeaa' : GOLD;
+  ctx.shadowBlur = ready ? 24 : 10;
+  ctx.beginPath();
+  ctx.arc(0, 0, 58 + pulse * 4, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0, 0, 36 - pulse * 3, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.font = 'bold 23px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i < CODEWORD.length; i++) {
+    const ang = -Math.PI / 2 + i * (Math.PI * 2 / CODEWORD.length);
+    const x = Math.cos(ang) * 58;
+    const y = Math.sin(ang) * 58;
+    const lit = ready || i < _codewordIdx;
+    ctx.fillStyle = lit ? '#ffeeaa' : 'rgba(220,200,150,0.25)';
+    ctx.strokeStyle = lit ? '#ffeeaa' : 'rgba(220,200,150,0.20)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.roundRect(x - 16, y - 16, 32, 32, 5);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = lit ? '#2b1608' : 'rgba(255,240,200,0.35)';
+    ctx.fillText(CODEWORD[i].toUpperCase(), x, y + 1);
+  }
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+function renderMangaAwakening() {
+  if (_mangaAwakenT <= 0) return;
+  const t = _mangaAwakenT;
+  const a = Math.min(1, t / 0.45, (3.8 - t) / 0.35);
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, a);
+  ctx.fillStyle = 'rgba(4,4,5,0.64)';
+  ctx.fillRect(0, 0, W, H);
+
+  if (window.Manga && Manga.effects) {
+    if (typeof Manga.effects.halftone === 'function') {
+      Manga.effects.halftone(ctx, 0, 0, W, H, { density: 8, dotSize: 2.1, alpha: 0.22, color: '#fff' });
+    }
+    if (typeof Manga.effects.speedLines === 'function') {
+      Manga.effects.speedLines(ctx, W / 2, H / 2, {
+        count: 42, innerR: 92, outerR: Math.max(W, H), color: '#ffffff', width: 2, jitter: 0.45,
+      });
+    }
+  }
+
+  const slashY = H * 0.48 + Math.sin(time * 7) * 8;
+  ctx.fillStyle = '#fffaf0';
+  ctx.beginPath();
+  ctx.moveTo(-40, slashY - 78);
+  ctx.lineTo(W + 40, slashY - 128);
+  ctx.lineTo(W + 40, slashY + 92);
+  ctx.lineTo(-40, slashY + 132);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = '#0a0a0a';
+  ctx.lineWidth = 5;
+  ctx.stroke();
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 56px monospace';
+  ctx.fillStyle = '#0a0a0a';
+  ctx.shadowColor = '#ff44aa';
+  ctx.shadowBlur = 12;
+  ctx.fillText('MANGA MODE', W / 2, slashY - 18);
+  ctx.shadowBlur = 0;
+  ctx.font = 'bold 17px monospace';
+  ctx.fillStyle = '#702030';
+  ctx.fillText('THE MYTHS ARE IN INK', W / 2, slashY + 38);
   ctx.restore();
 }
 
@@ -1202,6 +1297,7 @@ function render() {
 
   // Storm brewing over Olympus as the codeword is typed.
   renderStorm();
+  renderInvocationSeal();
 
   // Toad-only mushroom on Mt. Olympus. The player has to be in toad form
   // (press 't') to see it; jumping onto it cuts to the clue review scene.
@@ -1223,6 +1319,7 @@ function render() {
   ctx.restore();
 
   // Manga easter-egg toast (centered, fades out)
+  renderMangaAwakening();
   if (_mangaToast.t > 0) {
     const a = Math.min(1, _mangaToast.t / 0.6);
     ctx.save();
@@ -1276,6 +1373,7 @@ let _codewordIdx     = 0;        // how many letters of CODEWORD typed in sequen
 let _stormIntensity  = 0;        // 0..1, eased toward _codewordIdx / CODEWORD.length
 let _stormFlashes    = [];       // {x, y, life, maxLife, branches}
 let _lastStormTickT  = 0;
+let _mangaAwakenT    = 0;
 
 // Active Zeus strike instance (only present during the cinematic).
 let _zeusStrike = null;
@@ -1283,10 +1381,17 @@ function codewordReady() {
   const M = window.GodGames && window.GodGames.Mysteries;
   return !!(M && M.mangaCodewordReady && M.mangaCodewordReady());
 }
+function activateMangaMode() {
+  const M = window.GodGames && window.GodGames.Mysteries;
+  if (M && typeof M.triggerMangaUnlock === 'function') M.triggerMangaUnlock();
+  else localStorage.setItem(MANGA_KEY, '1');
+  _mangaAwakenT = 3.8;
+  for (let i = 0; i < 5; i++) spawnStormFlash();
+}
 function startZeusStrike() {
   if (!window.Manga || !Manga.fx || !Manga.fx.zeusStrike) {
     // Library not loaded yet — fall back to instant flip so the toggle still works.
-    localStorage.setItem(MANGA_KEY, '1');
+    activateMangaMode();
     showMangaToast('MANGA MODE ACTIVATED', '#ff44aa');
     return;
   }
@@ -1299,7 +1404,7 @@ function startZeusStrike() {
     toY:   player.y - 30,
     audioCtx,
     onImpact: () => {
-      localStorage.setItem(MANGA_KEY, '1');
+      activateMangaMode();
       showMangaToast('THE GODS HAVE SPOKEN', '#ffeeaa');
     },
     onDone: () => { _zeusStrike = null; },
