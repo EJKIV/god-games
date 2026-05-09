@@ -90,6 +90,7 @@ async function rateLimit(ip) {
 }
 
 async function readJsonBody(req) {
+  if (bodyTooLarge(req)) return null;
   if (req.body && typeof req.body === 'object') return req.body;
   if (typeof req.body === 'string') {
     if (req.body.length > MAX_PAYLOAD_BYTES) return null;
@@ -101,6 +102,13 @@ async function readJsonBody(req) {
     if (buf.length > MAX_PAYLOAD_BYTES) return null;
   }
   try { return JSON.parse(buf || '{}'); } catch { return null; }
+}
+
+function bodyTooLarge(req) {
+  const raw = req.headers?.['content-length'];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  const n = Number(value);
+  return Number.isFinite(n) && n > MAX_PAYLOAD_BYTES;
 }
 
 function progressKey(name) {
@@ -188,11 +196,11 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
+      const body = await readJsonBody(req);
+      if (!body) { res.statusCode = 400; res.end(JSON.stringify({ error: 'bad body' })); return; }
       const ip = clientIp(req);
       const ok = await rateLimit(ip);
       if (!ok) { res.statusCode = 429; res.end(JSON.stringify({ error: 'rate limited' })); return; }
-      const body = await readJsonBody(req);
-      if (!body) { res.statusCode = 400; res.end(JSON.stringify({ error: 'bad body' })); return; }
       const name = sanitizeName(body.name || '');
       if (!name) { res.statusCode = 400; res.end(JSON.stringify({ error: 'name required' })); return; }
       const incoming = sanitizeIncoming(body);
