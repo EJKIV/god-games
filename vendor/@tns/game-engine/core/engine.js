@@ -512,10 +512,15 @@ const Engine = {
       ctx.fillStyle = 'rgba(225,205,160,0.9)';
       ctx.fillText(config.subtitle, W / 2, H * 0.37);
     }
-    if (config.instructions && config.instructions.length) {
+    const instructions = Array.isArray(config.instructions)
+      ? config.instructions
+      : (typeof config.instructions === 'string' && config.instructions.trim())
+        ? [config.instructions]
+        : [];
+    if (instructions.length) {
       ctx.font = '13px monospace';
       ctx.fillStyle = 'rgba(220,200,155,0.65)';
-      config.instructions.forEach((l, i) => ctx.fillText(l, W / 2, H * 0.50 + i * 23));
+      instructions.forEach((l, i) => ctx.fillText(l, W / 2, H * 0.50 + i * 23));
     }
     if (Math.sin(time * 3) > 0) {
       ctx.font = 'bold 18px monospace';
