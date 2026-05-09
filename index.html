@@ -131,6 +131,7 @@ const stars = Array.from({length:160}, () => ({
 const portals = [
   { name: 'ORION',    sub: 'The Giant Scorpion',    hue: '#8844ff', glow: '#6622cc', href: 'orion.html'         },
   { name: 'ACHILLES', sub: 'The Arrow Gauntlet',    hue: '#cc2222', glow: '#882200', href: 'achilles.html'      },
+  { name: 'PERSEUS',  sub: 'The Gorgon\'s Mirror',  hue: '#3db0c6', glow: '#1c6c80', href: 'perseus.html'       },
   { name: 'OLYMPUS',  sub: 'Hall of the Gods',      hue: '#fff5c0', glow: '#D4AF37', href: 'mount-olympus.html', kind: 'mountain' },
   { name: 'ICARUS',   sub: 'The Flight of Icarus',  hue: '#ff7700', glow: '#ff4400', href: 'icarus.html'        },
 ];
@@ -1249,9 +1250,9 @@ function inputBusy(e) {
   return tag === 'INPUT' || tag === 'TEXTAREA';
 }
 
-// Secret manga mode — earned codeword is 'zeus' (first three letters revealed
-// by per-game mysteries; the final 'S' is the call-to-Zeus invocation typed
-// here). 'shankle' remains as a dev bypass for testing. 'normal' reverts.
+// Secret manga mode — earned codeword is 'zeus' (letters revealed by
+// per-game mysteries). 'shankle' remains as a dev bypass for testing.
+// 'normal' reverts.
 // Persisted in localStorage so the toggle survives navigation to game pages,
 // where engine.js reads it at boot and exposes Engine.manga.
 const MANGA_KEY = 'godgames_manga';
@@ -1270,6 +1271,10 @@ let _lastStormTickT  = 0;
 
 // Active Zeus strike instance (only present during the cinematic).
 let _zeusStrike = null;
+function codewordReady() {
+  const M = window.GodGames && window.GodGames.Mysteries;
+  return !M || !M.mangaCodewordReady || M.mangaCodewordReady();
+}
 function startZeusStrike() {
   if (!window.Manga || !Manga.fx || !Manga.fx.zeusStrike) {
     // Library not loaded yet — fall back to instant flip so the toggle still works.
@@ -1310,7 +1315,7 @@ window.addEventListener('keydown', e => {
       _codewordIdx++;
       if (_codewordIdx >= CODEWORD.length) {
         _codewordIdx = 0;
-        if (localStorage.getItem(MANGA_KEY) !== '1' && !_zeusStrike) {
+        if (codewordReady() && localStorage.getItem(MANGA_KEY) !== '1' && !_zeusStrike) {
           startZeusStrike();
         }
       }

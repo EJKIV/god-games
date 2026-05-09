@@ -192,7 +192,7 @@ function render() {
     const masked = maskRiddle(next.text);
     wrapAndDraw(masked, tx + 28, rY + 22, tabW - 56, 20, 'left');
     ctx.restore();
-  } else if (earned.length === 3) {
+  } else if (earned.length >= 4) {
     // All chain clues earned — show the call-to-action.
     ctx.save();
     ctx.textAlign = 'center';

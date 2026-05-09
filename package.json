@@ -2,7 +2,7 @@
   "name": "god-games",
   "private": true,
   "type": "module",
-  "description": "Reference-implementation consumer of @tns/game-engine. The achilles/icarus/orion games are the worked-example gallery surfaced inside Tell and Show's Game Studio.",
+  "description": "Reference-implementation consumer of @tns/game-engine. The achilles/icarus/orion/perseus games are the worked-example gallery surfaced inside Tell and Show's Game Studio.",
   "scripts": {
     "sync-engine": "rm -rf vendor/@tns/game-engine && mkdir -p vendor/@tns && cp -RL node_modules/@tns/game-engine vendor/@tns/game-engine"
   },

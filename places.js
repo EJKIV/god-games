@@ -42,8 +42,8 @@
     ctx.restore();
   }
 
-  // Ambient audio factory per place. Each returns an object with
-  //   .start(audioCtx) — wires oscillators/noise into audioCtx.destination
+  // Ambient audio factory per place. Each entry's ambience(audioCtx) wires
+  // oscillators/noise into audioCtx.destination and returns an object with
   //   .stop()           — fades out + disconnects everything
   // The pattern: layered low-volume oscillators + (optional) filtered noise
   // for texture. Player on the place page can hear the location's mood.
@@ -51,9 +51,21 @@
     return function (audioCtx) {
       const nodes = setup(audioCtx);
       const masterGain = audioCtx.createGain();
+      const dryGain = audioCtx.createGain();
+      const wetGain = audioCtx.createGain();
+      const convolver = audioCtx.createConvolver();
       masterGain.gain.value = 0;
+      dryGain.gain.value = 0.78;
+      wetGain.gain.value = 0.18;
+      convolver.buffer = reverbImpulse(audioCtx, 2.6, 2.4);
+      dryGain.connect(masterGain);
+      convolver.connect(wetGain);
+      wetGain.connect(masterGain);
       masterGain.connect(audioCtx.destination);
-      for (const n of nodes) n.gain.connect(masterGain);
+      for (const n of nodes) {
+        n.gain.connect(dryGain);
+        n.gain.connect(convolver);
+      }
       masterGain.gain.linearRampToValueAtTime(1, audioCtx.currentTime + 1.2);
       return {
         stop() {
@@ -61,15 +73,36 @@
           masterGain.gain.setValueAtTime(masterGain.gain.value, audioCtx.currentTime);
           masterGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.6);
           setTimeout(() => {
-            for (const n of nodes) try { n.osc.stop(); } catch (_e) {}
+            for (const n of nodes) {
+              try { n.osc.stop(); } catch (_e) {}
+              for (const x of n.extraOscs || []) try { x.stop(); } catch (_e) {}
+              try { n.gain.disconnect(); } catch (_e) {}
+              try { n.osc.disconnect(); } catch (_e) {}
+            }
+            try { dryGain.disconnect(); } catch (_e) {}
+            try { convolver.disconnect(); } catch (_e) {}
+            try { wetGain.disconnect(); } catch (_e) {}
             try { masterGain.disconnect(); } catch (_e) {}
           }, 700);
         },
       };
     };
   }
+  function reverbImpulse(ac, seconds, decay) {
+    const len = Math.max(1, Math.floor(ac.sampleRate * seconds));
+    const buf = ac.createBuffer(2, len, ac.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = buf.getChannelData(ch);
+      for (let i = 0; i < len; i++) {
+        const t = i / len;
+        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - t, decay);
+      }
+    }
+    return buf;
+  }
   function tone(ac, freq, type, vol, slowMod) {
     const osc = ac.createOscillator(), gain = ac.createGain();
+    const extraOscs = [];
     osc.type = type; osc.frequency.value = freq;
     gain.gain.value = vol;
     if (slowMod) {
@@ -79,10 +112,11 @@
       lfoGain.gain.value = slowMod.depth;
       lfo.connect(lfoGain); lfoGain.connect(gain.gain);
       lfo.start();
+      extraOscs.push(lfo);
     }
     osc.connect(gain);
     osc.start();
-    return { osc, gain };
+    return { osc, gain, extraOscs };
   }
   function noise(ac, color) {
     const buf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);

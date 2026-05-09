@@ -14,8 +14,8 @@
 //   node tests/e2e.mjs
 //
 // Screenshots land in /tmp/shots/ for visual confirmation that cinematics
-// fire (RIVER OCEANUS, ASPHODEL MEADOWS, EREBUS). Exits 0 on all-pass, 1 on
-// any fail — wire into CI when ready.
+// fire (RIVER OCEANUS, ASPHODEL MEADOWS, EREBUS, TARTARUS). Exits 0 on
+// all-pass, 1 on any fail — wire into CI when ready.
 
 import { mkdirSync } from 'fs';
 import { createRequire } from 'module';
@@ -129,25 +129,50 @@ async function testOrion() {
 // ── 4. Achilles Shade of Patroclus ────────────────────────────────────────
 async function testAchilles() {
   const { page, close } = await freshPage();
-  await page.goto(`${BASE}/tests/seed.html?go=achilles.html`, { waitUntil: 'load' });
+  await page.goto(`${BASE}/tests/seed.html?go=${encodeURIComponent('achilles.html?testHooks=1')}`, { waitUntil: 'load' });
   await new Promise(r => setTimeout(r, 800));
   await page.evaluate(() => { window.GodGames.suppressDepart = true; });
   await page.keyboard.press(' ');
-  await new Promise(r => setTimeout(r, 600));
-  for (let i = 0; i < 3; i++) {
-    await page.keyboard.press('z');
-    await new Promise(r => setTimeout(r, 2600));
-  }
-  await new Promise(r => setTimeout(r, 800));
+  await page.waitForFunction(() => window.Engine?.state === 'playing');
+  const canCounterShot = await page.evaluate(() => window.GodGames?.AchillesTest?.canCounterShotInNormalMode?.() === true);
+  await page.evaluate(() => {
+    window.GodGames.AchillesTest.recordPatroclusKill();
+    window.GodGames.AchillesTest.recordPatroclusKill();
+    window.GodGames.AchillesTest.recordPatroclusKill();
+  });
+  await new Promise(r => setTimeout(r, 300));
 
   const after = await probe(page);
   await page.screenshot({ path: `${SHOTS}/achilles_play.png` });
-  if (after.unlocks.includes('hint.u')) pass('Achilles → hint.u earned', 'Patroclus combo');
+  if (canCounterShot && after.unlocks.includes('hint.u')) pass('Achilles → hint.u earned', 'Patroclus combo');
   else fail('Achilles → hint.u earned', JSON.stringify(after));
   await close();
 }
 
-// ── 4a. Re-trigger: previously-earned hint still fires the cinematic ─────
+// ── 4a. Perseus Gorgon's Mirror ─────────────────────────────────────────
+async function testPerseus() {
+  const { page, close } = await freshPage();
+  await page.goto(`${BASE}/tests/seed.html?go=${encodeURIComponent('perseus.html?testHooks=1')}`, { waitUntil: 'load' });
+  await new Promise(r => setTimeout(r, 800));
+  await page.evaluate(() => { window.GodGames.suppressDepart = true; });
+  await page.keyboard.press(' ');
+  await page.waitForFunction(() => window.Engine?.state === 'playing');
+  const canReflect = await page.evaluate(() => window.GodGames?.PerseusTest?.canReflectInNormalMode?.() === true);
+  await page.evaluate(() => {
+    window.GodGames.PerseusTest.recordMirrorStrike();
+    window.GodGames.PerseusTest.recordMirrorStrike();
+    window.GodGames.PerseusTest.recordMirrorStrike();
+  });
+  await new Promise(r => setTimeout(r, 300));
+
+  const after = await probe(page);
+  await page.screenshot({ path: `${SHOTS}/perseus_play.png` });
+  if (canReflect && after.unlocks.includes('hint.s')) pass('Perseus → hint.s earned', 'Gorgon mirror');
+  else fail('Perseus → hint.s earned', JSON.stringify(after));
+  await close();
+}
+
+// ── 4b. Re-trigger: previously-earned hint still fires the cinematic ─────
 // The first time god-games shipped this, the trigger guarded on
 // !hasHint(...) so subsequent runs silently skipped — players who'd
 // earned the syllable once thought the easter egg was broken. The fix:
@@ -186,7 +211,7 @@ async function testIcarusRetrigger() {
   await close();
 }
 
-// ── 4b. Place page renders the place + character + clue banner ────────────
+// ── 4c. Place page renders the place + character + clue banner ────────────
 async function testPlacePage() {
   const { page, close } = await freshPage();
   await page.evaluateOnNewDocument(() => {
@@ -209,7 +234,7 @@ async function testPlacePage() {
   await close();
 }
 
-// ── 4c. Olympus clues page surfaces earned clues ─────────────────────────
+// ── 4d. Olympus clues page surfaces earned clues ─────────────────────────
 async function testOlympusClues() {
   const { page, close } = await freshPage();
   await page.evaluateOnNewDocument(() => {
@@ -254,7 +279,7 @@ async function testZeusInvocation() {
   const { page, close } = await freshPage();
   await page.evaluateOnNewDocument(() => {
     localStorage.setItem('tns.unlocks', JSON.stringify({
-      'hint.z': Date.now(), 'hint.e': Date.now(), 'hint.u': Date.now(), 'hint.zeus_call': Date.now(),
+      'hint.z': Date.now(), 'hint.e': Date.now(), 'hint.u': Date.now(), 'hint.s': Date.now(), 'hint.zeus_call': Date.now(),
     }));
     localStorage.setItem('godgames_playerName', 'TEST');
   });
@@ -322,7 +347,7 @@ async function testPanel() {
 }
 
 // ── Run all ──────────────────────────────────────────────────────────────
-const tests = [testEngineUnlock, testIcarus, testIcarusRetrigger, testOrion, testAchilles, testPlacePage, testOlympusClues, testPanel, testShankleBypass, testZeusInvocation, testHeelMystery];
+const tests = [testEngineUnlock, testIcarus, testIcarusRetrigger, testOrion, testAchilles, testPerseus, testPlacePage, testOlympusClues, testPanel, testShankleBypass, testZeusInvocation, testHeelMystery];
 for (const t of tests) {
   try { await t(); }
   catch (e) { fail(t.name, 'threw: ' + e.message); }

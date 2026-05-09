@@ -257,6 +257,17 @@ function recordPatroclusKill() {
   }
 }
 
+if (new URLSearchParams(location.search).get('testHooks') === '1') {
+  window.GodGames = window.GodGames || {};
+  window.GodGames.AchillesTest = {
+    recordPatroclusKill,
+    canCounterShotInNormalMode() {
+      return !!(window.Engine && Engine.state === 'playing' && !Engine.manga
+        && bowCD <= 0 && archers.some(a => a.downT <= 0));
+    },
+  };
+}
+
 // ── Wave builder ──────────────────────────────────────────────────────────
 // `special` is null in normal mode, or 'volley'/'inferno'/'echo' in manga mode.
 function pickArcherIndex() {

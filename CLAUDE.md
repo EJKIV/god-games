@@ -94,11 +94,12 @@ node tests/e2e.mjs
 ```
 god-games/
 ├── CLAUDE.md  AGENTS.md        Router (this file). AGENTS.md is a symlink.
-├── index.html                  Hub world (4 portals + name modal + manga easter-egg detector).
+├── index.html                  Hub world (5 portals + name modal + manga easter-egg detector).
 ├── achilles.html               Arrow Gauntlet — overhead dodge. First manga-mode integration.
 ├── icarus.html                 Flight game — sun/sea wing damage, tutorial.
 ├── orion.html                  Boss fight — scorpion vs spear/stab/dodge.
-├── mount-olympus.html          Leaderboard display (Icarus / Orion / Achilles tablets).
+├── perseus.html                Gorgon mirror game — shield reflection + serpent slashing.
+├── mount-olympus.html          Leaderboard display (Icarus / Orion / Achilles / Perseus tablets).
 ├── place.html                  Cinematic mystery destination; consumes places.js.
 ├── olympus-clues.html          Toad's clue review page on Mt. Olympus.
 ├── places.js                   Data-driven place catalog; see top-of-file docs.
@@ -119,7 +120,7 @@ god-games/
 
 ## Rules / Coding Standards
 
-- **Color invariants**: gold `#D4AF37` for UI/accents. Manga ink `#0a0a0a` (`Manga.INK`). Each game has a unique theme accent (Orion `#c87030`, Icarus `#ff8800`, Achilles `#cc2222`).
+- **Color invariants**: gold `#D4AF37` for UI/accents. Manga ink `#0a0a0a` (`Manga.INK`). Each game has a unique theme accent (Orion `#c87030`, Icarus `#ff8800`, Achilles `#cc2222`, Perseus `#3db0c6`).
 - **`Engine.boot` config shape** is the contract. Required: `title`, `theme: { bg, accent, danger }`, `onInit`, `onUpdate`, `onRender`. Everything else has defaults; `mobile`, `onTitleRender`, `onGameOverRender`, `onTryStart`, `onKeyDown` are opt-in.
 - **`restartKey` defaults to `['1', ' ']`**; override per game (e.g. Orion uses `'1'` only because Space is reserved for in-dodge attacks).
 - **Audio synthesis is the rule** — no audio files. `Engine.audio.tone(freq, type, dur, vol, slide)` for one-offs; for continuous/custom audio (Icarus's wind+crackle), call `Engine.audio.init()` first then create oscillators on `Engine.audio._ctx`.
@@ -169,6 +170,7 @@ god-games/
 
 | Date       | Change                                                                                     | Author |
 |------------|--------------------------------------------------------------------------------------------|--------|
+| 2026-05-09 | Added Perseus as the fourth god-game and extended the ZEUS mystery chain to four letters. | codex  |
 | 2026-05-08 | Documented the data-driven mystery scene-cut flow, place catalog, clue review page, and Redis progress sync. | codex  |
 | 2026-05-07 | Added `vendor/@tns/game-engine/` for Vercel deploys (Vercel excludes `node_modules` from static output). HTMLs now load from `vendor/`. `npm run sync-engine` refreshes from `node_modules`. | jim    |
 | 2026-05-07 | Engine + manga moved out to `@tns/game-engine` (consumed via npm link). god-games is now a *consumer* of the published engine. | jim    |

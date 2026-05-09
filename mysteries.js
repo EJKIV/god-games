@@ -2,7 +2,7 @@
 //
 // Each god game contributes ONE letter toward a Greek-mythological invocation.
 // Solving a game's secret yields:
-//   • One letter of the codeword (current letters: ZEU).
+//   • One letter of the codeword (current letters: ZEUS).
 //   • A brief MythCinematic overlay — the player is briefly carried to a
 //     transitional Greek-mythology location (Oceanus, Asphodel, Erebus, …).
 //
@@ -10,11 +10,10 @@
 // added game inherits the "call to Zeus" final hint. Today the order is:
 //   Icarus  → 'z' (Oceanus)
 //   Orion   → 'e' (Asphodel Meadows)
-//   Achilles→ 'u' (Erebus) + the call-to-Zeus instruction
+//   Achilles→ 'u' (Erebus)
+//   Perseus → 's' (Tartarus) + the call-to-Zeus instruction
 //
-// Final unlock: type 'ZEUS' on Mt. Olympus while the storm builds. The 'S'
-// is the literal act of calling Zeus — there's no fourth game required for
-// it; the player utters the king's name to complete the invocation.
+// Final unlock: type 'ZEUS' on Mt. Olympus while the storm builds.
 // 'shankle' remains as a dev bypass.
 
 (function () {
@@ -82,6 +81,12 @@
       {
         id: 'clue.third',
         revealAt: 3,
+        text: 'The mirrored shield waits where serpents cannot meet their own eyes.',
+        pointsAt: 'perseus',
+      },
+      {
+        id: 'clue.fourth',
+        revealAt: 4,
         text: 'Olympus listens for its master\'s name. Speak it aloud where the lightning gathers.',
         pointsAt: 'olympus-call-zeus',
       },
@@ -98,7 +103,7 @@
       {
         id: 'manga_mode',
         lockedTitle: '???',
-        lockedFlavor: 'Three myths, three letters. The fourth, you must speak yourself.',
+        lockedFlavor: 'Four myths, four letters. The mountain waits for the name.',
         // Each hint contributes one letter of the codeword. solveOrder
         // determines panel ordering. mythLocation is what the cinematic
         // shows when the hint is earned.
@@ -119,12 +124,16 @@
             mythLocation: { name: 'EREBUS', flavor: 'the gloom before the underworld', color: '#a070d0' },
           },
           {
-            id: 'hint.zeus_call', letter: 'S',
+            id: 'hint.s', letter: 'S',
+            fragment: '"S" — the mirrored shield answered the serpent gaze.',
+            mythLocation: { name: 'TARTARUS', flavor: 'the deep prison of titans', color: '#702030' },
+          },
+          {
+            id: 'hint.zeus_call',
             fragment: 'Climb to Olympus. Speak the name. Call to ZEUS.',
-            // This hint earns automatically when all three letter hints are
-            // earned — surfacing the final-step instruction. The 'S' itself
-            // is added to the storm sequence by typing it on the hub.
-            autoEarnsAfter: ['hint.z', 'hint.e', 'hint.u'],
+            // This hint earns automatically when all four letter hints are
+            // earned — surfacing the final-step instruction.
+            autoEarnsAfter: ['hint.z', 'hint.e', 'hint.u', 'hint.s'],
           },
         ],
         solvedTitle: 'THE MANGA STYLE',
@@ -272,10 +281,10 @@
     },
 
     // ── Manga-mode codeword helpers ──────────────────────────────────────
-    // True once Z, E, U have all been earned — the call-to-Zeus instruction
-    // is now visible. Player still has to type ZEUS on the hub to activate.
+    // True once Z, E, U, S have all been earned. Player still has to type
+    // ZEUS on the hub to activate manga mode.
     mangaCodewordReady() {
-      return M.hasHint('z') && M.hasHint('e') && M.hasHint('u');
+      return M.hasHint('z') && M.hasHint('e') && M.hasHint('u') && M.hasHint('s');
     },
     triggerMangaUnlock() {
       try { localStorage.setItem('godgames_manga', '1'); } catch (_e) {}

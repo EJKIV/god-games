@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Perseus - God Games</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#02070a; overflow:hidden; font-family:'Trebuchet MS', serif; color:#e8f6f8; }
+canvas { display:block; }
+
+.modal-bg {
+  position:fixed; inset:0; z-index:10;
+  background:rgba(0,0,0,0.86);
+  display:none; align-items:center; justify-content:center;
+}
+.modal-bg.open { display:flex; }
+.modal {
+  background:linear-gradient(180deg, #09202a 0%, #03070a 100%);
+  border:1px solid #D4AF37; border-radius:6px;
+  padding:32px 40px;
+  box-shadow:0 0 50px rgba(61,176,198,0.32);
+  text-align:center; min-width:340px;
+}
+.modal h3 {
+  font-family:serif; font-size:26px; color:#D4AF37;
+  letter-spacing:0.1em; margin-bottom:6px;
+  text-shadow:0 0 14px rgba(212,175,55,0.5);
+}
+.modal p { font-style:italic; color:rgba(220,240,244,0.72); font-size:13px; margin-bottom:20px; }
+.modal input {
+  width:100%; padding:10px 14px;
+  background:rgba(3,9,12,0.78); border:1px solid rgba(212,175,55,0.5);
+  color:#e8f6f8; font-family:monospace; font-size:16px;
+  text-align:center; letter-spacing:0.1em;
+  border-radius:3px; outline:none;
+}
+.modal input:focus { border-color:#D4AF37; box-shadow:0 0 12px rgba(212,175,55,0.35); }
+.modal button {
+  margin-top:18px; padding:10px 28px;
+  background:#D4AF37; border:none; color:#102029;
+  font-family:monospace; font-weight:bold; font-size:14px;
+  letter-spacing:0.1em; cursor:pointer; border-radius:3px;
+  transition:transform 0.1s, box-shadow 0.15s;
+}
+.modal button:hover { transform:translateY(-1px); box-shadow:0 4px 14px rgba(212,175,55,0.4); }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <h3>NAME OF THE CHAMPION</h3>
+    <p>Speak your name before entering the cave.</p>
+    <input id="nameInput" maxlength="20" autocomplete="off" spellcheck="false" placeholder="Your name">
+    <br><button id="nameSave">RAISE THE SHIELD</button>
+  </div>
+</div>
+
+<script src="vendor/@tns/game-engine/core/engine.js"></script>
+<script src="vendor/@tns/game-engine/unlock/index.js"></script>
+<script src="vendor/@tns/game-engine/manga/manga.js"></script>
+<script src="mysteries.js"></script>
+<script src="progress-sync.js"></script>
+<script>
+const NAME_KEY = 'godgames_playerName';
+const HP_MAX = 4;
+const PERSEUS_ACCENT = '#3db0c6';
+const GORGON_GREEN = '#65b66a';
+
+let player, medusa;
+let snakes = [];
+let sparks = [];
+let floaters = [];
+let playTime = 0;
+let mirrorHits = 0;
+let submittedThisRun = false;
+let hallStatus = null;
+let hallRank = null;
+let canvas, ctx;
+
+function groundY() { return Engine.H * 0.78; }
+function caveLeft() { return Math.max(44, Engine.W * 0.06); }
+function caveRight() { return Math.min(Engine.W - 44, Engine.W * 0.94); }
+
+function beep(freq, dur, type, vol, slide) {
+  const ac = Engine.audio._ctx;
+  if (!ac) return;
+  const o = ac.createOscillator();
+  const g = ac.createGain();
+  o.type = type || 'sine';
+  o.frequency.setValueAtTime(freq, ac.currentTime);
+  if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(20, freq + slide), ac.currentTime + dur);
+  g.gain.setValueAtTime(vol == null ? 0.12 : vol, ac.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + dur);
+  o.connect(g); g.connect(ac.destination);
+  o.start(); o.stop(ac.currentTime + dur);
+}
+const sfx = {
+  mirror() { beep(520, 0.12, 'triangle', 0.16, 420); beep(980, 0.18, 'sine', 0.10, -180); },
+  hit()    { beep(95, 0.24, 'sawtooth', 0.20, -20); },
+  slash()  { beep(360, 0.07, 'square', 0.09, 300); },
+  gaze()   { beep(190, 0.16, 'sawtooth', 0.07, -40); },
+  win()    { beep(392, 0.18, 'triangle', 0.12, 210); beep(784, 0.24, 'sine', 0.10, 120); },
+};
+
+function resetGame() {
+  player = {
+    x: Engine.W * 0.24,
+    y: groundY(),
+    vx: 0,
+    hp: HP_MAX,
+    facing: 1,
+    walkPhase: 0,
+    shield: 0,
+    slashT: 0,
+    iframes: 0,
+    hitFlash: 0,
+    petrify: 0,
+  };
+  medusa = {
+    x: Engine.W * 0.78,
+    y: groundY(),
+    hp: 3,
+    phase: 'watch',
+    phaseT: 1.25,
+    strikeReady: true,
+    snakeT: 0.7,
+    hurtFlash: 0,
+  };
+  snakes = [];
+  sparks = [];
+  floaters = [];
+  playTime = 0;
+  mirrorHits = 0;
+  submittedThisRun = false;
+  hallStatus = null;
+  hallRank = null;
+}
+
+function finalScore() {
+  const timeBonus = Math.max(0, 90000 - Math.floor(playTime * 1000));
+  return Math.max(0, Math.floor(mirrorHits * 2500 + player.hp * 900 + timeBonus));
+}
+
+async function submitToHall(score) {
+  if (submittedThisRun) return;
+  submittedThisRun = true;
+  const name = localStorage.getItem(NAME_KEY) || 'NAMELESS MORTAL';
+  const game = Engine.manga ? 'perseus-manga' : 'perseus';
+  hallStatus = 'pending';
+  try {
+    const res = await fetch('/api/leaderboard', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ game, name, score }),
+    });
+    if (!res.ok) { hallStatus = 'fail'; return; }
+    const json = await res.json();
+    hallRank = json.rank;
+    hallStatus = 'ok';
+    if (window.GodGames && GodGames.Mysteries) {
+      GodGames.Mysteries.earnHint('first_score');
+      if (hallRank && hallRank <= 10) GodGames.Mysteries.tally('olympus_top10_count');
+    }
+  } catch (_e) {
+    hallStatus = 'fail';
+  }
+}
+
+window.GodGames = window.GodGames || {};
+window.GodGames.submitNow = () => submitToHall(finalScore());
+
+function burst(x, y, color, count, power) {
+  for (let i = 0; i < count; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const s = (50 + Math.random() * 170) * (power || 1);
+    sparks.push({
+      x, y,
+      vx: Math.cos(a) * s,
+      vy: Math.sin(a) * s - 35,
+      r: 1.4 + Math.random() * 3.8,
+      t: 0.75 + Math.random() * 0.35,
+      color,
+    });
+  }
+}
+function floater(x, y, text, color) {
+  floaters.push({ x, y, text, color, t: 1.1, vy: -42 });
+}
+
+function setGazePhase(next) {
+  medusa.phase = next;
+  if (next === 'watch') { medusa.phaseT = 1.15 + Math.random() * 0.45; medusa.strikeReady = true; }
+  if (next === 'windup') { medusa.phaseT = 0.72; medusa.strikeReady = true; sfx.gaze(); }
+  if (next === 'gaze') { medusa.phaseT = 1.35; medusa.strikeReady = true; }
+  if (next === 'rest') { medusa.phaseT = 1.05; medusa.strikeReady = false; }
+}
+
+function spawnSnake() {
+  const y = groundY() - 18 - Math.random() * 34;
+  snakes.push({
+    x: medusa.x - 30,
+    y,
+    vx: -210 - Math.random() * 70 - playTime * 1.5,
+    wobble: Math.random() * Math.PI * 2,
+    alive: true,
+  });
+}
+
+function slash() {
+  if (!player || player.slashT > 0) return;
+  player.slashT = 0.22;
+  sfx.slash();
+  const reachX = player.x + player.facing * 42;
+  for (const s of snakes) {
+    if (!s.alive) continue;
+    if (Math.abs(s.x - reachX) < 48 && Math.abs(s.y - (player.y - 28)) < 54) {
+      s.alive = false;
+      burst(s.x, s.y, '#b8f28f', 9, 0.8);
+      floater(s.x, s.y - 22, 'CUT', '#b8f28f');
+    }
+  }
+}
+
+function recordMirrorStrike() {
+  if (!player || !medusa || mirrorHits >= 3) return;
+  mirrorHits++;
+  medusa.hp = Math.max(0, 3 - mirrorHits);
+  medusa.hurtFlash = 0.35;
+  medusa.strikeReady = false;
+  player.petrify = Math.max(0, player.petrify - 0.35);
+  burst(medusa.x - 38, medusa.y - 84, '#d6fbff', 24, 1.15);
+  floater(medusa.x - 20, medusa.y - 112, 'MIRROR STRIKE', '#d6fbff');
+  Engine.shake(8);
+  sfx.mirror();
+
+  if (mirrorHits >= 3) {
+    sfx.win();
+    if (window.GodGames && GodGames.Mysteries) {
+      GodGames.Mysteries.unlockAndDepart({
+        hintId: 's',
+        placeId: 'tartarus',
+        fromGame: 'perseus',
+      });
+    }
+    if (window.GodGames && window.GodGames.suppressDepart) Engine.setState('victory');
+  }
+}
+
+if (new URLSearchParams(location.search).get('testHooks') === '1') {
+  window.GodGames = window.GodGames || {};
+  window.GodGames.PerseusTest = {
+    recordMirrorStrike,
+    canReflectInNormalMode() {
+      return !!(window.Engine && Engine.state === 'playing' && !Engine.manga
+        && medusa && mirrorHits === 0 && medusa.hp === 3);
+    },
+  };
+}
+
+function damagePlayer(amount) {
+  if (!player || player.iframes > 0 || Engine.state !== 'playing') return;
+  player.hp = Math.max(0, player.hp - amount);
+  player.iframes = 1.0;
+  player.hitFlash = 0.35;
+  player.petrify = Math.max(0, player.petrify - 0.25);
+  Engine.shake(7);
+  burst(player.x, player.y - 44, '#88d7dd', 12, 0.8);
+  sfx.hit();
+  if (player.hp <= 0) {
+    submitToHall(finalScore());
+    Engine.setState('dead');
+  }
+}
+
+function update(dt) {
+  playTime += dt;
+
+  const left = Engine.keys.ArrowLeft || Engine.keys.a || Engine.keys.A;
+  const right = Engine.keys.ArrowRight || Engine.keys.d || Engine.keys.D;
+  const shieldHeld = Engine.keys.z || Engine.keys.Z;
+
+  player.vx = 0;
+  if (left) player.vx -= 310;
+  if (right) player.vx += 310;
+  player.x += player.vx * dt;
+  player.x = Math.max(caveLeft(), Math.min(caveRight(), player.x));
+  if (player.vx) {
+    player.facing = player.vx > 0 ? 1 : -1;
+    player.walkPhase += dt * 9.5;
+  }
+  player.shield += ((shieldHeld ? 1 : 0) - player.shield) * Math.min(1, dt * 12);
+  player.slashT = Math.max(0, player.slashT - dt);
+  player.iframes = Math.max(0, player.iframes - dt);
+  player.hitFlash = Math.max(0, player.hitFlash - dt);
+  medusa.hurtFlash = Math.max(0, medusa.hurtFlash - dt);
+
+  medusa.phaseT -= dt;
+  if (medusa.phaseT <= 0) {
+    if (medusa.phase === 'watch') setGazePhase('windup');
+    else if (medusa.phase === 'windup') setGazePhase('gaze');
+    else if (medusa.phase === 'gaze') setGazePhase('rest');
+    else setGazePhase('watch');
+  }
+
+  medusa.snakeT -= dt;
+  const canSpit = medusa.phase !== 'gaze';
+  if (canSpit && medusa.snakeT <= 0) {
+    medusa.snakeT = 1.25 + Math.random() * 0.45;
+    spawnSnake();
+  }
+
+  const playerFacingMedusa = player.facing > 0 && player.x < medusa.x;
+  if (medusa.phase === 'gaze' && playerFacingMedusa) {
+    if (shieldHeld) {
+      player.petrify = Math.max(0, player.petrify - dt * 0.45);
+      if (medusa.strikeReady && player.shield > 0.72 && medusa.phaseT < 0.82) {
+        recordMirrorStrike();
+      }
+    } else {
+      player.petrify = Math.min(1.12, player.petrify + dt * 0.68);
+      if (player.petrify >= 1) damagePlayer(1);
+    }
+  } else {
+    player.petrify = Math.max(0, player.petrify - dt * 0.34);
+  }
+
+  for (const s of snakes) {
+    if (!s.alive) continue;
+    s.x += s.vx * dt;
+    s.wobble += dt * 11;
+    const dx = s.x - player.x;
+    const dy = s.y - (player.y - 30);
+    const shieldBlock = shieldHeld && player.facing > 0
+      && s.x > player.x - 18 && s.x < player.x + 58
+      && Math.abs(dy) < 62;
+    if (shieldBlock) {
+      s.alive = false;
+      burst(s.x, s.y, '#d6fbff', 9, 0.8);
+      floater(s.x, s.y - 18, 'TURNED', '#d6fbff');
+      continue;
+    }
+    if (Math.hypot(dx, dy) < 28) {
+      s.alive = false;
+      damagePlayer(1);
+    }
+    if (s.x < -80) s.alive = false;
+  }
+  snakes = snakes.filter(s => s.alive);
+
+  for (let i = sparks.length - 1; i >= 0; i--) {
+    const p = sparks[i];
+    p.t -= dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 240 * dt;
+    if (p.t <= 0) sparks.splice(i, 1);
+  }
+  for (let i = floaters.length - 1; i >= 0; i--) {
+    const f = floaters[i];
+    f.t -= dt;
+    f.y += f.vy * dt;
+    if (f.t <= 0) floaters.splice(i, 1);
+  }
+}
+
+function drawBackground(t) {
+  const W = Engine.W, H = Engine.H, gy = groundY();
+  const sky = ctx.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0, '#02070a');
+  sky.addColorStop(0.5, '#071923');
+  sky.addColorStop(1, '#041013');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.save();
+  ctx.globalAlpha = 0.55;
+  for (let i = 0; i < 80; i++) {
+    const x = (i * 157) % W;
+    const y = ((i * 91) % Math.floor(H * 0.48));
+    const a = 0.35 + 0.35 * Math.sin(t * 1.2 + i);
+    ctx.fillStyle = `rgba(190,245,255,${a})`;
+    ctx.fillRect(x, y, 1.4, 1.4);
+  }
+  ctx.restore();
+
+  ctx.fillStyle = 'rgba(4,8,10,0.82)';
+  ctx.beginPath();
+  ctx.moveTo(0, gy + 30);
+  ctx.lineTo(W * 0.09, gy - 95);
+  ctx.lineTo(W * 0.17, gy - 38);
+  ctx.lineTo(W * 0.30, gy - 128);
+  ctx.lineTo(W * 0.45, gy - 56);
+  ctx.lineTo(W * 0.61, gy - 116);
+  ctx.lineTo(W * 0.78, gy - 48);
+  ctx.lineTo(W * 0.91, gy - 104);
+  ctx.lineTo(W, gy - 20);
+  ctx.lineTo(W, H);
+  ctx.lineTo(0, H);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = '#091419';
+  ctx.fillRect(0, gy, W, H - gy);
+  ctx.strokeStyle = 'rgba(61,176,198,0.20)';
+  ctx.lineWidth = 1;
+  for (let x = -40; x < W + 80; x += 72) {
+    ctx.beginPath();
+    ctx.moveTo(x, gy);
+    ctx.lineTo(x + 42, H);
+    ctx.stroke();
+  }
+  ctx.fillStyle = 'rgba(0,0,0,0.34)';
+  ctx.fillRect(0, gy, W, 10);
+
+  for (let i = 0; i < 6; i++) {
+    const x = W * (0.12 + i * 0.155);
+    ctx.fillStyle = 'rgba(30,48,55,0.38)';
+    ctx.fillRect(x - 10, H * 0.18, 20, gy - H * 0.18);
+    ctx.fillStyle = 'rgba(120,190,198,0.09)';
+    ctx.fillRect(x - 6, H * 0.18, 4, gy - H * 0.18);
+  }
+}
+
+function drawGazeCone(t) {
+  if (medusa.phase !== 'windup' && medusa.phase !== 'gaze') return;
+  const a = medusa.phase === 'gaze' ? 0.22 + 0.06 * Math.sin(t * 24) : 0.08;
+  const x0 = medusa.x - 35, y0 = medusa.y - 92;
+  ctx.save();
+  const g = ctx.createLinearGradient(x0, y0, player.x, player.y - 38);
+  g.addColorStop(0, `rgba(125,255,160,${a})`);
+  g.addColorStop(1, 'rgba(125,255,160,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.moveTo(x0, y0);
+  ctx.lineTo(caveLeft() - 20, y0 - 76);
+  ctx.lineTo(caveLeft() - 20, y0 + 116);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawPerseus(t) {
+  const f = player.facing;
+  const walk = Math.sin(player.walkPhase) * (Math.abs(player.vx) > 0 ? 1 : 0);
+  ctx.save();
+  ctx.translate(player.x, player.y);
+  ctx.scale(f, 1);
+
+  ctx.fillStyle = 'rgba(0,0,0,0.36)';
+  ctx.beginPath(); ctx.ellipse(0, 0, 30, 7, 0, 0, Math.PI * 2); ctx.fill();
+
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = '#c0a16a'; ctx.lineWidth = 7;
+  ctx.beginPath(); ctx.moveTo(-8, -22); ctx.lineTo(-13 + walk * 8, -1); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(8, -22); ctx.lineTo(13 - walk * 8, -1); ctx.stroke();
+
+  ctx.fillStyle = player.hitFlash > 0 ? '#ffffff' : '#d8d2bd';
+  ctx.beginPath();
+  ctx.moveTo(-16, -20); ctx.lineTo(-12, -58); ctx.lineTo(12, -58); ctx.lineTo(16, -20);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#7c6038'; ctx.lineWidth = 2; ctx.stroke();
+
+  ctx.fillStyle = '#c0a16a';
+  ctx.fillRect(-5, -66, 10, 10);
+  ctx.beginPath(); ctx.arc(0, -74, 12, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#1a1208';
+  ctx.beginPath(); ctx.arc(0, -78, 12, Math.PI, 0); ctx.fill();
+
+  ctx.strokeStyle = '#c0a16a'; ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.moveTo(10, -50); ctx.lineTo(22, -36); ctx.stroke();
+  const bladeOut = player.slashT > 0 ? 48 : 32;
+  ctx.strokeStyle = player.slashT > 0 ? '#e8ffff' : '#cdd7d8';
+  ctx.lineWidth = player.slashT > 0 ? 5 : 3;
+  ctx.beginPath(); ctx.moveTo(21, -37); ctx.lineTo(bladeOut, -60 - Math.sin(t * 8) * player.slashT * 12); ctx.stroke();
+
+  ctx.strokeStyle = '#c0a16a'; ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.moveTo(-11, -50); ctx.lineTo(-26, -38); ctx.stroke();
+  ctx.save();
+  ctx.translate(-31, -42);
+  ctx.rotate(-0.18 + player.shield * 0.28);
+  ctx.globalAlpha = 0.78 + player.shield * 0.22;
+  const shieldG = ctx.createRadialGradient(-6, -4, 2, 0, 0, 24);
+  shieldG.addColorStop(0, '#ffffff');
+  shieldG.addColorStop(0.35, '#d6fbff');
+  shieldG.addColorStop(1, '#4a8896');
+  ctx.fillStyle = shieldG;
+  ctx.strokeStyle = player.shield > 0.7 ? '#e8ffff' : '#819da6';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.ellipse(0, 0, 19, 24, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  if (player.shield > 0.55) {
+    ctx.strokeStyle = `rgba(220,255,255,${player.shield})`;
+    ctx.beginPath(); ctx.moveTo(-13, -7); ctx.lineTo(13, -12); ctx.stroke();
+  }
+  ctx.restore();
+
+  if (player.petrify > 0.02) {
+    ctx.globalAlpha = Math.min(0.72, player.petrify);
+    ctx.fillStyle = '#a7b2b0';
+    ctx.beginPath();
+    ctx.moveTo(-18, -20); ctx.lineTo(-12, -62); ctx.lineTo(12, -62); ctx.lineTo(18, -20);
+    ctx.closePath(); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.restore();
+}
+
+function drawMedusa(t) {
+  ctx.save();
+  ctx.translate(medusa.x, medusa.y);
+  const flash = medusa.hurtFlash > 0;
+  ctx.fillStyle = 'rgba(0,0,0,0.42)';
+  ctx.beginPath(); ctx.ellipse(0, 0, 38, 8, 0, 0, Math.PI * 2); ctx.fill();
+
+  ctx.fillStyle = flash ? '#ffffff' : '#657c53';
+  ctx.beginPath();
+  ctx.moveTo(-22, -18); ctx.lineTo(-16, -74); ctx.quadraticCurveTo(0, -92, 18, -74); ctx.lineTo(24, -18);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#25351f'; ctx.lineWidth = 2; ctx.stroke();
+
+  ctx.fillStyle = flash ? '#ffffff' : '#8bc88d';
+  ctx.beginPath(); ctx.arc(0, -98, 17, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#111810';
+  for (let i = -4; i <= 4; i++) {
+    const a = i * 0.34 + Math.sin(t * 2 + i) * 0.11;
+    const len = 28 + (i % 2) * 7;
+    ctx.save();
+    ctx.translate(0, -108);
+    ctx.rotate(a);
+    ctx.strokeStyle = i % 2 ? '#315c35' : '#20442a';
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(8, -12, 0, -len);
+    ctx.stroke();
+    ctx.fillStyle = '#6bd070';
+    ctx.beginPath(); ctx.arc(0, -len, 3.4, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+  ctx.fillStyle = medusa.phase === 'gaze' ? '#dcff9b' : '#142010';
+  ctx.beginPath(); ctx.arc(-6, -99, 2.5, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(6, -99, 2.5, 0, Math.PI * 2); ctx.fill();
+
+  ctx.strokeStyle = '#314b2c'; ctx.lineWidth = 10; ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(0, -18);
+  ctx.quadraticCurveTo(18, 2, 2, 18);
+  ctx.quadraticCurveTo(-18, 36, 12, 50);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawSnakes(t) {
+  for (const s of snakes) {
+    ctx.save();
+    ctx.translate(s.x, s.y + Math.sin(s.wobble) * 5);
+    ctx.strokeStyle = '#76c96c';
+    ctx.lineWidth = 7;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-18, 0);
+    ctx.quadraticCurveTo(-8, -8, 0, 0);
+    ctx.quadraticCurveTo(8, 8, 18, 0);
+    ctx.stroke();
+    ctx.fillStyle = '#b9f69c';
+    ctx.beginPath(); ctx.arc(-20, 0, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#111';
+    ctx.beginPath(); ctx.arc(-22, -1, 1.2, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawParticles() {
+  for (const p of sparks) {
+    ctx.globalAlpha = Math.max(0, p.t);
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 13px monospace';
+  for (const f of floaters) {
+    ctx.globalAlpha = Math.max(0, f.t);
+    ctx.fillStyle = f.color;
+    ctx.fillText(f.text, f.x, f.y);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawWorld() {
+  const t = Engine.time;
+  drawBackground(t);
+  drawGazeCone(t);
+  drawSnakes(t);
+  drawMedusa(t);
+  drawPerseus(t);
+  drawParticles();
+
+  if (Engine.manga && window.Manga && Manga.effects) {
+    Manga.effects.vignette(ctx, Engine.W, Engine.H, { strength: 0.50 });
+    Manga.effects.scanlines(ctx, Engine.W, Engine.H, { spacing: 4, alpha: 0.11 });
+    if (medusa.phase === 'gaze') {
+      Manga.effects.speedLines(ctx, medusa.x - 48, medusa.y - 96, {
+        count: 16, innerR: 42, outerR: 220, color: '#d6fbff', width: 2, jitter: 0.35,
+      });
+    }
+  }
+}
+
+function drawHud() {
+  Engine.hud.drawHearts(20, 28, player.hp, HP_MAX);
+  const W = Engine.W;
+  ctx.save();
+  ctx.textAlign = 'right';
+  ctx.font = 'bold 14px monospace';
+  ctx.fillStyle = '#d6fbff';
+  ctx.fillText('MIRROR STRIKES ' + mirrorHits + '/3', W - 22, 28);
+  ctx.fillStyle = 'rgba(214,251,255,0.24)';
+  ctx.fillRect(W - 222, 40, 200, 8);
+  ctx.fillStyle = '#d6fbff';
+  ctx.fillRect(W - 222, 40, 200 * Math.min(1, player.shield), 8);
+  if (player.petrify > 0.01) {
+    ctx.fillStyle = 'rgba(170,178,176,0.32)';
+    ctx.fillRect(W - 222, 56, 200, 8);
+    ctx.fillStyle = '#c7d0cd';
+    ctx.fillRect(W - 222, 56, 200 * Math.min(1, player.petrify), 8);
+  }
+  ctx.textAlign = 'left';
+  ctx.fillStyle = medusa.phase === 'gaze' ? '#dcff9b' : '#8bc88d';
+  ctx.fillText(medusa.phase.toUpperCase(), 20, 62);
+  ctx.restore();
+}
+
+function hasName() { return !!localStorage.getItem(NAME_KEY); }
+function modalOpen() { return document.getElementById('modalBg').classList.contains('open'); }
+function showNameModal(after) {
+  pendingStart = after || null;
+  const mb = document.getElementById('modalBg');
+  const inp = document.getElementById('nameInput');
+  inp.value = localStorage.getItem(NAME_KEY) || '';
+  mb.classList.add('open');
+  setTimeout(() => inp.focus(), 50);
+}
+function hideNameModal() { document.getElementById('modalBg').classList.remove('open'); }
+let pendingStart = null;
+function saveNameFromModal() {
+  const raw = document.getElementById('nameInput').value || '';
+  const clean = raw.replace(/[\x00-\x1f\x7f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 20);
+  if (!clean) return false;
+  localStorage.setItem(NAME_KEY, clean);
+  hideNameModal();
+  if (pendingStart) { const fn = pendingStart; pendingStart = null; fn(); }
+  return true;
+}
+document.getElementById('nameSave').addEventListener('click', saveNameFromModal);
+document.getElementById('nameInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); saveNameFromModal(); }
+  e.stopPropagation();
+});
+
+function beginRun() {
+  Engine.audio.init();
+  Engine.setState('playing');
+}
+
+Engine.boot({
+  title: 'PERSEUS',
+  subtitle: 'The Gorgon\'s Mirror',
+  instructions: [
+    'Left / Right: move',
+    'Hold Z: raise the mirrored shield',
+    'X: cut serpents',
+    'Do not meet the Gorgon\'s gaze without the mirror',
+  ],
+  deadTitle: 'PERSEUS IS STONE',
+  deadSubtitle: 'The cave keeps another statue.',
+  victoryTitle: 'THE GAZE IS BROKEN',
+  victorySubtitle: 'A final letter glints in the shield.',
+  hubHref: 'index.html',
+  theme: {
+    bg: (c, W, H) => { c.fillStyle = '#02070a'; c.fillRect(0, 0, W, H); },
+    accent: PERSEUS_ACCENT,
+    danger: '#2a4b48',
+    shakeDecay: 'exp',
+    restartKey: [' ', 'Enter'],
+  },
+  mobile: {
+    movement: 'horizontal',
+    actions: [
+      { label: 'MIRROR', key: 'z', mode: 'hold' },
+      { label: 'SWORD', key: 'x' },
+    ],
+  },
+  onInit(e) {
+    canvas = e.canvas;
+    ctx = e.ctx;
+    resetGame();
+  },
+  onUpdate(dt) {
+    if (window.GodGames && GodGames.MythCinematic) GodGames.MythCinematic.update(dt);
+    update(dt);
+  },
+  onRender() {
+    drawWorld();
+    if (window.GodGames && GodGames.MythCinematic) GodGames.MythCinematic.render(ctx, Engine.W, Engine.H);
+  },
+  onHud() {
+    drawHud();
+  },
+  onTryStart() {
+    if (modalOpen()) return false;
+    if (!hasName()) { showNameModal(beginRun); return false; }
+    return true;
+  },
+  onKeyDown(ev, e) {
+    if (modalOpen()) return;
+    if (e.state === 'title' && ev.key === 'Enter') {
+      if (!hasName()) { showNameModal(beginRun); return; }
+      beginRun();
+      return;
+    }
+    if (e.state === 'dead' && (ev.key === 'h' || ev.key === 'H')) {
+      window.location.href = 'mount-olympus.html';
+      return;
+    }
+    if (e.state === 'playing' && (ev.key === 'x' || ev.key === 'X')) slash();
+  },
+});
+</script>
+</body>
+</html>

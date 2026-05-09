@@ -105,7 +105,7 @@ nav.topbar .who button:hover { color:var(--gold); }
 
 main {
   flex:1; display:grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap:24px;
   min-height:0;
 }
@@ -295,6 +295,14 @@ footer {
       </header>
       <ol id="list-achilles"><li class="loading">Consulting the Fates…</li></ol>
     </section>
+
+    <section class="tablet" id="tablet-perseus">
+      <header class="thead">
+        <h2>PERSEUS</h2>
+        <div class="label">Brightest Reflections · by Score</div>
+      </header>
+      <ol id="list-perseus"><li class="loading">Consulting the Fates…</li></ol>
+    </section>
   </main>
 
   <footer>The names of the worthy are inscribed in stone, eternal.</footer>
@@ -346,6 +354,7 @@ $('nameInput').addEventListener('keydown', (e) => {
 // ─── Leaderboard fetching ───────────────────────────────────────────────
 function fmtIcarus(score)   { return Math.floor(score).toLocaleString() + ' XP'; }
 function fmtAchilles(score) { return Math.floor(score).toLocaleString(); }
+function fmtPerseus(score)  { return Math.floor(score).toLocaleString(); }
 function fmtOrion(ms) {
   const total = Math.max(0, Math.floor(ms));
   const m = Math.floor(total / 60000);
@@ -375,7 +384,7 @@ function renderList(listEl, entries, fmt) {
   });
 }
 
-let cachedIcarus = [], cachedOrion = [], cachedAchilles = [];
+let cachedIcarus = [], cachedOrion = [], cachedAchilles = [], cachedPerseus = [];
 
 // Manga mode unlocks the IMMORTAL HALL toggle. Mortal mode shows only the
 // mortal leaderboards with no toggle (since there's only one option).
@@ -398,30 +407,36 @@ async function load() {
   const icarusList   = $('list-icarus');
   const orionList    = $('list-orion');
   const achillesList = $('list-achilles');
-  icarusList.innerHTML = orionList.innerHTML = achillesList.innerHTML =
+  const perseusList  = $('list-perseus');
+  icarusList.innerHTML = orionList.innerHTML = achillesList.innerHTML = perseusList.innerHTML =
     '<li class="loading">Consulting the Fates…</li>';
   try {
-    const [iRes, oRes, aRes] = await Promise.all([
+    const [iRes, oRes, aRes, pRes] = await Promise.all([
       fetch('/api/leaderboard?game=' + gameId('icarus')).then(r => r.json()),
       fetch('/api/leaderboard?game=' + gameId('orion')).then(r => r.json()),
       fetch('/api/leaderboard?game=' + gameId('achilles')).then(r => r.json()),
+      fetch('/api/leaderboard?game=' + gameId('perseus')).then(r => r.json()),
     ]);
     cachedIcarus   = iRes.entries || [];
     cachedOrion    = oRes.entries || [];
     cachedAchilles = aRes.entries || [];
+    cachedPerseus  = pRes.entries || [];
     renderList(icarusList,   cachedIcarus,   fmtIcarus);
     renderList(orionList,    cachedOrion,    fmtOrion);
     renderList(achillesList, cachedAchilles, fmtAchilles);
+    renderList(perseusList,  cachedPerseus,  fmtPerseus);
   } catch (err) {
     icarusList.innerHTML   = '<li class="errmsg">The Fates are silent. (offline)</li>';
     orionList.innerHTML    = '<li class="errmsg">The Fates are silent. (offline)</li>';
     achillesList.innerHTML = '<li class="errmsg">The Fates are silent. (offline)</li>';
+    perseusList.innerHTML  = '<li class="errmsg">The Fates are silent. (offline)</li>';
   }
 }
 function refreshHighlights() {
   renderList($('list-icarus'),   cachedIcarus,   fmtIcarus);
   renderList($('list-orion'),    cachedOrion,    fmtOrion);
   renderList($('list-achilles'), cachedAchilles, fmtAchilles);
+  renderList($('list-perseus'),  cachedPerseus,  fmtPerseus);
 }
 
 // Wire hall toggle
