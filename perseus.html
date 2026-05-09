@@ -1123,28 +1123,66 @@ function drawSerpentSeal(t) {
   const x = sealX();
   const y = groundY() + 35;
   const pulse = 0.5 + Math.sin(t * 4.4) * 0.5;
-  const lit = sealProgress > 0 || sealFlashT > 0;
+  const nearSeal = Engine.state === 'playing' && Math.abs(player.x - x) < 56;
+  const charge = Math.min(1, sealProgress);
+  const flash = Math.min(1, sealFlashT);
+  const reveal = Math.max(charge, flash, nearSeal ? 0.16 + pulse * 0.05 : 0);
   ctx.save();
   ctx.translate(x, y);
-  ctx.globalAlpha = lit ? 0.50 + pulse * 0.35 : 0.18 + pulse * 0.06;
-  ctx.strokeStyle = lit ? '#ff88cc' : '#d6fbff';
-  ctx.fillStyle = lit ? '#ff88cc' : '#d6fbff';
-  ctx.shadowColor = lit ? '#ff88cc' : '#d6fbff';
-  ctx.shadowBlur = lit ? 18 : 2;
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(0, 0, 30 + sealProgress * 9, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.font = 'bold 28px serif';
+
+  const floorGlow = Math.max(nearSeal ? 0.12 : 0, charge * 0.55, flash * 0.75);
+  if (floorGlow > 0) {
+    const g = ctx.createRadialGradient(0, 4, 4, 0, 4, 74 + charge * 26);
+    g.addColorStop(0, `rgba(255,136,204,${0.16 * floorGlow})`);
+    g.addColorStop(0.42, `rgba(214,251,255,${0.12 * floorGlow})`);
+    g.addColorStop(1, 'rgba(214,251,255,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.ellipse(0, 4, 82 + charge * 18, 24 + charge * 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.save();
+  ctx.scale(1.25, 0.42);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('Σ', 0, 1);
-  if (sealProgress > 0) {
-    ctx.globalAlpha = 0.75;
+  ctx.font = 'bold 31px serif';
+  ctx.lineWidth = 3.5;
+  ctx.strokeStyle = 'rgba(3,7,8,0.18)';
+  ctx.strokeText('Σ', 0, 5);
+  ctx.lineWidth = 1.3;
+  ctx.strokeStyle = `rgba(100,143,148,${0.045 + reveal * 0.14})`;
+  ctx.strokeText('Σ', 0, 3);
+  ctx.fillStyle = `rgba(5,13,16,${0.12 + reveal * 0.06})`;
+  ctx.fillText('Σ', 0, 4);
+  ctx.restore();
+
+  if (reveal > 0) {
+    ctx.save();
+    ctx.scale(1.25, 0.42);
+    ctx.shadowColor = charge > 0 ? '#ff88cc' : '#d6fbff';
+    ctx.shadowBlur = 8 + charge * 24 + flash * 24;
+    ctx.globalAlpha = Math.min(0.72, 0.10 + reveal * 0.62);
+    ctx.font = 'bold 31px serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = charge > 0 ? '#ff88cc' : '#d6fbff';
+    ctx.fillText('Σ', 0, 3);
+    ctx.restore();
+  }
+
+  if (charge > 0 || flash > 0) {
+    ctx.globalAlpha = 0.16 + charge * 0.62 + flash * 0.35;
+    ctx.strokeStyle = charge > 0 ? '#ff88cc' : '#d6fbff';
+    ctx.shadowColor = ctx.strokeStyle;
+    ctx.shadowBlur = 10 + charge * 18;
+    ctx.lineWidth = 2 + charge * 4;
     ctx.beginPath();
-    ctx.arc(0, 0, 40, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * sealProgress);
+    ctx.ellipse(0, 4, 42 + charge * 18, 13 + charge * 5, 0, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(charge, flash * 0.7));
     ctx.stroke();
   }
+
+  ctx.textAlign = 'center';
   ctx.restore();
 }
 
