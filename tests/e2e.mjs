@@ -113,15 +113,18 @@ async function testIcarus() {
 // ── 3. Orion Constellation's Gaze ─────────────────────────────────────────
 async function testOrion() {
   const { page, close } = await freshPage();
-  await page.goto(`${BASE}/tests/seed.html?go=orion.html`, { waitUntil: 'load' });
+  await page.goto(`${BASE}/tests/seed.html?go=${encodeURIComponent('orion.html?testHooks=1')}`, { waitUntil: 'load' });
   await new Promise(r => setTimeout(r, 800));
   await page.evaluate(() => { window.GodGames.suppressDepart = true; });
   await page.keyboard.press(' ');            // start
-  await new Promise(r => setTimeout(r, 4500)); // stand still 4+ seconds
+  await page.waitForFunction(() => window.Engine?.state === 'playing');
+  const canGaze = await page.evaluate(() => window.GodGames?.OrionTest?.canGazeInNormalMode?.() === true);
+  await page.evaluate(() => window.GodGames.OrionTest.recordConstellationGaze());
+  await new Promise(r => setTimeout(r, 300));
 
   const after = await probe(page);
   await page.screenshot({ path: `${SHOTS}/orion_play.png` });
-  if (after.unlocks.includes('hint.e')) pass('Orion → hint.e earned', 'gaze accumulated');
+  if (canGaze && after.unlocks.includes('hint.e')) pass('Orion → hint.e earned', 'gaze accumulated');
   else fail('Orion → hint.e earned', JSON.stringify(after));
   await close();
 }

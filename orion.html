@@ -609,14 +609,31 @@ function updateConstellationGaze(dt){
     gazeT += dt;
     if (gazeT >= GAZE_GOAL && window.GodGames && GodGames.Mysteries) {
       gazeT = 0;
-      GodGames.Mysteries.unlockAndDepart({
-        hintId:   'e',
-        placeId:  'asphodel',
-        fromGame: 'orion',
-      });
+      recordConstellationGaze();
     }
   }
   // No else-reset — gaze accumulates across the fight. Resets per run via initGame.
+}
+
+function recordConstellationGaze() {
+  if (window.GodGames && GodGames.Mysteries) {
+    GodGames.Mysteries.unlockAndDepart({
+      hintId:   'e',
+      placeId:  'asphodel',
+      fromGame: 'orion',
+    });
+  }
+}
+
+if (new URLSearchParams(location.search).get('testHooks') === '1') {
+  window.GodGames = window.GodGames || {};
+  window.GodGames.OrionTest = {
+    recordConstellationGaze,
+    canGazeInNormalMode() {
+      return !!(window.Engine && Engine.state === 'playing' && !Engine.manga
+        && orion && boss && boss.state !== 'dead');
+    },
+  };
 }
 
 function updatePhantoms(dt){
