@@ -36,6 +36,7 @@ Set `BASE_URL`, `CHROME_PATH`, or `SHOTS_DIR` env vars to override defaults.
 - Hub mysteries panel reflects earned-hint state.
 - `shankle` dev bypass unlocks manga mode.
 - Typing `zeus` after Z+E+U+S are earned summons the lightning bolt.
+- Earning all four letter fragments does not reveal a separate ZEUS hint.
 
 Screenshots land in `/tmp/shots/` so you can visually confirm each
 mythology cinematic (RIVER OCEANUS, ASPHODEL MEADOWS, EREBUS, TARTARUS)

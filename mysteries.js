@@ -1,8 +1,8 @@
 // mysteries.js — God Games puzzle progression.
 //
-// Each god game contributes ONE letter toward a Greek-mythological invocation.
+// Each god game contributes ONE fragment toward a Greek-mythological invocation.
 // Solving a game's secret yields:
-//   • One letter of the codeword (current letters: ZEUS).
+//   • One clue fragment toward the codeword.
 //   • A brief MythCinematic overlay — the player is briefly carried to a
 //     transitional Greek-mythology location (Oceanus, Asphodel, Erebus, …).
 //
@@ -11,9 +11,9 @@
 //   Icarus  → 'z' (Oceanus)
 //   Orion   → 'e' (Asphodel Meadows)
 //   Achilles→ 'u' (Erebus)
-//   Perseus → 's' (Tartarus) + the call-to-Zeus instruction
+//   Perseus → 's' (Tartarus)
 //
-// Final unlock: type 'ZEUS' on Mt. Olympus while the storm builds.
+// Final unlock: type the hidden codeword on Mt. Olympus while the storm builds.
 // 'shankle' remains as a dev bypass.
 
 (function () {
@@ -103,8 +103,8 @@
       {
         id: 'manga_mode',
         lockedTitle: '???',
-        lockedFlavor: 'Four myths, four letters. The mountain waits for the name.',
-        // Each hint contributes one letter of the codeword. solveOrder
+        lockedFlavor: 'Four myths, four fragments. The mountain waits for the name.',
+        // Each hint contributes one fragment of the codeword. solveOrder
         // determines panel ordering. mythLocation is what the cinematic
         // shows when the hint is earned.
         hints: [
@@ -127,13 +127,6 @@
             id: 'hint.s', letter: 'S',
             fragment: '"S" — not from the Gorgon, but from the mark cut into stone.',
             mythLocation: { name: 'TARTARUS', flavor: 'the deep prison of titans', color: '#702030' },
-          },
-          {
-            id: 'hint.zeus_call',
-            fragment: 'Climb to Olympus. Speak the name. Call to ZEUS.',
-            // This hint earns automatically when all four letter hints are
-            // earned — surfacing the final-step instruction.
-            autoEarnsAfter: ['hint.z', 'hint.e', 'hint.u', 'hint.s'],
           },
         ],
         solvedTitle: 'THE MANGA STYLE',
@@ -210,7 +203,7 @@
           MythCinematic.trigger(hint.mythLocation.name, hint.mythLocation.flavor, hint.mythLocation.color);
         }
         // Auto-cascade: any hint with autoEarnsAfter pointing entirely at
-        // earned hints now earns automatically (chains the call-to-Zeus reveal).
+        // earned hints now earns automatically.
         for (const myst of M.list) {
           for (const h of myst.hints || []) {
             if (h.autoEarnsAfter && h.autoEarnsAfter.every(a => Engine.unlock.has(a))) {
@@ -281,8 +274,8 @@
     },
 
     // ── Manga-mode codeword helpers ──────────────────────────────────────
-    // True once Z, E, U, S have all been earned. Player still has to type
-    // ZEUS on the hub to activate manga mode.
+    // True once every codeword fragment has been earned. Player still has to
+    // infer and type the hidden word on the hub to activate manga mode.
     mangaCodewordReady() {
       return M.hasHint('z') && M.hasHint('e') && M.hasHint('u') && M.hasHint('s');
     },

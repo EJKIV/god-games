@@ -367,7 +367,7 @@ async function testZeusInvocation() {
   const { page, close } = await freshPage();
   await page.evaluateOnNewDocument(() => {
     localStorage.setItem('tns.unlocks', JSON.stringify({
-      'hint.z': Date.now(), 'hint.e': Date.now(), 'hint.u': Date.now(), 'hint.s': Date.now(), 'hint.zeus_call': Date.now(),
+      'hint.z': Date.now(), 'hint.e': Date.now(), 'hint.u': Date.now(), 'hint.s': Date.now(),
     }));
     localStorage.setItem('godgames_playerName', 'TEST');
   });
@@ -386,6 +386,29 @@ async function testZeusInvocation() {
   await page.screenshot({ path: `${SHOTS}/zeus_invocation.png` });
   if (r.manga === '1' && r.solved) pass('Hub: typing ZEUS triggers manga unlock');
   else fail('Hub: typing ZEUS', JSON.stringify(r));
+  await close();
+}
+
+// ── 6b. Hub: earned letters do not reveal the whole invocation ───────────
+async function testNoZeusHintReveal() {
+  const { page, close } = await freshPage();
+  await page.evaluateOnNewDocument(() => {
+    localStorage.setItem('tns.unlocks', JSON.stringify({
+      'hint.z': Date.now(), 'hint.e': Date.now(), 'hint.u': Date.now(), 'hint.s': Date.now(),
+    }));
+    localStorage.setItem('godgames_playerName', 'TEST');
+  });
+  await page.goto(`${BASE}/index.html`, { waitUntil: 'load' });
+  await new Promise(r => setTimeout(r, 800));
+  const r = await page.evaluate(() => {
+    const manga = window.GodGames?.Mysteries?.list?.find(m => m.id === 'manga_mode');
+    return {
+      hasCallHint: !!window.Engine?.unlock?.has('hint.zeus_call'),
+      listMentionsZeus: JSON.stringify(manga || {}).toLowerCase().includes('zeus'),
+    };
+  });
+  if (!r.hasCallHint && !r.listMentionsZeus) pass('Hub: earned letters do not reveal ZEUS hint');
+  else fail('Hub: ZEUS hint hidden', JSON.stringify(r));
   await close();
 }
 
@@ -438,7 +461,7 @@ async function testPanel() {
 }
 
 // ── Run all ──────────────────────────────────────────────────────────────
-const tests = [testEngineUnlock, testProgressSyncAfterLateName, testIcarus, testIcarusRetrigger, testOrion, testAchilles, testPerseus, testPlacePage, testPerseusPlaceCharacter, testOlympusClues, testPanel, testShankleBypass, testZeusInvocation, testHeelMystery];
+const tests = [testEngineUnlock, testProgressSyncAfterLateName, testIcarus, testIcarusRetrigger, testOrion, testAchilles, testPerseus, testPlacePage, testPerseusPlaceCharacter, testOlympusClues, testPanel, testShankleBypass, testZeusInvocation, testNoZeusHintReveal, testHeelMystery];
 for (const t of tests) {
   try { await t(); }
   catch (e) { fail(t.name, 'threw: ' + e.message); }

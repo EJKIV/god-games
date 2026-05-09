@@ -438,8 +438,8 @@ function renderStorm() {
     }
     ctx.restore();
   }
-  // Codeword progress strip ("sh-a-n-..." showing typed letters in gold,
-  // remaining as faint outlines). Sits just above the mountain.
+  // Codeword progress strip showing only letters the player has typed;
+  // unknown positions stay as dots. Sits just above the mountain.
   if (_codewordIdx > 0) {
     const stripY = GY - 320;
     const cellW = 22;
@@ -467,13 +467,13 @@ function renderStorm() {
 function renderInvocationSeal() {
   const ready = codewordReady();
   const mangaOn = localStorage.getItem(MANGA_KEY) === '1';
-  if ((!ready || mangaOn) && _codewordIdx <= 0) return;
+  if (mangaOn || _codewordIdx <= 0) return;
   const olympus = portals.find(p => p.kind === 'mountain') || portals[0];
   if (!olympus) return;
   const cx = olympus.x;
   const cy = Math.max(120, GY - 320);
   const pulse = 0.5 + 0.5 * Math.sin(time * 5.2);
-  const a = ready && !mangaOn ? 0.82 + pulse * 0.18 : 0.36 + _codewordIdx * 0.12;
+  const a = 0.36 + _codewordIdx * 0.12;
 
   ctx.save();
   ctx.globalAlpha = Math.min(1, a);
@@ -496,16 +496,16 @@ function renderInvocationSeal() {
     const ang = -Math.PI / 2 + i * (Math.PI * 2 / CODEWORD.length);
     const x = Math.cos(ang) * 58;
     const y = Math.sin(ang) * 58;
-    const lit = ready || i < _codewordIdx;
-    ctx.fillStyle = lit ? '#ffeeaa' : 'rgba(220,200,150,0.25)';
-    ctx.strokeStyle = lit ? '#ffeeaa' : 'rgba(220,200,150,0.20)';
+    const lit = i < _codewordIdx;
+    ctx.fillStyle = lit ? '#ffeeaa' : 'rgba(220,200,150,0.18)';
+    ctx.strokeStyle = lit ? '#ffeeaa' : 'rgba(220,200,150,0.14)';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.roundRect(x - 16, y - 16, 32, 32, 5);
     ctx.fill();
     ctx.stroke();
     ctx.fillStyle = lit ? '#2b1608' : 'rgba(255,240,200,0.35)';
-    ctx.fillText(CODEWORD[i].toUpperCase(), x, y + 1);
+    ctx.fillText(lit ? CODEWORD[i].toUpperCase() : '·', x, y + 1);
   }
   ctx.shadowBlur = 0;
   ctx.restore();
@@ -651,20 +651,6 @@ function renderMysteriesPanel() {
         anyHintEarned = true;
         ctx.fillStyle = '#ffd54a';
         y = drawWrap('· ' + h.fragment, x0 + 16, y, panelW - 24, lh);
-      }
-      // For the manga mystery: once all letter hints are gathered, surface
-      // the assembled invocation as a single uppercase line. The player has
-      // to recognize "Z E U S" as the king's name and type it on the hub.
-      if (m.id === 'manga_mode') {
-        const lettered = (m.hints || []).filter(h => h.letter);
-        const allLettered = lettered.length > 0 && lettered.every(h => Mysteries.hasHint(h.id));
-        if (allLettered) {
-          ctx.fillStyle = '#ff88cc';
-          ctx.font = 'bold 12px monospace';
-          const word = lettered.map(h => h.letter).join(' ');
-          y = drawWrap(word, x0 + 16, y + 2, panelW - 24, lh + 1);
-          ctx.font = 'italic 10px serif';
-        }
       }
       if (anyHintEarned) y += 2;
     }
@@ -1355,8 +1341,8 @@ function inputBusy(e) {
   return tag === 'INPUT' || tag === 'TEXTAREA';
 }
 
-// Secret manga mode — earned codeword is 'zeus' (letters revealed by
-// per-game mysteries). 'shankle' remains as a dev bypass for testing.
+// Secret manga mode — the codeword is inferred from per-game mysteries.
+// 'shankle' remains as a dev bypass for testing.
 // 'normal' reverts.
 // Persisted in localStorage so the toggle survives navigation to game pages,
 // where engine.js reads it at boot and exposes Engine.manga.
