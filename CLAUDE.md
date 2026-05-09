@@ -170,7 +170,7 @@ god-games/
 
 | Date       | Change                                                                                     | Author |
 |------------|--------------------------------------------------------------------------------------------|--------|
-| 2026-05-09 | Added Perseus as the fourth god-game and extended the ZEUS mystery chain to four letters. | codex  |
+| 2026-05-09 | Added Perseus as the fourth god-game, extended the ZEUS mystery chain to four letters, and added place ambience reverb. | codex  |
 | 2026-05-08 | Documented the data-driven mystery scene-cut flow, place catalog, clue review page, and Redis progress sync. | codex  |
 | 2026-05-07 | Added `vendor/@tns/game-engine/` for Vercel deploys (Vercel excludes `node_modules` from static output). HTMLs now load from `vendor/`. `npm run sync-engine` refreshes from `node_modules`. | jim    |
 | 2026-05-07 | Engine + manga moved out to `@tns/game-engine` (consumed via npm link). god-games is now a *consumer* of the published engine. | jim    |

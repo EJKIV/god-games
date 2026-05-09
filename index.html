@@ -485,7 +485,7 @@ function renderMysteriesPanel() {
   for (const m of items) {
     neededH += 18; // title row
     for (const h of m.hints || []) {
-      if (Mysteries.hasHint(h.id)) {
+      if (hintVisible(Mysteries, h)) {
         ctx.font = 'italic 10px serif';
         const w = ctx.measureText('· ' + h.fragment).width;
         const lines = Math.max(1, Math.ceil(w / (panelW - 24)));
@@ -552,7 +552,7 @@ function renderMysteriesPanel() {
       // Then any earned hint fragments appear below as discovered fragments.
       let anyHintEarned = false;
       for (const h of m.hints || []) {
-        if (!Mysteries.hasHint(h.id)) continue;
+        if (!hintVisible(Mysteries, h)) continue;
         anyHintEarned = true;
         ctx.fillStyle = '#ffd54a';
         y = drawWrap('· ' + h.fragment, x0 + 16, y, panelW - 24, lh);
@@ -576,6 +576,14 @@ function renderMysteriesPanel() {
     y += 6;
   }
   ctx.restore();
+}
+
+function hintVisible(Mysteries, h) {
+  if (!Mysteries.hasHint(h.id)) return false;
+  if (!h.autoEarnsAfter) return true;
+  // Legacy localStorage may contain the old final hint before Perseus existed.
+  // Keep it hidden until its new prerequisites are truly present.
+  return h.autoEarnsAfter.every(id => Mysteries.hasHint(id));
 }
 
 // drawWrap: helper that wraps `text` to maxW at the current font + fillStyle,
@@ -1273,7 +1281,7 @@ let _lastStormTickT  = 0;
 let _zeusStrike = null;
 function codewordReady() {
   const M = window.GodGames && window.GodGames.Mysteries;
-  return !M || !M.mangaCodewordReady || M.mangaCodewordReady();
+  return !!(M && M.mangaCodewordReady && M.mangaCodewordReady());
 }
 function startZeusStrike() {
   if (!window.Manga || !Manga.fx || !Manga.fx.zeusStrike) {
