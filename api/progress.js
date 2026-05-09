@@ -208,8 +208,9 @@ export default async function handler(req, res) {
     res.statusCode = 405;
     res.end(JSON.stringify({ error: 'method not allowed' }));
   } catch (e) {
+    console.error('progress error:', e);
     res.statusCode = 500;
     res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ error: String(e && e.message || e) }));
+    res.end(JSON.stringify({ error: 'internal error' }));
   }
 }

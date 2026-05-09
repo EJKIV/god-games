@@ -26,6 +26,8 @@ Set `BASE_URL`, `CHROME_PATH`, or `SHOTS_DIR` env vars to override defaults.
   bug where `engine.js` declared `const Engine` at top-level but never
   set `window.Engine`, so `unlock/index.js` attached to a separate empty
   shell and every `earnHint()` silently failed).
+- Progress sync waits for first-time name entry, then pulls remote unlocks
+  after the name modal saves `localStorage.godgames_playerName`.
 - Icarus → `hint.z` earned by touching peak altitude (Sun's Embrace).
 - Orion → `hint.e` earned by standing still beneath the constellation.
 - Achilles → `hint.u` earned by counter-shooting 3 archers in 6.5s.

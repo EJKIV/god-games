@@ -1,9 +1,10 @@
 // progress-sync.js — backs Engine.unlock state with Redis via /api/progress.
 //
 // Lifecycle:
-//   1. On script load, look up the player's name (localStorage.godgames_playerName).
-//      If missing or empty, do nothing — no auth, no name, no sync.
-//   2. GET /api/progress?name=<player>. Merge remote state into Engine.unlock:
+//   1. Watch for the player's name (localStorage.godgames_playerName).
+//      It may be missing on first load until the name modal saves it.
+//   2. When a name exists or changes, GET /api/progress?name=<player>.
+//      Merge remote state into Engine.unlock:
 //      • set every remote unlock id (no-op if local already has it)
 //      • for every remote counter, take max(local, remote) and write back
 //   3. Subscribe to Engine.unlock.onChange. On any change, debounce ~2s and
@@ -26,6 +27,7 @@
   const NAME_KEY = 'godgames_playerName';
   const ENDPOINT = '/api/progress';
   const DEBOUNCE_MS = 2000;
+  const PULL_RETRY_MS = 15000;
 
   function getName() {
     try { return (localStorage.getItem(NAME_KEY) || '').trim(); }
@@ -37,6 +39,12 @@
     try { unlocks  = JSON.parse(localStorage.getItem('tns.unlocks')  || '{}') || {}; } catch (_e) {}
     try { counters = JSON.parse(localStorage.getItem('tns.counters') || '{}') || {}; } catch (_e) {}
     return { unlocks, counters };
+  }
+
+  function hasAnyState(state) {
+    return !!(state
+      && ((state.unlocks && Object.keys(state.unlocks).length)
+        || (state.counters && Object.keys(state.counters).length)));
   }
 
   // Merge remote into Engine.unlock (the local state). Returns true if the
@@ -61,16 +69,39 @@
     return changed;
   }
 
-  // ── Initial pull on load ─────────────────────────────────────────────
-  async function pullInitial() {
+  // ── Remote pull whenever the active player name appears/changes ──────
+  let lastPulledName = '';
+  let lastAttemptedName = '';
+  let nextPullAt = 0;
+  let pullInFlightName = '';
+  async function pullForCurrentName() {
     const name = getName();
-    if (!name) return;
+    if (!name || name === lastPulledName || name === pullInFlightName) return;
+    const now = Date.now();
+    if (name !== lastAttemptedName) {
+      lastAttemptedName = name;
+      nextPullAt = 0;
+    }
+    if (now < nextPullAt) return;
+    pullInFlightName = name;
     try {
       const r = await fetch(`${ENDPOINT}?name=${encodeURIComponent(name)}`, { method: 'GET' });
-      if (!r.ok) return;
+      if (!r.ok) {
+        nextPullAt = Date.now() + PULL_RETRY_MS;
+        return;
+      }
       const remote = await r.json();
       mergeRemoteIntoLocal(remote);
-    } catch (_e) { /* offline / cors / 4xx — silent */ }
+      lastPulledName = name;
+      nextPullAt = 0;
+      if (hasAnyState(getLocalState())) schedulePush();
+    } catch (_e) {
+      nextPullAt = Date.now() + PULL_RETRY_MS;
+      /* offline / cors / 4xx — silent */
+    }
+    finally {
+      if (pullInFlightName === name) pullInFlightName = '';
+    }
   }
 
   // ── Debounced push on change ─────────────────────────────────────────
@@ -103,13 +134,17 @@
       setTimeout(start, 50);
       return;
     }
-    pullInitial();
+    pullForCurrentName();
     Engine.unlock.onChange(schedulePush);
+    setInterval(pullForCurrentName, 1000);
+    window.addEventListener('focus', pullForCurrentName);
     // Best-effort flush on page hide so we don't lose a freshly-earned hint.
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') {
         if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
         pushNow();
+      } else {
+        pullForCurrentName();
       }
     });
   }

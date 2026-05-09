@@ -40,7 +40,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/EJKIV/tellandshow",
+    "url": "git+https://github.com/EJKIV/tellandshow.git",
     "directory": "game-studio/packages/game-engine"
   },
   "publishConfig": {

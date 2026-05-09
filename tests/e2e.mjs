@@ -81,6 +81,63 @@ async function testEngineUnlock() {
   await close();
 }
 
+// ── 1b. Progress sync waits for first-time name entry ────────────────────
+async function testProgressSyncAfterLateName() {
+  const { page, close } = await freshPage();
+  let pulls = 0;
+  let posts = 0;
+  await page.setRequestInterception(true);
+  page.on('request', req => {
+    const url = new URL(req.url());
+    if (url.pathname !== '/api/progress') {
+      req.continue();
+      return;
+    }
+    if (req.method() === 'GET') {
+      pulls++;
+      req.respond({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          unlocks: { 'hint.z': 123 },
+          counters: { mysteries_solved_count: 2 },
+        }),
+      });
+      return;
+    }
+    if (req.method() === 'POST') {
+      posts++;
+      req.respond({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ unlocks: {}, counters: {} }),
+      });
+      return;
+    }
+    req.respond({ status: 204 });
+  });
+
+  await page.goto(`${BASE}/index.html`, { waitUntil: 'load' });
+  await new Promise(r => setTimeout(r, 700));
+  const pullsBeforeName = pulls;
+  await page.type('#nameInput', 'LATE');
+  await page.click('#nameSave');
+  await page.waitForFunction(() => window.Engine?.unlock?.has('hint.z') === true, { timeout: 4000 });
+  await new Promise(r => setTimeout(r, 2500));
+
+  const r = await page.evaluate(() => ({
+    name: localStorage.getItem('godgames_playerName'),
+    hasZ: !!window.Engine?.unlock?.has('hint.z'),
+    count: window.Engine?.unlock?.count('mysteries_solved_count') || 0,
+  }));
+  if (pullsBeforeName === 0 && pulls >= 1 && posts >= 1 && r.name === 'LATE' && r.hasZ && r.count === 2) {
+    pass('Progress sync pulls after first-time name save');
+  } else {
+    fail('Progress sync late name', JSON.stringify({ pullsBeforeName, pulls, posts, r }));
+  }
+  await close();
+}
+
 // ── 2. Icarus Sun's Embrace ──────────────────────────────────────────────
 //
 // New experience: trigger fires → game ends → page navigates to
@@ -381,7 +438,7 @@ async function testPanel() {
 }
 
 // ── Run all ──────────────────────────────────────────────────────────────
-const tests = [testEngineUnlock, testIcarus, testIcarusRetrigger, testOrion, testAchilles, testPerseus, testPlacePage, testPerseusPlaceCharacter, testOlympusClues, testPanel, testShankleBypass, testZeusInvocation, testHeelMystery];
+const tests = [testEngineUnlock, testProgressSyncAfterLateName, testIcarus, testIcarusRetrigger, testOrion, testAchilles, testPerseus, testPlacePage, testPerseusPlaceCharacter, testOlympusClues, testPanel, testShankleBypass, testZeusInvocation, testHeelMystery];
 for (const t of tests) {
   try { await t(); }
   catch (e) { fail(t.name, 'threw: ' + e.message); }
