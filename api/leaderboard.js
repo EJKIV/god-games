@@ -113,10 +113,12 @@ async function fetchTop(game, limit) {
 // but we defend against the raw-stream case too) ──────────────────────────
 async function readJsonBody(req) {
   if (bodyTooLarge(req)) return null;
-  if (req.body && typeof req.body === 'object') return req.body;
-  if (typeof req.body === 'string') {
-    if (req.body.length > MAX_PAYLOAD_BYTES) return null;
-    try { return JSON.parse(req.body); } catch { return null; }
+  let parsedBody;
+  try { parsedBody = req.body; } catch (_e) { return null; }
+  if (parsedBody && typeof parsedBody === 'object') return parsedBody;
+  if (typeof parsedBody === 'string') {
+    if (parsedBody.length > MAX_PAYLOAD_BYTES) return null;
+    try { return JSON.parse(parsedBody); } catch { return null; }
   }
   // raw stream fallback
   let buf = '';
