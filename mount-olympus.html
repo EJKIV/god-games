@@ -324,7 +324,7 @@ const $ = (id) => document.getElementById(id);
 // ─── Name handling ──────────────────────────────────────────────────────
 function getName() { return localStorage.getItem(NAME_KEY) || ''; }
 function setName(n) {
-  const clean = (n || '').replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 20);
+  const clean = (n || '').replace(/[\x00-\x1f\x7f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 20);
   if (!clean) return false;
   localStorage.setItem(NAME_KEY, clean);
   $('whoName').textContent = clean;
