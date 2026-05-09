@@ -98,7 +98,7 @@ god-games/
 ├── achilles.html               Arrow Gauntlet — overhead dodge. First manga-mode integration.
 ├── icarus.html                 Flight game — sun/sea wing damage, tutorial.
 ├── orion.html                  Boss fight — scorpion vs spear/stab/dodge.
-├── perseus.html                Gorgon mirror game — shield reflection + serpent slashing.
+├── perseus.html                Gorgon mirror game — three-chamber progression, serpent veil, hidden sigma secret.
 ├── mount-olympus.html          Leaderboard display (Icarus / Orion / Achilles / Perseus tablets).
 ├── place.html                  Cinematic mystery destination; consumes places.js.
 ├── olympus-clues.html          Toad's clue review page on Mt. Olympus.
@@ -171,6 +171,7 @@ god-games/
 | Date       | Change                                                                                     | Author |
 |------------|--------------------------------------------------------------------------------------------|--------|
 | 2026-05-09 | Tuned Perseus around mirror focus, shield heat, serpent reflection, and upgraded the ZEUS invocation payoff so it solves `manga_mode` through the mystery system. | codex  |
+| 2026-05-09 | Reworked Perseus into three chambers with clearer Medusa defeat rules, serpent-veil variety, final hazards, local manga rendering, and a hidden sigma trigger for the `S` letter. | codex  |
 | 2026-05-09 | Replaced the Perseus reward-scene placeholder with a local Perseus traveler drawing, hardened progress CORS, and made Olympus leaderboard API failures visible. | codex  |
 | 2026-05-09 | Added Perseus as the fourth god-game, extended the ZEUS mystery chain to four letters, and added place ambience reverb. | codex  |
 | 2026-05-08 | Documented the data-driven mystery scene-cut flow, place catalog, clue review page, and Redis progress sync. | codex  |

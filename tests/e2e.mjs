@@ -152,7 +152,7 @@ async function testAchilles() {
   await close();
 }
 
-// ── 4a. Perseus Gorgon's Mirror ─────────────────────────────────────────
+// ── 4a. Perseus: chambers + hidden sigma ─────────────────────────────────
 async function testPerseus() {
   const { page, close } = await freshPage();
   await page.goto(`${BASE}/tests/seed.html?go=${encodeURIComponent('perseus.html?testHooks=1')}`, { waitUntil: 'load' });
@@ -161,17 +161,24 @@ async function testPerseus() {
   await page.keyboard.press(' ');
   await page.waitForFunction(() => window.Engine?.state === 'playing');
   const canReflect = await page.evaluate(() => window.GodGames?.PerseusTest?.canReflectInNormalMode?.() === true);
-  await page.evaluate(() => {
-    window.GodGames.PerseusTest.recordMirrorStrike();
-    window.GodGames.PerseusTest.recordMirrorStrike();
-    window.GodGames.PerseusTest.recordMirrorStrike();
-  });
+  const victoryState = await page.evaluate(() => window.GodGames.PerseusTest.completeRun());
+  const runState = await page.evaluate(() => window.GodGames.PerseusTest.state());
+  await page.reload({ waitUntil: 'load' });
+  await new Promise(r => setTimeout(r, 500));
+  await page.evaluate(() => { window.GodGames.suppressDepart = true; });
+  await page.keyboard.press(' ');
+  await page.waitForFunction(() => window.Engine?.state === 'playing');
+  await page.evaluate(() => window.GodGames.PerseusTest.enterFinalChamber());
+  const sealSolved = await page.evaluate(() => window.GodGames.PerseusTest.solveHiddenSeal());
   await new Promise(r => setTimeout(r, 300));
 
   const after = await probe(page);
   await page.screenshot({ path: `${SHOTS}/perseus_play.png` });
-  if (canReflect && after.unlocks.includes('hint.s')) pass('Perseus → hint.s earned', 'Gorgon mirror');
-  else fail('Perseus → hint.s earned', JSON.stringify(after));
+  if (canReflect && victoryState === 'victory' && runState.levelIndex === 2 && sealSolved && after.unlocks.includes('hint.s')) {
+    pass('Perseus → chambers clear + hidden sigma earns hint.s', `hits=${runState.mirrorHits}`);
+  } else {
+    fail('Perseus → chambers + hidden sigma', JSON.stringify({ canReflect, victoryState, runState, sealSolved, after }));
+  }
   await close();
 }
 

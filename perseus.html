@@ -66,18 +66,71 @@ canvas { display:block; }
 const NAME_KEY = 'godgames_playerName';
 const HP_MAX = 4;
 const PERSEUS_ACCENT = '#3db0c6';
+const LEVELS = [
+  {
+    title: 'CHAMBER I',
+    name: 'THE POLISHED SHIELD',
+    prompt: 'When the eye opens, face Medusa and hold Z.',
+    hitsNeeded: 1,
+    veil: 0,
+    snakeEvery: [1.8, 2.3],
+    snakeSpeed: 215,
+    mirrorGain: 1.08,
+    heatUseful: 0.15,
+    heatIdle: 0.38,
+    gaze: { watch: 1.35, windup: 0.82, open: 1.75, rest: 1.05 },
+    hazards: 0,
+  },
+  {
+    title: 'CHAMBER II',
+    name: 'THE SERPENT GALLERY',
+    prompt: 'Turn two serpents back before the mirror can bite.',
+    hitsNeeded: 2,
+    veil: 2,
+    snakeEvery: [1.05, 1.45],
+    snakeSpeed: 250,
+    mirrorGain: 0.88,
+    heatUseful: 0.19,
+    heatIdle: 0.43,
+    gaze: { watch: 1.05, windup: 0.70, open: 1.45, rest: 0.95 },
+    hazards: 0,
+  },
+  {
+    title: 'CHAMBER III',
+    name: 'THE UNBLINKING CAVE',
+    prompt: 'The final gaze breaks only after three clean reflections.',
+    hitsNeeded: 3,
+    veil: 1,
+    snakeEvery: [0.82, 1.12],
+    snakeSpeed: 285,
+    mirrorGain: 0.76,
+    heatUseful: 0.23,
+    heatIdle: 0.48,
+    gaze: { watch: 0.92, windup: 0.62, open: 1.28, rest: 0.82 },
+    hazards: 2,
+  },
+];
 
 let player, medusa;
 let snakes = [];
 let sparks = [];
 let floaters = [];
+let hazards = [];
 let playTime = 0;
 let mirrorHits = 0;
+let levelHits = 0;
+let levelIndex = 0;
+let levelBannerT = 0;
+let levelTransitionT = 0;
+let pendingLevel = null;
 let mirrorFocus = 0;
 let mirrorHeat = 0;
 let mirrorDullT = 0;
 let mirrorFlashT = 0;
 let reflectedSerpents = 0;
+let sealProgress = 0;
+let sealSolved = false;
+let sealFlashT = 0;
 let submittedThisRun = false;
 let hallStatus = null;
 let hallRank = null;
@@ -86,6 +139,8 @@ let canvas, ctx;
 function groundY() { return Engine.H * 0.78; }
 function caveLeft() { return Math.max(44, Engine.W * 0.06); }
 function caveRight() { return Math.min(Engine.W - 44, Engine.W * 0.94); }
+function levelCfg() { return LEVELS[levelIndex] || LEVELS[LEVELS.length - 1]; }
+function sealX() { return Engine.W * 0.33; }
 
 function beep(freq, dur, type, vol, slide) {
   const ac = Engine.audio._ctx;
@@ -124,36 +179,84 @@ function resetGame() {
     hitFlash: 0,
     petrify: 0,
   };
-  medusa = {
-    x: Engine.W * 0.78,
-    y: groundY(),
-    hp: 3,
-    phase: 'watch',
-    phaseT: 1.25,
-    strikeReady: true,
-    snakeT: 0.7,
-    hurtFlash: 0,
-  };
+  medusa = null;
   snakes = [];
   sparks = [];
   floaters = [];
+  hazards = [];
   playTime = 0;
   mirrorHits = 0;
+  levelHits = 0;
+  levelIndex = 0;
+  levelTransitionT = 0;
+  pendingLevel = null;
   mirrorFocus = 0;
   mirrorHeat = 0;
   mirrorDullT = 0;
   mirrorFlashT = 0;
   reflectedSerpents = 0;
+  sealProgress = 0;
+  sealSolved = false;
+  sealFlashT = 0;
   submittedThisRun = false;
   hallStatus = null;
   hallRank = null;
+  setupLevel(0);
+}
+
+function setupLevel(idx) {
+  levelIndex = Math.max(0, Math.min(LEVELS.length - 1, idx));
+  const cfg = levelCfg();
+  const gy = groundY();
+  player.x = Engine.W * (0.19 + levelIndex * 0.025);
+  player.y = gy;
+  player.vx = 0;
+  player.facing = 1;
+  player.shield = 0;
+  player.slashT = 0;
+  player.petrify = 0;
+  medusa = {
+    x: Engine.W * (0.78 + levelIndex * 0.015),
+    y: gy,
+    hp: cfg.hitsNeeded,
+    veil: cfg.veil,
+    phase: 'watch',
+    phaseT: cfg.gaze.watch,
+    strikeReady: true,
+    snakeT: 0.8,
+    hurtFlash: 0,
+  };
+  snakes.length = 0;
+  floaters.length = 0;
+  hazards = makeHazards(cfg.hazards);
+  levelHits = 0;
+  mirrorFocus = 0;
+  mirrorHeat = 0;
+  mirrorDullT = 0;
+  mirrorFlashT = 0;
+  levelBannerT = 2.4;
+}
+
+function makeHazards(count) {
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    out.push({
+      x: Engine.W * (0.43 + i * 0.14),
+      baseY: groundY() - 22,
+      phase: i * Math.PI,
+      r: 22,
+    });
+  }
+  return out;
 }
 
 function finalScore() {
   const timeBonus = Math.max(0, 90000 - Math.floor(playTime * 1000));
   return Math.max(0, Math.floor(
     mirrorHits * 2500
+    + levelIndex * 3500
     + reflectedSerpents * 650
+    + (sealSolved ? 5000 : 0)
     + player.hp * 900
     + timeBonus
   ));
@@ -206,11 +309,12 @@ function floater(x, y, text, color) {
 }
 
 function setGazePhase(next) {
+  const cfg = levelCfg();
   medusa.phase = next;
-  if (next === 'watch') { medusa.phaseT = 1.15 + Math.random() * 0.45; medusa.strikeReady = true; }
-  if (next === 'windup') { medusa.phaseT = 0.72; medusa.strikeReady = true; sfx.gaze(); }
-  if (next === 'gaze') { medusa.phaseT = 1.35; medusa.strikeReady = true; mirrorFocus = Math.max(0, mirrorFocus - 0.12); }
-  if (next === 'rest') { medusa.phaseT = 1.05; medusa.strikeReady = false; }
+  if (next === 'watch') { medusa.phaseT = cfg.gaze.watch + Math.random() * 0.22; medusa.strikeReady = true; }
+  if (next === 'windup') { medusa.phaseT = cfg.gaze.windup; medusa.strikeReady = true; sfx.gaze(); }
+  if (next === 'gaze') { medusa.phaseT = cfg.gaze.open; medusa.strikeReady = true; mirrorFocus = Math.max(0, mirrorFocus - 0.08); }
+  if (next === 'rest') { medusa.phaseT = cfg.gaze.rest; medusa.strikeReady = false; }
 }
 
 function mirrorAlignment() {
@@ -232,11 +336,12 @@ function dullMirror() {
 }
 
 function spawnSnake() {
+  const cfg = levelCfg();
   const y = groundY() - 18 - Math.random() * 34;
   snakes.push({
     x: medusa.x - 30,
     y,
-    vx: -210 - Math.random() * 70 - playTime * 1.5,
+    vx: -cfg.snakeSpeed - Math.random() * 70 - levelIndex * 18,
     wobble: Math.random() * Math.PI * 2,
     returning: false,
     alive: true,
@@ -259,9 +364,18 @@ function slash() {
 }
 
 function recordMirrorStrike(source = 'gaze') {
-  if (!player || !medusa || mirrorHits >= 3) return;
+  if (!player || !medusa || levelTransitionT > 0 || Engine.state !== 'playing') return;
+  if (medusa.veil > 0) {
+    mirrorFocus = 0;
+    mirrorFlashT = 0.18;
+    floater(medusa.x - 20, medusa.y - 120, 'THE VEIL HOLDS', '#9fb2b8');
+    burst(medusa.x - 34, medusa.y - 82, '#9fb2b8', 12, 0.8);
+    Engine.shake(4);
+    return;
+  }
   mirrorHits++;
-  medusa.hp = Math.max(0, 3 - mirrorHits);
+  levelHits++;
+  medusa.hp = Math.max(0, levelCfg().hitsNeeded - levelHits);
   medusa.hurtFlash = 0.35;
   medusa.strikeReady = false;
   mirrorFocus = 0;
@@ -273,26 +387,90 @@ function recordMirrorStrike(source = 'gaze') {
   Engine.shake(8);
   sfx.mirror();
 
-  if (mirrorHits >= 3) {
-    sfx.win();
-    if (window.GodGames && GodGames.Mysteries) {
-      GodGames.Mysteries.unlockAndDepart({
-        hintId: 's',
-        placeId: 'tartarus',
-        fromGame: 'perseus',
-      });
-    }
-    if (window.GodGames && window.GodGames.suppressDepart) Engine.setState('victory');
+  if (levelHits >= levelCfg().hitsNeeded) {
+    completeLevel();
   }
+}
+
+function crackVeil(x, y) {
+  if (!medusa || medusa.veil <= 0) return;
+  medusa.veil--;
+  medusa.hurtFlash = 0.22;
+  burst(x, y, '#d6fbff', 20, 1.0);
+  floater(medusa.x - 22, medusa.y - 116, medusa.veil > 0 ? 'VEIL CRACKED' : 'VEIL BROKEN', '#d6fbff');
+  Engine.shake(5);
+}
+
+function completeLevel() {
+  sfx.win();
+  if (levelIndex >= LEVELS.length - 1) {
+    submitToHall(finalScore());
+    Engine.setState('victory');
+    return;
+  }
+  levelTransitionT = 1.9;
+  pendingLevel = levelIndex + 1;
+  mirrorFocus = 0;
+  mirrorHeat = 0;
+  snakes.length = 0;
+  floater(Engine.W / 2, Engine.H * 0.24, 'CHAMBER CLEARED', '#ffd54a');
+}
+
+function triggerSerpentSeal() {
+  if (sealSolved) return false;
+  sealSolved = true;
+  sealFlashT = 1.0;
+  burst(sealX(), groundY() - 10, '#ff88cc', 34, 1.2);
+  floater(sealX(), groundY() - 70, 'THE HIDDEN SIGMA ANSWERS', '#ff88cc');
+  Engine.shake(8);
+  if (window.GodGames && GodGames.Mysteries) {
+    GodGames.Mysteries.unlockAndDepart({
+      hintId: 's',
+      placeId: 'tartarus',
+      fromGame: 'perseus',
+    });
+  }
+  return true;
 }
 
 if (new URLSearchParams(location.search).get('testHooks') === '1') {
   window.GodGames = window.GodGames || {};
   window.GodGames.PerseusTest = {
     recordMirrorStrike,
+    crackVeil,
+    triggerSerpentSeal,
     canReflectInNormalMode() {
       return !!(window.Engine && Engine.state === 'playing' && !Engine.manga
-        && medusa && mirrorHits === 0 && medusa.hp === 3);
+        && medusa && levelIndex === 0 && levelHits === 0);
+    },
+    completeRun() {
+      while (Engine.state === 'playing') {
+        medusa.veil = 0;
+        recordMirrorStrike('test');
+        if (levelTransitionT > 0 && pendingLevel != null) {
+          setupLevel(pendingLevel);
+          levelTransitionT = 0;
+          pendingLevel = null;
+        }
+      }
+      return Engine.state;
+    },
+    solveHiddenSeal() {
+      return triggerSerpentSeal();
+    },
+    enterFinalChamber() {
+      setupLevel(LEVELS.length - 1);
+      return this.state();
+    },
+    state() {
+      return {
+        levelIndex,
+        levelHits,
+        mirrorHits,
+        veil: medusa && medusa.veil,
+        sealSolved,
+        engineState: Engine.state,
+      };
     },
   };
 }
@@ -313,8 +491,23 @@ function damagePlayer(amount) {
 }
 
 function update(dt) {
+  if (!player || !medusa) return;
   playTime += dt;
+  if (levelBannerT > 0) levelBannerT = Math.max(0, levelBannerT - dt);
+  if (sealFlashT > 0) sealFlashT = Math.max(0, sealFlashT - dt);
 
+  if (levelTransitionT > 0) {
+    levelTransitionT -= dt;
+    updateParticles(dt);
+    if (levelTransitionT <= 0 && pendingLevel != null) {
+      const next = pendingLevel;
+      pendingLevel = null;
+      setupLevel(next);
+    }
+    return;
+  }
+
+  const cfg = levelCfg();
   const left = Engine.keys.ArrowLeft || Engine.keys.a || Engine.keys.A;
   const right = Engine.keys.ArrowRight || Engine.keys.d || Engine.keys.D;
   const shieldHeld = Engine.keys.z || Engine.keys.Z;
@@ -339,7 +532,7 @@ function update(dt) {
 
   if (shieldHeld && mirrorDullT <= 0) {
     const usefulGaze = medusa.phase === 'gaze' && player.facing > 0 && player.x < medusa.x;
-    mirrorHeat = Math.min(1.12, mirrorHeat + dt * (usefulGaze ? 0.20 : 0.42));
+    mirrorHeat = Math.min(1.12, mirrorHeat + dt * (usefulGaze ? cfg.heatUseful : cfg.heatIdle));
     if (mirrorHeat >= 1) dullMirror();
   } else {
     mirrorHeat = Math.max(0, mirrorHeat - dt * (mirrorDullT > 0 ? 0.42 : 0.78));
@@ -356,7 +549,7 @@ function update(dt) {
   medusa.snakeT -= dt;
   const canSpit = medusa.phase !== 'gaze';
   if (canSpit && medusa.snakeT <= 0) {
-    medusa.snakeT = 1.25 + Math.random() * 0.45;
+    medusa.snakeT = cfg.snakeEvery[0] + Math.random() * Math.max(0.05, cfg.snakeEvery[1] - cfg.snakeEvery[0]);
     spawnSnake();
   }
 
@@ -366,7 +559,7 @@ function update(dt) {
       const align = mirrorAlignment();
       player.petrify = Math.max(0, player.petrify - dt * 0.45);
       if (medusa.strikeReady && player.shield > 0.72) {
-        mirrorFocus = Math.min(1.02, mirrorFocus + dt * (0.42 + align * 1.15));
+        mirrorFocus = Math.min(1.02, mirrorFocus + dt * (0.34 + align * cfg.mirrorGain));
         if (mirrorFocus >= 1 && medusa.phaseT < 1.04) {
           recordMirrorStrike('gaze');
         }
@@ -391,7 +584,8 @@ function update(dt) {
       if (Math.abs(s.x - hx) < 44 && Math.abs(s.y - hy) < 82) {
         s.alive = false;
         reflectedSerpents++;
-        medusa.hurtFlash = 0.24;
+        crackVeil(s.x, s.y);
+        medusa.hurtFlash = Math.max(medusa.hurtFlash, 0.24);
         medusa.phaseT = Math.min(medusa.phaseT, 0.58);
         mirrorFocus = Math.min(0.96, mirrorFocus + 0.34);
         burst(s.x, s.y, '#d6fbff', 14, 0.9);
@@ -426,6 +620,42 @@ function update(dt) {
   }
   snakes = snakes.filter(s => s.alive);
 
+  updateHazards(dt);
+  updateSerpentSeal(dt, shieldHeld);
+  updateParticles(dt);
+}
+
+function updateHazards(dt) {
+  for (const h of hazards) {
+    h.phase += dt * (1.6 + levelIndex * 0.25);
+    const hx = h.x + Math.sin(h.phase * 0.7) * 34;
+    const hy = h.baseY - Math.abs(Math.sin(h.phase)) * 74;
+    h.drawX = hx;
+    h.drawY = hy;
+    if (Math.hypot(player.x - hx, (player.y - 34) - hy) < h.r + 18) {
+      damagePlayer(1);
+      h.phase += Math.PI * 0.7;
+    }
+  }
+}
+
+function updateSerpentSeal(dt, shieldHeld) {
+  if (sealSolved || levelIndex < LEVELS.length - 1 || Engine.state !== 'playing') {
+    sealProgress = Math.max(0, sealProgress - dt * 0.8);
+    return;
+  }
+  const onSeal = Math.abs(player.x - sealX()) < 42;
+  const facingAway = player.facing < 0;
+  const timedWithGaze = medusa.phase === 'gaze';
+  if (onSeal && shieldHeld && facingAway && timedWithGaze && mirrorDullT <= 0) {
+    sealProgress = Math.min(1.05, sealProgress + dt * 0.85);
+    if (sealProgress >= 1) triggerSerpentSeal();
+  } else {
+    sealProgress = Math.max(0, sealProgress - dt * 0.55);
+  }
+}
+
+function updateParticles(dt) {
   for (let i = sparks.length - 1; i >= 0; i--) {
     const p = sparks[i];
     p.t -= dt;
@@ -444,10 +674,11 @@ function update(dt) {
 
 function drawBackground(t) {
   const W = Engine.W, H = Engine.H, gy = groundY();
+  const cfg = levelCfg();
   const sky = ctx.createLinearGradient(0, 0, 0, H);
-  sky.addColorStop(0, '#02070a');
-  sky.addColorStop(0.5, '#071923');
-  sky.addColorStop(1, '#041013');
+  sky.addColorStop(0, levelIndex === 2 ? '#09020a' : '#02070a');
+  sky.addColorStop(0.5, levelIndex === 1 ? '#0d1628' : '#071923');
+  sky.addColorStop(1, levelIndex === 2 ? '#13040c' : '#041013');
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, W, H);
 
@@ -498,6 +729,13 @@ function drawBackground(t) {
     ctx.fillStyle = 'rgba(120,190,198,0.09)';
     ctx.fillRect(x - 6, H * 0.18, 4, gy - H * 0.18);
   }
+
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 13px monospace';
+  ctx.fillStyle = 'rgba(214,251,255,0.22)';
+  ctx.fillText(cfg.title + ' · ' + cfg.name, W / 2, gy + 34);
+  ctx.restore();
 }
 
 function drawGazeCone(t) {
@@ -519,7 +757,7 @@ function drawGazeCone(t) {
 }
 
 function drawMirrorBeam(t) {
-  const active = mirrorFocus > 0.02 || mirrorFlashT > 0;
+  const active = mirrorFocus > 0.02 || mirrorFlashT > 0 || sealProgress > 0.02;
   if (!active || !player || !medusa) return;
   const flash = mirrorFlashT > 0 ? Math.min(1, mirrorFlashT / 0.18) : 0;
   const a = Math.min(0.85, 0.14 + mirrorFocus * 0.42 + flash * 0.45);
@@ -527,28 +765,48 @@ function drawMirrorBeam(t) {
   const sy = player.y - 44;
   const ex = medusa.x - 30;
   const ey = medusa.y - 92;
-  ctx.save();
-  ctx.globalAlpha = a;
-  ctx.lineCap = 'round';
-  ctx.shadowColor = '#d6fbff';
-  ctx.shadowBlur = 12 + flash * 18;
-  ctx.strokeStyle = '#d6fbff';
-  ctx.lineWidth = 3 + flash * 5;
-  ctx.beginPath();
-  ctx.moveTo(sx, sy);
-  ctx.quadraticCurveTo((sx + ex) / 2, sy - 18 - Math.sin(t * 12) * 8, ex, ey);
-  ctx.stroke();
-  ctx.shadowBlur = 0;
-  ctx.strokeStyle = 'rgba(255,255,255,0.92)';
-  ctx.lineWidth = 1.2 + flash * 1.5;
-  ctx.beginPath();
-  ctx.moveTo(sx, sy);
-  ctx.quadraticCurveTo((sx + ex) / 2, sy - 18, ex, ey);
-  ctx.stroke();
-  ctx.restore();
+  if (mirrorFocus > 0.02 || mirrorFlashT > 0) {
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.lineCap = 'round';
+    ctx.shadowColor = '#d6fbff';
+    ctx.shadowBlur = 12 + flash * 18;
+    ctx.strokeStyle = '#d6fbff';
+    ctx.lineWidth = 3 + flash * 5;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.quadraticCurveTo((sx + ex) / 2, sy - 18 - Math.sin(t * 12) * 8, ex, ey);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+    ctx.lineWidth = 1.2 + flash * 1.5;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.quadraticCurveTo((sx + ex) / 2, sy - 18, ex, ey);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  if (sealProgress > 0.02) {
+    ctx.save();
+    ctx.globalAlpha = 0.18 + sealProgress * 0.58;
+    ctx.strokeStyle = '#ff88cc';
+    ctx.shadowColor = '#ff88cc';
+    ctx.shadowBlur = 18;
+    ctx.lineWidth = 3 + sealProgress * 3;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.quadraticCurveTo((sx + sealX()) / 2, sy + 40, sealX(), groundY() + 35);
+    ctx.stroke();
+    ctx.restore();
+  }
 }
 
 function drawPerseus(t) {
+  if (Engine.manga && window.Manga && Manga.effects && typeof Manga.effects.inkStroke === 'function') {
+    drawMangaPerseus(t);
+    return;
+  }
   const f = player.facing;
   const walk = Math.sin(player.walkPhase) * (Math.abs(player.vx) > 0 ? 1 : 0);
   ctx.save();
@@ -615,7 +873,161 @@ function drawPerseus(t) {
   ctx.restore();
 }
 
+function drawMangaPerseus(t) {
+  const f = player.facing;
+  const walk = Math.sin(player.walkPhase) * (Math.abs(player.vx) > 0 ? 1 : 0);
+  const ink = Manga.INK || '#0a0a0a';
+  ctx.save();
+  ctx.translate(player.x, player.y);
+  ctx.scale(f, 1);
+
+  ctx.fillStyle = 'rgba(0,0,0,0.58)';
+  ctx.beginPath(); ctx.ellipse(0, 7, 34, 9, 0, 0, Math.PI * 2); ctx.fill();
+
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = '#c49b62'; ctx.lineWidth = 7;
+  ctx.beginPath(); ctx.moveTo(-8, -22); ctx.lineTo(-14 + walk * 9, 2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(8, -22); ctx.lineTo(14 - walk * 9, 2); ctx.stroke();
+  Manga.effects.inkStroke(ctx, 2);
+  ctx.beginPath(); ctx.moveTo(-8, -22); ctx.lineTo(-14 + walk * 9, 2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(8, -22); ctx.lineTo(14 - walk * 9, 2); ctx.stroke();
+
+  ctx.fillStyle = player.hitFlash > 0 ? '#ffffff' : '#f0e3bf';
+  ctx.beginPath();
+  ctx.moveTo(-20, -20); ctx.lineTo(-15, -62); ctx.lineTo(15, -62); ctx.lineTo(20, -20);
+  ctx.closePath(); ctx.fill();
+  Manga.effects.inkStroke(ctx, 4); ctx.stroke();
+  ctx.fillStyle = '#d4af37';
+  ctx.beginPath(); ctx.ellipse(0, -43, 16, 21, 0, 0, Math.PI * 2); ctx.fill();
+  Manga.effects.inkStroke(ctx, 2); ctx.stroke();
+  ctx.save();
+  ctx.beginPath(); ctx.ellipse(0, -43, 16, 21, 0, 0, Math.PI * 2); ctx.clip();
+  Manga.effects.halftone(ctx, 0, -65, 22, 46, { density: 5, dotSize: 1.5, alpha: 0.42, color: ink });
+  ctx.restore();
+
+  ctx.strokeStyle = '#c49b62'; ctx.lineWidth = 7;
+  ctx.beginPath(); ctx.moveTo(14, -55); ctx.lineTo(30, -42); ctx.stroke();
+  ctx.shadowColor = '#d6fbff'; ctx.shadowBlur = player.slashT > 0 ? 18 : 6;
+  ctx.strokeStyle = player.slashT > 0 ? '#ffffff' : '#edf8ff';
+  ctx.lineWidth = player.slashT > 0 ? 5 : 3;
+  ctx.beginPath(); ctx.moveTo(29, -42); ctx.lineTo(58, -72 - Math.sin(t * 9) * player.slashT * 12); ctx.stroke();
+  ctx.shadowBlur = 0;
+  Manga.effects.inkStroke(ctx, 1.7);
+  ctx.beginPath(); ctx.moveTo(29, -42); ctx.lineTo(58, -72); ctx.stroke();
+
+  ctx.strokeStyle = '#c49b62'; ctx.lineWidth = 7;
+  ctx.beginPath(); ctx.moveTo(-13, -55); ctx.lineTo(-27, -42); ctx.stroke();
+  ctx.save();
+  const shieldSide = -30 + player.shield * 60;
+  ctx.translate(shieldSide, -43);
+  ctx.rotate(-0.18 + player.shield * 0.28);
+  ctx.globalAlpha = mirrorDullT > 0 ? 0.50 : 1;
+  ctx.shadowColor = player.shield > 0.55 ? '#d6fbff' : '#000';
+  ctx.shadowBlur = player.shield > 0.55 ? 18 : 0;
+  ctx.fillStyle = mirrorDullT > 0 ? '#7d8b8d' : '#d6fbff';
+  ctx.beginPath(); ctx.ellipse(0, 0, 21, 27, 0, 0, Math.PI * 2); ctx.fill();
+  Manga.effects.inkStroke(ctx, 4); ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(-13, -8); ctx.lineTo(13, -14); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-10, 6); ctx.lineTo(11, 1); ctx.stroke();
+  ctx.restore();
+
+  ctx.fillStyle = '#c49b62';
+  ctx.fillRect(-5, -71, 10, 9);
+  ctx.beginPath(); ctx.arc(0, -83, 13, 0, Math.PI * 2); ctx.fill();
+  Manga.effects.inkStroke(ctx, 2.5); ctx.stroke();
+  ctx.fillStyle = '#1a1008';
+  ctx.beginPath(); ctx.arc(0, -87, 13, Math.PI, 0); ctx.fill();
+  ctx.fillStyle = '#d4af37';
+  ctx.beginPath(); ctx.arc(0, -91, 12, Math.PI, 0); ctx.fill();
+  Manga.effects.inkStroke(ctx, 2); ctx.stroke();
+  ctx.fillStyle = ink;
+  ctx.beginPath(); ctx.ellipse(5, -84, 1.8, 2.8, 0, 0, Math.PI * 2); ctx.fill();
+
+  if (player.petrify > 0.02) {
+    ctx.globalAlpha = Math.min(0.72, player.petrify);
+    ctx.fillStyle = '#a7b2b0';
+    ctx.beginPath();
+    ctx.moveTo(-22, -19); ctx.lineTo(-15, -64); ctx.lineTo(15, -64); ctx.lineTo(22, -19);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawMangaMedusa(t) {
+  const ink = Manga.INK || '#0a0a0a';
+  ctx.save();
+  ctx.translate(medusa.x, medusa.y);
+  const flash = medusa.hurtFlash > 0;
+  ctx.fillStyle = 'rgba(0,0,0,0.62)';
+  ctx.beginPath(); ctx.ellipse(0, 4, 42, 10, 0, 0, Math.PI * 2); ctx.fill();
+
+  ctx.fillStyle = flash ? '#ffffff' : '#60784f';
+  ctx.beginPath();
+  ctx.moveTo(-25, -17); ctx.lineTo(-17, -76); ctx.quadraticCurveTo(0, -96, 20, -76); ctx.lineTo(27, -17);
+  ctx.closePath(); ctx.fill();
+  Manga.effects.inkStroke(ctx, 4); ctx.stroke();
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(0, -96); ctx.lineTo(20, -76); ctx.lineTo(27, -17); ctx.lineTo(0, -6); ctx.closePath(); ctx.clip();
+  Manga.effects.halftone(ctx, 0, -100, 34, 100, { density: 5, dotSize: 1.8, alpha: 0.46, color: ink });
+  ctx.restore();
+
+  ctx.fillStyle = flash ? '#ffffff' : '#8bc88d';
+  ctx.beginPath(); ctx.arc(0, -100, 18, 0, Math.PI * 2); ctx.fill();
+  Manga.effects.inkStroke(ctx, 3); ctx.stroke();
+  for (let i = -5; i <= 5; i++) {
+    const a = i * 0.30 + Math.sin(t * 2.2 + i) * 0.16;
+    const len = 28 + (Math.abs(i) % 3) * 6;
+    ctx.save();
+    ctx.translate(0, -112);
+    ctx.rotate(a);
+    ctx.strokeStyle = i % 2 ? '#315c35' : '#20442a';
+    ctx.lineWidth = 7; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(9, -13, 0, -len); ctx.stroke();
+    Manga.effects.inkStroke(ctx, 1.8);
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(9, -13, 0, -len); ctx.stroke();
+    ctx.fillStyle = '#7ee078';
+    ctx.beginPath(); ctx.arc(0, -len, 3.8, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  ctx.fillStyle = medusa.phase === 'gaze' ? '#dcff9b' : ink;
+  ctx.shadowColor = medusa.phase === 'gaze' ? '#dcff9b' : 'transparent';
+  ctx.shadowBlur = medusa.phase === 'gaze' ? 18 : 0;
+  ctx.beginPath(); ctx.ellipse(-7, -101, 3.1, 4.2, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse( 7, -101, 3.1, 4.2, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.shadowBlur = 0;
+
+  if (medusa.veil > 0) {
+    ctx.strokeStyle = '#d6fbff';
+    ctx.lineWidth = 2.5;
+    ctx.globalAlpha = 0.62;
+    for (let i = 0; i < medusa.veil; i++) {
+      ctx.beginPath();
+      ctx.arc(0, -65, 44 + i * 13 + Math.sin(t * 3 + i) * 2, -0.7, Math.PI + 0.7);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.strokeStyle = '#314b2c'; ctx.lineWidth = 11; ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(0, -18);
+  ctx.quadraticCurveTo(20, 3, 2, 20);
+  ctx.quadraticCurveTo(-19, 39, 14, 52);
+  ctx.stroke();
+  Manga.effects.inkStroke(ctx, 2.2);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawMedusa(t) {
+  if (Engine.manga && window.Manga && Manga.effects && typeof Manga.effects.inkStroke === 'function') {
+    drawMangaMedusa(t);
+    return;
+  }
   ctx.save();
   ctx.translate(medusa.x, medusa.y);
   const flash = medusa.hurtFlash > 0;
@@ -681,6 +1093,61 @@ function drawSnakes(t) {
   }
 }
 
+function drawHazards(t) {
+  for (const h of hazards) {
+    const x = h.drawX || h.x;
+    const y = h.drawY || h.baseY;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(Math.sin(h.phase + t) * 0.18);
+    ctx.fillStyle = '#6c7472';
+    ctx.beginPath();
+    ctx.moveTo(0, -26);
+    ctx.lineTo(20, -6);
+    ctx.lineTo(13, 24);
+    ctx.lineTo(-15, 22);
+    ctx.lineTo(-22, -5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#202828';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(214,251,255,0.35)';
+    ctx.fillRect(-7, -11, 14, 3);
+    ctx.restore();
+  }
+}
+
+function drawSerpentSeal(t) {
+  if (levelIndex < LEVELS.length - 1 && sealProgress <= 0 && sealFlashT <= 0) return;
+  const x = sealX();
+  const y = groundY() + 35;
+  const pulse = 0.5 + Math.sin(t * 4.4) * 0.5;
+  const lit = sealProgress > 0 || sealFlashT > 0;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.globalAlpha = lit ? 0.50 + pulse * 0.35 : 0.18 + pulse * 0.06;
+  ctx.strokeStyle = lit ? '#ff88cc' : '#d6fbff';
+  ctx.fillStyle = lit ? '#ff88cc' : '#d6fbff';
+  ctx.shadowColor = lit ? '#ff88cc' : '#d6fbff';
+  ctx.shadowBlur = lit ? 18 : 2;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(0, 0, 30 + sealProgress * 9, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.font = 'bold 28px serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('Σ', 0, 1);
+  if (sealProgress > 0) {
+    ctx.globalAlpha = 0.75;
+    ctx.beginPath();
+    ctx.arc(0, 0, 40, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * sealProgress);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function drawParticles() {
   for (const p of sparks) {
     ctx.globalAlpha = Math.max(0, p.t);
@@ -701,9 +1168,11 @@ function drawParticles() {
 function drawWorld() {
   const t = Engine.time;
   drawBackground(t);
+  drawSerpentSeal(t);
   drawGazeCone(t);
   drawMirrorBeam(t);
   drawSnakes(t);
+  drawHazards(t);
   drawMedusa(t);
   drawPerseus(t);
   drawParticles();
@@ -722,11 +1191,26 @@ function drawWorld() {
 function drawHud() {
   Engine.hud.drawHearts(20, 28, player.hp, HP_MAX);
   const W = Engine.W;
+  const cfg = levelCfg();
+  const compactHud = Engine.H < 520;
   ctx.save();
+  ctx.textAlign = 'center';
+  ctx.font = `bold ${compactHud ? 12 : 15}px monospace`;
+  ctx.fillStyle = '#d6fbff';
+  ctx.shadowColor = '#3db0c6';
+  ctx.shadowBlur = 8;
+  ctx.fillText(cfg.title + ' / III', W / 2, 28);
+  ctx.shadowBlur = 0;
+  if (!(compactHud && levelBannerT > 0)) {
+    ctx.font = `${compactHud ? 10 : 12}px monospace`;
+    ctx.fillStyle = 'rgba(214,251,255,0.82)';
+    ctx.fillText(cfg.prompt, W / 2, compactHud ? 43 : 48);
+  }
+
   ctx.textAlign = 'right';
   ctx.font = 'bold 14px monospace';
   ctx.fillStyle = '#d6fbff';
-  ctx.fillText('MIRROR STRIKES ' + mirrorHits + '/3', W - 22, 28);
+  ctx.fillText('CHAMBER STRIKES ' + levelHits + '/' + cfg.hitsNeeded, W - 22, 28);
   ctx.fillStyle = 'rgba(214,251,255,0.20)';
   ctx.fillRect(W - 222, 38, 200, 7);
   ctx.fillStyle = '#d6fbff';
@@ -746,7 +1230,10 @@ function drawHud() {
   ctx.textAlign = 'left';
   ctx.fillStyle = medusa.phase === 'gaze' ? '#dcff9b' : '#8bc88d';
   ctx.fillText(medusa.phase.toUpperCase(), 20, 62);
-  if (mirrorDullT > 0) {
+  if (medusa.veil > 0) {
+    ctx.fillStyle = '#d6fbff';
+    ctx.fillText('SERPENT VEIL ' + medusa.veil, 20, 82);
+  } else if (mirrorDullT > 0) {
     ctx.fillStyle = '#ff9b5f';
     ctx.fillText('MIRROR DULLED', 20, 82);
   } else if (medusa.phase === 'gaze') {
@@ -756,6 +1243,26 @@ function drawHud() {
     ctx.fillStyle = 'rgba(214,251,255,0.78)';
     ctx.fillText('SERPENTS TURNED ' + reflectedSerpents, 20, 82);
   }
+
+  if (levelBannerT > 0) {
+    const a = Math.min(1, levelBannerT / 0.5);
+    const bannerY = compactHud ? Engine.H * 0.20 : Engine.H * 0.24;
+    ctx.globalAlpha = a;
+    ctx.textAlign = 'center';
+    ctx.font = `bold ${compactHud ? 24 : 34}px serif`;
+    ctx.fillStyle = '#d6fbff';
+    ctx.shadowColor = '#3db0c6';
+    ctx.shadowBlur = 22;
+    ctx.fillText(cfg.name, W / 2, bannerY);
+    ctx.shadowBlur = 0;
+    if (!compactHud) {
+      ctx.font = 'bold 13px monospace';
+      ctx.fillStyle = 'rgba(240,250,255,0.82)';
+      ctx.fillText(cfg.prompt, W / 2, bannerY + 28);
+    }
+    ctx.globalAlpha = 1;
+  }
+
   ctx.restore();
 }
 
@@ -795,15 +1302,15 @@ Engine.boot({
   title: 'PERSEUS',
   subtitle: 'The Gorgon\'s Mirror',
   instructions: [
-    'Left / Right: move',
-    'Hold Z during the gaze to focus the mirror',
-    'Release between gazes or the shield dulls',
-    'X cuts serpents; Z reflects them back',
+    'Left / Right: move through the chambers',
+    'When Medusa\'s eye opens, face her and hold Z',
+    'Release between gazes or the mirror overheats',
+    'X cuts serpents; Z turns them back into the veil',
   ],
   deadTitle: 'PERSEUS IS STONE',
   deadSubtitle: 'The cave keeps another statue.',
   victoryTitle: 'THE GAZE IS BROKEN',
-  victorySubtitle: 'A final letter glints in the shield.',
+  victorySubtitle: 'Medusa falls. The cave still keeps one quiet mark.',
   hubHref: 'index.html',
   theme: {
     bg: (c, W, H) => { c.fillStyle = '#02070a'; c.fillRect(0, 0, W, H); },
@@ -847,7 +1354,7 @@ Engine.boot({
       beginRun();
       return;
     }
-    if (e.state === 'dead' && (ev.key === 'h' || ev.key === 'H')) {
+    if ((e.state === 'dead' || e.state === 'victory') && (ev.key === 'h' || ev.key === 'H')) {
       window.location.href = 'mount-olympus.html';
       return;
     }

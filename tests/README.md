@@ -29,13 +29,15 @@ Set `BASE_URL`, `CHROME_PATH`, or `SHOTS_DIR` env vars to override defaults.
 - Icarus → `hint.z` earned by touching peak altitude (Sun's Embrace).
 - Orion → `hint.e` earned by standing still beneath the constellation.
 - Achilles → `hint.u` earned by counter-shooting 3 archers in 6.5s.
+- Perseus → three chambers can be cleared, then the hidden sigma seal earns
+  `hint.s`.
 - Hub mysteries panel reflects earned-hint state.
 - `shankle` dev bypass unlocks manga mode.
-- Typing `zeus` after Z+E+U are earned summons the lightning bolt.
+- Typing `zeus` after Z+E+U+S are earned summons the lightning bolt.
 
 Screenshots land in `/tmp/shots/` so you can visually confirm each
-mythology cinematic (RIVER OCEANUS, ASPHODEL MEADOWS, EREBUS) actually
-fires when the hint is earned.
+mythology cinematic (RIVER OCEANUS, ASPHODEL MEADOWS, EREBUS, TARTARUS)
+actually fires when the hint is earned.
 
 ## Helper
 

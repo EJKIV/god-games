@@ -81,7 +81,7 @@
       {
         id: 'clue.third',
         revealAt: 3,
-        text: 'The mirrored shield waits where serpents cannot meet their own eyes.',
+        text: 'A single sigma sleeps in the cave floor where the hero turns the mirror away.',
         pointsAt: 'perseus',
       },
       {
@@ -125,7 +125,7 @@
           },
           {
             id: 'hint.s', letter: 'S',
-            fragment: '"S" — the mirrored shield answered the serpent gaze.',
+            fragment: '"S" — not from the Gorgon, but from the mark cut into stone.',
             mythLocation: { name: 'TARTARUS', flavor: 'the deep prison of titans', color: '#702030' },
           },
           {
