@@ -1305,6 +1305,7 @@ function render() {
 
   // sun
   renderSun(W, H);
+  renderMangaSkyTreatment(W, H);
 
   // clouds
   renderClouds();
@@ -1575,17 +1576,25 @@ function renderBackground(W, H) {
   const heat = dangerHeat();
   // gradient shifts: the hotter, the more orange bleeds downward
   const grad = ctx.createLinearGradient(0, 0, 0, H);
-  // top colors get more intense with heat
-  const topC  = lerpColor('#ff8800', '#ffdd00', Math.sin(time*1.5)*0.15+0.5);
-  const midHiC = lerpColor('#cc4400', '#ff7700', heat);
-  const midC  = lerpColor('#1a6b9e', '#c2650a', heat * 0.9);
-  const botC  = '#0d3a5c'; // deep blue that blends into ocean
+  if (Engine.manga) {
+    grad.addColorStop(0,    lerpColor('#ff9a00', '#ffd51f', Math.sin(time * 1.5) * 0.12 + 0.55));
+    grad.addColorStop(0.18 + heat * 0.10, '#f06a11');
+    grad.addColorStop(0.45 + heat * 0.12, '#a95c27');
+    grad.addColorStop(0.72, '#176684');
+    grad.addColorStop(1,    '#07304f');
+  } else {
+    // top colors get more intense with heat
+    const topC  = lerpColor('#ff8800', '#ffdd00', Math.sin(time*1.5)*0.15+0.5);
+    const midHiC = lerpColor('#cc4400', '#ff7700', heat);
+    const midC  = lerpColor('#1a6b9e', '#c2650a', heat * 0.9);
+    const botC  = '#0d3a5c'; // deep blue that blends into ocean
 
-  grad.addColorStop(0,    topC);
-  grad.addColorStop(0.12 + heat*0.15, midHiC);
-  grad.addColorStop(0.45 + heat*0.2,  midC);
-  grad.addColorStop(0.80, botC);
-  grad.addColorStop(1,    '#071e30');
+    grad.addColorStop(0,    topC);
+    grad.addColorStop(0.12 + heat*0.15, midHiC);
+    grad.addColorStop(0.45 + heat*0.2,  midC);
+    grad.addColorStop(0.80, botC);
+    grad.addColorStop(1,    '#071e30');
+  }
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, W, H);
 
@@ -1657,12 +1666,67 @@ function renderSun(W, H) {
   ctx.fill();
 }
 
+function renderMangaSkyTreatment(W, H) {
+  if (!Engine.manga) return;
+
+  const heat = dangerHeat();
+  const dive = diveT > 0 ? Math.max(0, Math.min(1, diveT / DIVE_DUR)) : 0;
+
+  if (window.Manga && Manga.effects && Manga.effects.halftone) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'multiply';
+    Manga.effects.halftone(ctx, 0, 0, W, H * 0.72, {
+      density: 7,
+      dotSize: 1.15,
+      alpha: 0.07 + heat * 0.07,
+      color: '#0a0a0a',
+    });
+    ctx.restore();
+  }
+
+  // Long ink rays echo the generated manga illustration and tie gameplay to
+  // the title art without changing collision or world geometry.
+  ctx.save();
+  ctx.globalAlpha = 0.14 + heat * 0.12 + dive * 0.12;
+  ctx.strokeStyle = '#0a0a0a';
+  ctx.lineWidth = 1.6 + dive * 1.2;
+  ctx.lineCap = 'round';
+  const sx = W / 2;
+  const sy = -24;
+  const count = 30;
+  for (let i = 0; i < count; i++) {
+    const t = i / (count - 1);
+    const ex = -W * 0.08 + t * W * 1.16 + Math.sin(time * 0.4 + i) * 8;
+    const ey = H * (0.12 + (i % 7) * 0.095);
+    ctx.beginPath();
+    ctx.moveTo(sx + (i % 3 - 1) * 8, sy);
+    ctx.lineTo(ex, ey);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  if (dive > 0) {
+    ctx.save();
+    ctx.globalAlpha = 0.20 + dive * 0.25;
+    ctx.strokeStyle = '#0a0a0a';
+    ctx.lineWidth = 3;
+    for (let i = 0; i < 14; i++) {
+      const y = (i * 73 + time * 240) % H;
+      ctx.beginPath();
+      ctx.moveTo(W * 0.08, y + 140);
+      ctx.lineTo(W * 0.72, y - 110);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
 function renderClouds() {
   for (const c of clouds) {
     const a = c.baseAlpha;
     if (a < 0.01) continue;
     ctx.save();
-    ctx.globalAlpha = a;
+    ctx.globalAlpha = Engine.manga ? a * 0.72 : a;
     // fluffy cloud from overlapping ellipses
     const puffs = [
       {dx:0,    dy:0,    rx:c.w*0.45, ry:c.h*0.6},
@@ -1671,11 +1735,26 @@ function renderClouds() {
       {dx:-c.w*0.12, dy:-c.h*0.1, rx:c.w*0.28, ry:c.h*0.45},
       {dx: c.w*0.12, dy:-c.h*0.1, rx:c.w*0.28, ry:c.h*0.45},
     ];
-    ctx.fillStyle = 'rgba(200,220,255,0.9)';
+    ctx.fillStyle = Engine.manga ? 'rgba(255,246,218,0.88)' : 'rgba(200,220,255,0.9)';
     for (const p of puffs) {
       ctx.beginPath();
       ctx.ellipse(c.x+p.dx, c.y+p.dy, p.rx, p.ry, 0, 0, Math.PI*2);
       ctx.fill();
+      if (Engine.manga) {
+        ctx.strokeStyle = 'rgba(10,10,10,0.25)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+    }
+    if (Engine.manga && window.Manga && Manga.effects && Manga.effects.halftone) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.ellipse(c.x, c.y + c.h * 0.08, c.w * 0.55, c.h * 0.55, 0, 0, Math.PI * 2);
+      ctx.clip();
+      Manga.effects.halftone(ctx, c.x - c.w * 0.45, c.y - c.h * 0.3, c.w * 0.9, c.h * 0.7, {
+        density: 5, dotSize: 1, alpha: 0.18, color: '#0a0a0a',
+      });
+      ctx.restore();
     }
     ctx.restore();
   }
@@ -1751,6 +1830,35 @@ function renderOcean(W, H) {
     ctx.globalAlpha = depth * 0.18;
     ctx.fillStyle = '#ff6600';
     ctx.fillRect(0, oY - 50, W, 50);
+  }
+
+  if (Engine.manga) {
+    ctx.globalAlpha = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, oY + waveAmp1);
+    for (let x = 0; x <= W; x += 8) {
+      const y = oY
+        + Math.sin(x * 0.018 + time * 1.6) * waveAmp1
+        + Math.sin(x * 0.032 - time * 2.1) * waveAmp2;
+      ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = 'rgba(10,10,10,0.42)';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    if (window.Manga && Manga.effects && Manga.effects.halftone) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, oY, W, H - oY);
+      ctx.clip();
+      Manga.effects.halftone(ctx, 0, oY, W, H - oY, {
+        density: 9,
+        dotSize: 1.2,
+        alpha: 0.10,
+        color: '#0a0a0a',
+      });
+      ctx.restore();
+    }
   }
 
   ctx.restore();
@@ -1964,7 +2072,9 @@ function renderIcarusGlyph(W, H) {
 
 function renderPlayer(W, H) {
   const p = player;
-  // Manga route — bold ink Icarus + halftone wings
+  if (Engine.manga && drawIcarusMangaSprite()) return;
+
+  // Manga fallback route — bold ink Icarus + halftone wings
   if (Engine.manga && window.Manga && typeof window.Manga.characters?.icarus?.draw === 'function') {
     Manga.characters.icarus.draw(ctx, {
       x: p.x, y: p.y, facingRight: p.facingRight,
@@ -2747,12 +2857,79 @@ function drawDaedalus(x, y) {
 }
 
 const ICARUS_MANGA_HERO_ASSET = 'godgames.icarus.hero';
+const ICARUS_MANGA_SHEET_ASSET = 'godgames.icarus.flightSheet';
 
-function mangaArtReady(id = ICARUS_MANGA_HERO_ASSET) {
+function mangaAssetReady(id) {
   return !!(Engine.manga && window.Manga && Manga.assets
     && typeof Manga.assets.ready === 'function'
-    && typeof Manga.assets.drawImage === 'function'
     && Manga.assets.ready(id));
+}
+
+function mangaArtReady(id = ICARUS_MANGA_HERO_ASSET) {
+  return !!(mangaAssetReady(id) && typeof Manga.assets.drawImage === 'function');
+}
+
+function currentIcarusSpriteFrame() {
+  if (state === 'dying') return 'falling';
+  if (diveT > 0) return 'dive';
+  if (player.burnDmg > 34 && player.burnDmg >= player.wetDmg) return 'burn';
+  if (player.wetDmg > 34 && player.wetDmg > player.burnDmg) return 'wet';
+  if (keys && (keys['ArrowUp'] || keys[' '])) {
+    return Math.sin(player.flapPhase) > 0 ? 'flapDown' : 'flapUp';
+  }
+  if (Math.abs(player.vy) > 190 || player.vx > 170) return 'speed';
+  return 'glide';
+}
+
+function drawIcarusMangaSprite() {
+  if (!mangaAssetReady(ICARUS_MANGA_SHEET_ASSET)
+    || !Manga.assets || typeof Manga.assets.drawFrame !== 'function') return false;
+
+  const p = player;
+  const frame = currentIcarusSpriteFrame();
+  const baseScale = Math.max(0.26, Math.min(0.42, Math.min(canvas.width, canvas.height) / 2200));
+  const scale = frame === 'falling' ? baseScale * 0.95 : baseScale;
+
+  ctx.save();
+  if (diveT > 0) {
+    const a = Math.max(0, Math.min(1, diveT / DIVE_DUR));
+    ctx.globalAlpha = 0.28 + Math.sin(a * Math.PI) * 0.22;
+    ctx.strokeStyle = '#0a0a0a';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(p.x - 92, p.y + 72);
+    ctx.lineTo(p.x + 18, p.y - 72);
+    ctx.stroke();
+    ctx.strokeStyle = '#ffd54a';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(p.x - 105, p.y + 83);
+    ctx.lineTo(p.x + 12, p.y - 61);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  const drew = Manga.assets.drawFrame(ctx, ICARUS_MANGA_SHEET_ASSET, frame, p.x, p.y, {
+    scale,
+    flipX: !p.facingRight,
+    rotate: state === 'dying' ? p.angle * 0.16 : 0,
+  });
+
+  if (!drew) return false;
+
+  const stress = Math.max(p.burnDmg, p.wetDmg) / 100;
+  if (stress > 0.15 || diveT > 0) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = diveT > 0 ? 0.35 : stress * 0.22;
+    ctx.fillStyle = p.burnDmg >= p.wetDmg ? '#ff8800' : '#66ccff';
+    ctx.beginPath();
+    ctx.ellipse(p.x - 6, p.y, 72, 42, -0.18, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  return true;
 }
 
 function drawIcarusMangaArt(x, y, w, h, opts = {}) {

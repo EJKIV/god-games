@@ -170,6 +170,7 @@ god-games/
 
 | Date       | Change                                                                                     | Author |
 |------------|--------------------------------------------------------------------------------------------|--------|
+| 2026-05-10 | Added an asset-backed Icarus manga gameplay sprite sheet and warmer manga-mode flight scene treatment matching the generated sample art. | codex  |
 | 2026-05-09 | Tuned Perseus around mirror focus, shield heat, serpent reflection, and upgraded the ZEUS invocation payoff so it solves `manga_mode` through the mystery system. | codex  |
 | 2026-05-09 | Reworked Perseus into three chambers with clearer Medusa defeat rules, serpent-veil variety, final hazards, local manga rendering, and a hidden sigma trigger for the `S` letter. | codex  |
 | 2026-05-09 | Replaced the Perseus reward-scene placeholder with a local Perseus traveler drawing, hardened progress CORS, and made Olympus leaderboard API failures visible. | codex  |
