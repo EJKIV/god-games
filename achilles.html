@@ -133,6 +133,8 @@ let heelOneHpAccumulator = 0;       // tenths-of-a-second accumulator for the
 const BASH_DUR = 0.4, BASH_CD = 5; // tunable
 const BOW_POSE = 0.30, BOW_CD = 2.5;
 let returnArrows = [];             // arrows player has fired UPWARD at archers
+let bashFacing = 1, bowFacing = 1, heelFacing = 1, hurtFacing = 1;
+let bowTargetX = null;
 
 // ── Archer enemy specials (manga only) ────────────────────────────────────
 let pendingSpecial = null;     // 'volley' | 'inferno' | 'echo' — pre-rolled before a wave
@@ -253,6 +255,8 @@ function resetGame() {
   bashT = 0; bashCD = 0;
   bowT = 0; bowCD = 0;
   heelT = 0; heelCD = 0;
+  bashFacing = 1; bowFacing = 1; heelFacing = 1; hurtFacing = 1;
+  bowTargetX = null;
   heelOneHpAccumulator = 0;
   pendingSpecial = null;
   mangaTexts.length = 0;
@@ -431,14 +435,20 @@ function update(dt) {
     ra.trailT += dt;
     const target = archers[ra.targetIdx];
     const targetY = archerLineY();
+    const targetX = target ? target.x : (ra.targetX ?? ra.fromX);
+    const travel = clamp01((ra.fromY - ra.y) / Math.max(1, ra.fromY - targetY));
+    ra.x = ra.fromX + (targetX - ra.fromX) * travel;
     if (target && ra.y <= targetY + 8) {
       target.downT = 4;
       target.releaseT = 0;
       target.drawT = 0;
+      const impactX = Engine.manga
+        ? mangaStageProjectedX(target.x, targetY, { backPull: 0.90, curve: 0.95 })
+        : target.x;
       // Manga particle burst at archer
-      burst(target.x, targetY, '#fff5c0', 14, 1.0);
-      burst(target.x, targetY, '#ffd54a', 8, 0.6);
-      mangaTexts.push({ text: 'HIT!', x: target.x, y: targetY - 28, t: 0.4, color: '#fff5c0', size: 26 });
+      burst(impactX, targetY, '#fff5c0', 14, 1.0);
+      burst(impactX, targetY, '#ffd54a', 8, 0.6);
+      mangaTexts.push({ text: 'HIT!', x: impactX, y: targetY - 28, t: 0.4, color: '#fff5c0', size: 26 });
       // Mystery: Shade of Patroclus — archer downs that all land within 2
       // seconds of each other earn 'lay'. Kept as a small ring buffer of
       // recent kill timestamps; trim everything older than 2s, then check
@@ -452,8 +462,8 @@ function update(dt) {
           Engine.unlock.set('glyph_achilles_found');
           GodGames.Mysteries.earnHint('glyph_first');
           GodGames.Mysteries.tally('glyphs_found');
-          mangaTexts.push({ text: 'A MARK!', x: target.x, y: targetY + 32, t: 1.0, color: '#ffd54a', size: 26 });
-          burst(target.x, targetY, '#ffd54a', 22, 220);
+          mangaTexts.push({ text: 'A MARK!', x: impactX, y: targetY + 32, t: 1.0, color: '#ffd54a', size: 26 });
+          burst(impactX, targetY, '#ffd54a', 22, 220);
         }
       }
       returnArrows.splice(i, 1);
@@ -476,8 +486,8 @@ function update(dt) {
   }
   player.x = Math.max(LANE_L + 20, Math.min(LANE_R - 20, player.x + player.vx * dt));
 
-  if (player.iframes  > 0) player.iframes  -= dt;
-  if (player.hitFlash > 0) player.hitFlash -= dt;
+  if (player.iframes  > 0) player.iframes  = Math.max(0, player.iframes  - dt);
+  if (player.hitFlash > 0) player.hitFlash = Math.max(0, player.hitFlash - dt);
 
   // Mystery: Heel of Achilles — accumulate time spent at 1 HP across runs.
   // Tallies in tenths of a second so Engine.unlock's integer counter can
@@ -554,6 +564,7 @@ function update(dt) {
 
       // SHIELD BASH: deflect any in-hitbox arrow during bash window.
       if (inHitbox && bashT > 0 && Engine.manga) {
+        bashFacing = facingTowardX(a.x, bashFacing);
         // Down the originating archer for 5s.
         if (a.originIdx != null && archers[a.originIdx]) archers[a.originIdx].downT = 5;
         burst(a.x, PLAYER_Y, '#fff5c0', 16, 1.0);
@@ -566,6 +577,8 @@ function update(dt) {
 
       if (inHitbox && player.iframes <= 0) {
         // Hit
+        hurtFacing = facingTowardX(a.x, player.facing);
+        player.facing = hurtFacing;
         player.hp--;
         player.iframes = 0.85;
         player.hitFlash = 0.35;
@@ -718,6 +731,45 @@ function updateArrowTrajectory(a) {
     a.x = a.originX + (a.targetX - a.originX) * eased + drift;
   }
   return p;
+}
+
+function facingTowardX(targetX, fallback = 1) {
+  const fb = fallback < 0 ? -1 : 1;
+  if (!player || typeof targetX !== 'number' || Math.abs(targetX - player.x) < 8) return fb;
+  return targetX < player.x ? -1 : 1;
+}
+
+function achillesBowHandAnchor(facing = bowFacing) {
+  const f = facing < 0 ? -1 : 1;
+  return {
+    x: player.x + f * 34,
+    y: PLAYER_Y - 76,
+  };
+}
+
+function incomingArrowThreat(opts = {}) {
+  if (!player || !arrows || arrows.length === 0) return null;
+  const minProgress = opts.minProgress ?? 0.64;
+  const maxDist = opts.maxDist ?? (opts.includeWide ? PLAYER_R + 108 : PLAYER_R + 42);
+  let best = null;
+  let bestScore = -Infinity;
+
+  for (const a of arrows) {
+    if (!a.alive || a.landed) continue;
+    const progress = arrowFlightProgress(a);
+    if (progress < minProgress) continue;
+    const targetX = a.targetX ?? a.x;
+    const dist = Math.abs(targetX - player.x);
+    if (dist > maxDist) continue;
+    const closeness = 1 - Math.min(1, dist / Math.max(1, maxDist));
+    const score = progress * 2 + closeness + (a.targeted ? 0.35 : 0);
+    if (score > bestScore) {
+      bestScore = score;
+      best = { arrow: a, progress, targetX, dist };
+    }
+  }
+
+  return best;
 }
 
 function drawMangaContactShadow(x, y, opts = {}) {
@@ -1283,28 +1335,33 @@ function achillesMangaAssetsReady() {
 }
 
 function currentAchillesMangaMotion() {
-  if (Engine.state === 'victory') return { anim: 'victory', t: time, flipX: false };
+  if (Engine.state === 'victory') return { anim: 'victory', t: time, flipX: player.facing < 0, facing: player.facing };
   if (player.hp <= 0 || Engine.state === 'dead') {
-    return { anim: 'fallen', t: mangaDeathT > 0 ? Math.max(0, time - mangaDeathT) : 1, flipX: false };
+    return { anim: 'fallen', t: mangaDeathT > 0 ? Math.max(0, time - mangaDeathT) : 1, flipX: hurtFacing < 0, facing: hurtFacing };
   }
-  if (heelT > 0) return { anim: 'strike', t: HEEL_DUR - heelT, flipX: player.facing < 0 };
-  if (bashT > 0) return { anim: 'bash', t: BASH_DUR - bashT, flipX: player.facing < 0 };
+  if (heelT > 0) return { anim: 'strike', t: HEEL_DUR - heelT, flipX: heelFacing < 0, facing: heelFacing };
+  if (bashT > 0) return { anim: 'bash', t: BASH_DUR - bashT, flipX: bashFacing < 0, facing: bashFacing };
   if (bowT > 0) {
     const t = BOW_POSE - bowT;
-    return { anim: t > BOW_POSE * 0.72 ? 'bowRelease' : 'bow', t, flipX: false };
+    return { anim: t > BOW_POSE * 0.72 ? 'bowRelease' : 'bow', t, flipX: bowFacing < 0, facing: bowFacing };
   }
-  if (player.hitFlash > 0) return { anim: 'hit', t: 0.35 - player.hitFlash, flipX: player.facing < 0 };
-  if (player.iframes > 0) return { anim: 'guarded', t: time, flipX: player.facing < 0 };
+  if (player.hitFlash > 0) return { anim: 'hit', t: 0.35 - player.hitFlash, flipX: hurtFacing < 0, facing: hurtFacing };
+  const threat = incomingArrowThreat({ minProgress: 0.70 });
+  if (threat) {
+    const threatFacing = facingTowardX(threat.targetX, player.facing);
+    return { anim: 'guarded', t: threat.progress, flipX: threatFacing < 0, facing: threatFacing, threat };
+  }
+  if (player.iframes > 0) return { anim: 'guarded', t: time, flipX: hurtFacing < 0, facing: hurtFacing };
   if (Math.abs(player.vx) > 20) return {
     anim: player.vx < 0 ? 'runLeft' : 'runRight',
     t: player.walkPhase / 10,
     flipX: false,
+    facing: player.vx < 0 ? -1 : 1,
   };
-  return { anim: 'idle', t: time, flipX: player.facing < 0 };
+  return { anim: 'idle', t: time, flipX: player.facing < 0, facing: player.facing };
 }
 
-function currentAchillesMangaFrame() {
-  const motion = currentAchillesMangaMotion();
+function currentAchillesMangaFrame(motion = currentAchillesMangaMotion()) {
   if (motion.anim === 'runLeft') return 'runLeft';
   if (motion.anim === 'runRight') return 'runRight';
   if (motion.anim === 'strike') return 'strike';
@@ -1334,6 +1391,7 @@ function drawAchillesMangaSprite() {
   const art = achillesMangaArt();
   const hasV2 = achillesMangaAssetReady(ACHILLES_MANGA_ANIM_SHEET)
     && art && typeof art.drawAnimation === 'function';
+  const motion = currentAchillesMangaMotion();
 
   drawMangaContactShadow(player.x, PLAYER_Y, {
     w: 48 * scale / 0.40,
@@ -1345,35 +1403,38 @@ function drawAchillesMangaSprite() {
   if (hasV2 && achillesMangaAssetReady(ACHILLES_MANGA_FXHUD_SHEET)) {
     const fxScale = Math.max(0.12, Math.min(0.24, compact / 3300));
     if (Math.abs(player.vx) > 20) {
-      art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, 'dustPuff', player.x - player.facing * 34, PLAYER_Y + 18, {
+      const moveFacing = player.vx < 0 ? -1 : 1;
+      art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, 'dustPuff', player.x - moveFacing * 34, PLAYER_Y + 18, {
         scale: fxScale,
         alpha: 0.30 + Math.abs(Math.sin(player.walkPhase)) * 0.24,
-        flipX: player.facing < 0,
+        flipX: moveFacing < 0,
       });
     }
     if (bashT > 0) {
-      art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, 'shieldBurst', player.x + player.facing * 22, PLAYER_Y - 48, {
+      art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, 'shieldBurst', player.x + bashFacing * 22, PLAYER_Y - 48, {
         scale: fxScale * 1.18,
         alpha: Math.min(0.85, bashT / BASH_DUR + 0.15),
-        flipX: player.facing < 0,
+        flipX: bashFacing < 0,
       });
     }
     if (bowT > 0) {
-      art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, 'bowFlare', player.x + 26, PLAYER_Y - 86, {
+      const hand = achillesBowHandAnchor(bowFacing);
+      art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, 'bowFlare', hand.x, hand.y - 8, {
         scale: fxScale * 0.92,
         alpha: Math.min(0.70, bowT / BOW_POSE + 0.10),
+        flipX: bowFacing < 0,
       });
     }
     if (heelT > 0) {
-      art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, 'slashCrescent', player.x + player.facing * 54, PLAYER_Y - 54, {
+      art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, 'slashCrescent', player.x + heelFacing * 54, PLAYER_Y - 54, {
         scale: fxScale * 1.42,
         alpha: Math.min(0.78, heelT / HEEL_DUR + 0.08),
-        flipX: player.facing < 0,
+        flipX: heelFacing < 0,
       });
-      art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, 'heelSpark', player.x + player.facing * 20, PLAYER_Y + 7, {
+      art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, 'heelSpark', player.x + heelFacing * 20, PLAYER_Y + 7, {
         scale: fxScale * 0.86,
         alpha: Math.min(0.90, heelT / HEEL_DUR + 0.10),
-        flipX: player.facing < 0,
+        flipX: heelFacing < 0,
       });
     }
   }
@@ -1390,16 +1451,15 @@ function drawAchillesMangaSprite() {
   ctx.filter = 'sepia(0.10) saturate(1.08) brightness(0.94) contrast(1.06)';
   let drew = false;
   if (hasV2) {
-    const motion = currentAchillesMangaMotion();
     drew = art.drawAnimation(ctx, ACHILLES_MANGA_ANIM_SHEET, motion.anim, motion.t, player.x + jitter, y, {
       scale,
       flipX: motion.flipX,
     });
   } else {
-    const frame = currentAchillesMangaFrame();
+    const frame = currentAchillesMangaFrame(motion);
     drew = Manga.assets.drawFrame(ctx, ACHILLES_MANGA_SHEET, frame, player.x + jitter, y, {
       scale,
-      flipX: frame === 'idle' && player.facing < 0,
+      flipX: motion.flipX,
     });
   }
   ctx.restore();
@@ -2111,6 +2171,9 @@ Engine.boot({
     // (sfxText, layered audio) gate themselves on `e.manga` below.
     if (e.state === 'playing') {
       if ((ev.key === 'x' || ev.key === 'X') && bashCD <= 0) {
+        const threat = incomingArrowThreat({ includeWide: true, minProgress: 0.55 });
+        bashFacing = threat ? facingTowardX(threat.targetX, player.facing) : player.facing;
+        player.facing = bashFacing;
         bashT = BASH_DUR; bashCD = BASH_CD;
         if (e.manga && window.Manga && Manga.characters && Manga.characters.achilles) {
           const polish = Manga.characters.achilles.polish.onBash;
@@ -2127,12 +2190,18 @@ Engine.boot({
           if (d < bestDist) { bestDist = d; bestIdx = i; }
         }
         if (bestIdx >= 0) {
+          bowTargetX = archers[bestIdx].x;
+          bowFacing = facingTowardX(bowTargetX, player.facing);
+          player.facing = bowFacing;
+          const bowHand = achillesBowHandAnchor(bowFacing);
           bowT = BOW_POSE; bowCD = BOW_CD;
           returnArrows.push({
-            fromX: player.x, fromY: PLAYER_Y - 30,
-            x: player.x, y: PLAYER_Y - 30,
-            vy: -(PLAYER_Y - 30 - archerLineY()) / 0.32, // reach archer in ~0.32s
+            fromX: bowHand.x, fromY: bowHand.y,
+            x: bowHand.x, y: bowHand.y,
+            vy: -(bowHand.y - archerLineY()) / 0.32, // reach archer in ~0.32s
             targetIdx: bestIdx,
+            targetX: bowTargetX,
+            sourceFacing: bowFacing,
             trailT: 0,
           });
           if (e.manga && window.Manga && Manga.characters && Manga.characters.achilles) {
@@ -2147,6 +2216,8 @@ Engine.boot({
       const heelEarned = window.GodGames && GodGames.Mysteries
         && GodGames.Mysteries.isSolved('heel_of_achilles');
       if (e.manga && heelEarned && (ev.key === 'c' || ev.key === 'C') && heelCD <= 0) {
+        heelFacing = player.facing;
+        player.facing = heelFacing;
         heelT = HEEL_DUR; heelCD = HEEL_CD;
         player.iframes = Math.max(player.iframes, HEEL_DUR + 0.2);
         for (const a of archers) {
