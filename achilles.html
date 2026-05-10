@@ -243,7 +243,7 @@ function addFloater(x, y, text, color) {
 // ── Init / reset ──────────────────────────────────────────────────────────
 function resetGame() {
   player = {
-    x: Engine.W * 0.5, vx: 0,
+    x: Engine.W * 0.5, vx: 0, visualVx: 0, visualLean: 0,
     hp: HP_MAX, iframes: 0, hitFlash: 0,
     walkPhase: 0, stepT: 0, facing: 1,
   };
@@ -484,6 +484,8 @@ function update(dt) {
     player.stepT -= dt;
     if (player.stepT <= 0) { sfx.step(); player.stepT = 0.16; }
   }
+  player.visualVx += (player.vx - player.visualVx) * Math.min(1, dt * 12);
+  player.visualLean += ((player.visualVx / SPD) * 0.035 - player.visualLean) * Math.min(1, dt * 10);
   player.x = Math.max(LANE_L + 20, Math.min(LANE_R - 20, player.x + player.vx * dt));
 
   if (player.iframes  > 0) player.iframes  = Math.max(0, player.iframes  - dt);
@@ -1352,13 +1354,15 @@ function currentAchillesMangaMotion() {
     return { anim: 'guarded', t: threat.progress, flipX: threatFacing < 0, facing: threatFacing, threat };
   }
   if (player.iframes > 0) return { anim: 'guarded', t: time, flipX: hurtFacing < 0, facing: hurtFacing };
-  if (Math.abs(player.vx) > 20) return {
-    anim: player.vx < 0 ? 'runLeft' : 'runRight',
+  const runVx = Math.abs(player.vx) > 20 ? player.vx : (player.visualVx || 0);
+  if (Math.abs(runVx) > 20) return {
+    anim: runVx < 0 ? 'runLeft' : 'runRight',
     t: player.walkPhase / 10,
     flipX: false,
-    facing: player.vx < 0 ? -1 : 1,
+    facing: runVx < 0 ? -1 : 1,
+    rotate: player.visualLean || 0,
   };
-  return { anim: 'idle', t: time, flipX: player.facing < 0, facing: player.facing };
+  return { anim: 'idle', t: time, flipX: player.facing < 0, facing: player.facing, rotate: (player.visualLean || 0) * 0.35 };
 }
 
 function currentAchillesMangaFrame(motion = currentAchillesMangaMotion()) {
@@ -1402,8 +1406,9 @@ function drawAchillesMangaSprite() {
 
   if (hasV2 && achillesMangaAssetReady(ACHILLES_MANGA_FXHUD_SHEET)) {
     const fxScale = Math.max(0.12, Math.min(0.24, compact / 3300));
-    if (Math.abs(player.vx) > 20) {
-      const moveFacing = player.vx < 0 ? -1 : 1;
+    const dustVx = Math.abs(player.vx) > 20 ? player.vx : (player.visualVx || 0);
+    if (Math.abs(dustVx) > 20) {
+      const moveFacing = dustVx < 0 ? -1 : 1;
       art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, 'dustPuff', player.x - moveFacing * 34, PLAYER_Y + 18, {
         scale: fxScale,
         alpha: 0.30 + Math.abs(Math.sin(player.walkPhase)) * 0.24,
@@ -1454,12 +1459,14 @@ function drawAchillesMangaSprite() {
     drew = art.drawAnimation(ctx, ACHILLES_MANGA_ANIM_SHEET, motion.anim, motion.t, player.x + jitter, y, {
       scale,
       flipX: motion.flipX,
+      rotate: motion.rotate || 0,
     });
   } else {
     const frame = currentAchillesMangaFrame(motion);
     drew = Manga.assets.drawFrame(ctx, ACHILLES_MANGA_SHEET, frame, player.x + jitter, y, {
       scale,
       flipX: motion.flipX,
+      rotate: motion.rotate || 0,
     });
   }
   ctx.restore();

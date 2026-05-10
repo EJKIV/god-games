@@ -273,11 +273,12 @@ function initGame() {
   orion = {
     x:W*0.18, y:GY, vx:0, vy:0,
     hp:ORION_HP, facing:1,
-    walkPhase:0, attackCD:0, invincible:0,
+    walkPhase:0, visualVx:0, visualLean:0, attackCD:0, invincible:0,
     hurtFlash:0, onGround:true,
     dodgeVx:0, dodgeT:0,
     spearCount:MAX_SPEARS, stabCD:0, stabFlash:0,
     throwT:0,
+    throwFacing:1, stabFacing:1, dodgeFacing:1, hurtFacing:1,
     spearQueued:false, stabQueued:false,
     proneT:0, proneDmg:0,
   };
@@ -330,6 +331,8 @@ function updateOrion(dt) {
     const wasPositive = orion.proneT>0;
     orion.proneT = Math.max(0, orion.proneT-dt);
     orion.vx = 0;
+    orion.visualVx += (0 - orion.visualVx) * Math.min(1, dt * 10);
+    orion.visualLean += (0 - orion.visualLean) * Math.min(1, dt * 10);
     orion.vy += GRAVITY*dt;
     orion.y = Math.min(GY, orion.y+orion.vy*dt);
     if(orion.y>=GY){ orion.y=GY; orion.vy=0; orion.onGround=true; }
@@ -352,6 +355,8 @@ function updateOrion(dt) {
   const goRight = keys['ArrowRight'] || keys['d'];
   orion.vx = isDodging ? orion.dodgeVx : (goRight ? P_SPEED : goLeft ? -P_SPEED : 0);
   if(!isDodging && orion.vx!==0){ orion.facing = orion.vx>0?1:-1; orion.walkPhase += dt*7; }
+  orion.visualVx += (orion.vx - orion.visualVx) * Math.min(1, dt * 12);
+  orion.visualLean += ((orion.visualVx / P_SPEED) * 0.045 - orion.visualLean) * Math.min(1, dt * 10);
   // Jump
   if((keys['ArrowUp']||keys['w']) && orion.onGround){
     orion.vy = JUMP_V; orion.onGround = false;
@@ -369,10 +374,11 @@ function updateOrion(dt) {
   orion.throwT = Math.max(0, orion.throwT-dt);
   if(orion.spearQueued){
     if(orion.attackCD<=0 && orion.spearCount>0){
-      const hand = Engine.manga ? orionMangaHandPoint('throw') : { x:orion.x+orion.facing*22, y:orion.y-38 };
+      orion.throwFacing = orion.facing;
+      const hand = Engine.manga ? orionMangaHandPoint('throw', orion.throwFacing) : { x:orion.x+orion.throwFacing*22, y:orion.y-38 };
       spears.push({
         x:hand.x, y:hand.y,
-        vx:orion.facing*SPEAR_SPD,
+        vx:orion.throwFacing*SPEAR_SPD,
         vy:orion.onGround?0:orion.vy*0.5,
         gravity:!orion.onGround,
         active:true,
@@ -394,8 +400,9 @@ function updateOrion(dt) {
   orion.stabFlash = Math.max(0, orion.stabFlash-dt);
   if(orion.stabQueued){
     if(orion.stabCD<=0 && !orion.onGround){
+      orion.stabFacing = orion.facing;
       orion.stabFlash = 0.22; orion.stabCD = 0.5;
-      const sx = orion.x+orion.facing*65, sy = orion.y-35;
+      const sx = orion.x+orion.stabFacing*65, sy = orion.y-35;
       burst(sx, sy, '#ffeeaa', 5, 75);
       if(boss.state!=='dead' && Math.abs(orion.x-boss.x)<115){
         boss.hp = Math.max(0, boss.hp-STAB_DMG);
@@ -577,6 +584,9 @@ function updateBoss(dt) {
 }
 
 function hurtOrion(){
+  const hitFacing = boss ? (orion.x < boss.x ? 1 : -1) : orion.facing;
+  orion.hurtFacing = hitFacing;
+  orion.facing = hitFacing;
   if(orion.proneT>0){
     orion.proneDmg += 0.25;
     orion.invincible = 0.45; orion.hurtFlash = 0.3;
@@ -587,12 +597,15 @@ function hurtOrion(){
     return;
   }
   orion.hp--; orion.invincible = 1.5; orion.hurtFlash = 0.7;
-  orion.vy = -200; orion.vx = orion.facing*-200;
+  orion.vy = -200; orion.vx = -hitFacing * 200;
   Engine.shake(9); sfx.hitOrion();
   burst(orion.x, orion.y-40, '#ff2200', 10, 150);
   if(orion.hp<=0) Engine.setState('dead');
 }
 function proneOrion(){
+  const hitFacing = boss ? (orion.x < boss.x ? 1 : -1) : orion.facing;
+  orion.hurtFacing = hitFacing;
+  orion.facing = hitFacing;
   orion.hp--; orion.proneT = 2.0; orion.invincible = 2.1; orion.hurtFlash = 2.0;
   orion.vy = 0; orion.vx = 0;
   Engine.shake(14); sfx.hitOrion();
@@ -754,8 +767,8 @@ function updatePhantoms(dt){
   }
 }
 
-function orionMangaHandPoint(kind = 'throw') {
-  const f = orion ? orion.facing : 1;
+function orionMangaHandPoint(kind = 'throw', facing = null) {
+  const f = facing || (orion ? orion.facing : 1);
   if (!orion) return { x:0, y:0 };
   if (kind === 'stab') return { x: orion.x + f * 64, y: orion.y - 45 };
   if (orion.dodgeT > 0) return { x: orion.x + f * 36, y: orion.y - 44 };
@@ -1048,10 +1061,11 @@ function drawOrion() {
 
   if(orion.stabFlash>0){
     const sf = orion.stabFlash/0.22;
-    const reach = orion.facing*55*sf;
-    const kx = orion.x+orion.facing*20+reach;
+    const f = orion.stabFacing || orion.facing;
+    const reach = f*55*sf;
+    const kx = orion.x+f*20+reach;
     const ky = orion.y-36;
-    const ang = orion.facing===1?-0.5:Math.PI+0.5;
+    const ang = f===1?-0.5:Math.PI+0.5;
     ctx.save();
     ctx.translate(kx,ky); ctx.rotate(ang);
     ctx.globalAlpha = Math.min(1, sf*1.2);
@@ -1078,15 +1092,16 @@ function orionMangaAssetsReady() {
 
 function currentOrionMangaMotion() {
   if (Engine.state === 'victory') return { anim:'victory', t:Engine.time, flipX:false };
-  if (Engine.state === 'dead' || orion.hp <= 0) return { anim:'fallen', t:Engine.time, flipX:orion.facing < 0 };
-  if (orion.proneT > 0) return { anim:'prone', t:2.0 - orion.proneT, flipX:orion.facing < 0 };
-  if (orion.hurtFlash > 0 && orion.invincible > 0.25) return { anim:'hit', t:0.7 - orion.hurtFlash, flipX:orion.facing < 0 };
-  if (orion.stabFlash > 0) return { anim:'stab', t:0.22 - orion.stabFlash, flipX:orion.facing < 0 };
-  if (orion.throwT > 0) return { anim:'throw', t:0.35 - orion.throwT, flipX:orion.facing < 0 };
-  if (orion.dodgeT > 0) return { anim:'dodge', t:0.28 - orion.dodgeT, flipX:orion.facing < 0 };
+  if (Engine.state === 'dead' || orion.hp <= 0) return { anim:'fallen', t:Engine.time, flipX:orion.hurtFacing < 0, rotate:orion.hurtFacing * 0.04 };
+  if (orion.proneT > 0) return { anim:'prone', t:2.0 - orion.proneT, flipX:orion.hurtFacing < 0, rotate:orion.hurtFacing * 0.05 };
+  if (orion.hurtFlash > 0 && orion.invincible > 0.25) return { anim:'hit', t:0.7 - orion.hurtFlash, flipX:orion.hurtFacing < 0, rotate:-orion.hurtFacing * 0.035 };
+  if (orion.stabFlash > 0) return { anim:'stab', t:0.22 - orion.stabFlash, flipX:orion.stabFacing < 0, rotate:orion.stabFacing * 0.035 };
+  if (orion.throwT > 0) return { anim:'throw', t:0.35 - orion.throwT, flipX:orion.throwFacing < 0, rotate:orion.throwFacing * 0.025 };
+  if (orion.dodgeT > 0) return { anim:'dodge', t:0.28 - orion.dodgeT, flipX:orion.dodgeFacing < 0, rotate:orion.dodgeFacing * 0.035 };
   if (!orion.onGround || Math.abs(orion.vy) > 80) return { anim:'jump', t:Engine.time, flipX:orion.facing < 0 };
-  if (Math.abs(orion.vx) > 18) return { anim:'run', t:orion.walkPhase / 7, flipX:orion.facing < 0 };
-  return { anim:'idle', t:Engine.time, flipX:orion.facing < 0 };
+  const runVx = Math.abs(orion.vx) > 18 ? orion.vx : orion.visualVx;
+  if (Math.abs(runVx) > 18) return { anim:'run', t:orion.walkPhase / 7, flipX:runVx < 0, rotate:orion.visualLean };
+  return { anim:'idle', t:Engine.time, flipX:orion.facing < 0, rotate:orion.visualLean * 0.35 };
 }
 
 function currentOrionMangaFrame() {
@@ -1125,13 +1140,15 @@ function drawOrionMangaSprite() {
     drew = art.drawAnimation(ctx, ORION_MANGA_ORION_SHEET, motion.anim, motion.t, orion.x + jitter, y, {
       scale,
       flipX: motion.flipX,
+      rotate: motion.rotate || 0,
     });
   } else {
     const frame = currentOrionMangaFrame();
+    const motion = currentOrionMangaMotion();
     drew = Manga.assets.drawFrame(ctx, ORION_MANGA_LEGACY_SHEET, frame, orion.x + jitter, orion.y + 4, {
       scale,
-      flipX: orion.facing < 0,
-      rotate: orion.proneT > 0 ? orion.facing * 0.10 : 0,
+      flipX: motion.flipX,
+      rotate: motion.rotate || (orion.proneT > 0 ? orion.hurtFacing * 0.10 : 0),
     });
   }
   ctx.restore();
@@ -1244,11 +1261,13 @@ function drawScorpionMangaSprite() {
     ctx.filter = 'brightness(2.8) saturate(0.1)';
     ctx.shadowColor = '#fff5c0';
     ctx.shadowBlur = 18;
-  } else if (boss.phase >= 3) {
-    ctx.shadowColor = '#ff3300';
-    ctx.shadowBlur = 16;
+  } else {
+    ctx.filter = 'saturate(1.06) contrast(1.06)';
+    if (boss.phase >= 3) {
+      ctx.shadowColor = '#ff3300';
+      ctx.shadowBlur = 16;
+    }
   }
-  ctx.filter = 'saturate(1.06) contrast(1.06)';
   let drew = false;
   if (hasAnim) {
     const motion = currentScorpionMangaMotion();
@@ -1499,18 +1518,19 @@ function drawMangaVenomProjectile(v, headOnly = false) {
 function drawMangaStabFx() {
   if (orion.stabFlash <= 0) return;
   const art = orionMangaArt();
-  const hand = orionMangaHandPoint('stab');
+  const f = orion.stabFacing || orion.facing;
+  const hand = orionMangaHandPoint('stab', f);
   const sf = orion.stabFlash / 0.22;
   if (art && orionMangaAssetReady(ORION_MANGA_FXHUD_SHEET)) {
     ctx.save();
     ctx.globalAlpha = Math.min(0.88, sf + 0.12);
     ctx.translate(hand.x, hand.y);
-    ctx.rotate(orion.facing === 1 ? -0.16 : Math.PI + 0.16);
+    ctx.rotate(f === 1 ? -0.16 : Math.PI + 0.16);
     ctx.shadowColor = '#fff5c0';
     ctx.shadowBlur = 18 * sf;
     art.drawFrame(ctx, ORION_MANGA_FXHUD_SHEET, 'stabSlash', 0, 0, {
       scale: Math.max(0.13, Math.min(0.24, Math.min(Engine.W, Engine.H) / 3200)),
-      flipX: orion.facing < 0,
+      flipX: f < 0,
     });
     ctx.restore();
   }
@@ -2417,7 +2437,8 @@ Engine.boot({
       const now = performance.now();
       if(now-lastShiftTime<300 && orion.dodgeT<=0){
         const DODGE_SPD=520, DODGE_DUR=0.28;
-        orion.dodgeVx = orion.facing*DODGE_SPD;
+        orion.dodgeFacing = orion.facing;
+        orion.dodgeVx = orion.dodgeFacing*DODGE_SPD;
         orion.dodgeT  = DODGE_DUR;
         orion.invincible = Math.max(orion.invincible, DODGE_DUR+0.05);
         burst(orion.x, orion.y-30, '#aaddff', 6, 80);

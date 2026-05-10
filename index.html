@@ -199,6 +199,9 @@ canvas.height = window.innerHeight;
 const W = canvas.width, H = canvas.height;
 const GOLD = '#D4AF37';
 const MANGA_KEY = 'godgames_manga';
+const HUB_CONCOURSE_ASSET = 'godgames.shared.hubConcourseV2';
+const HUB_DESTINATION_PANELS_ASSET = 'godgames.shared.hubDestinationPanelsV2';
+const HUB_MANGA_STATION_X = [0.145, 0.322, 0.500, 0.678, 0.855];
 const GY   = H * 0.73;   // ground y
 
 function mangaOn() { return localStorage.getItem(MANGA_KEY) === '1'; }
@@ -222,23 +225,33 @@ const portals = [
   { name: 'OLYMPUS',  sub: 'Hall of the Gods',      hue: '#fff5c0', glow: '#D4AF37', href: 'mount-olympus.html', kind: 'mountain' },
   { name: 'ICARUS',   sub: 'The Flight of Icarus',  hue: '#ff7700', glow: '#ff4400', href: 'icarus.html'        },
 ];
-portals.forEach((p, i) => { p.x = W * (i + 1) / (portals.length + 1); p._btn = null; });
+portals.forEach((p, i) => {
+  p.x = W * (i + 1) / (portals.length + 1);
+  p.mangaX = W * (HUB_MANGA_STATION_X[i] ?? ((i + 1) / (portals.length + 1)));
+  p.slot = i;
+  p._btn = null;
+});
 const PORTAL_RADIUS = Math.min(130, (W / (portals.length + 1)) * 0.45);
 const IS_TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
 
 function hubStage() {
   const groundY = H * 0.735;
   const portalGap = W / (portals.length + 1);
-  const portalRadius = Math.min(145, portalGap * 0.48);
+  const portalRadius = Math.min(140, portalGap * 0.46);
   return {
     W, H,
     groundY,
-    horizonY: H * 0.48,
+    horizonY: H * 0.50,
+    stationTopY: H * 0.34,
+    stationBaseY: H * 0.675,
     vanishX: W * 0.50,
     playerLane: { minX: Math.max(42, W * 0.035), maxX: Math.min(W - 42, W * 0.965) },
     portalRadius,
     foregroundY: H * 0.80,
   };
+}
+function hubPortalX(p) {
+  return mangaOn() ? (p.mangaX ?? p.x) : p.x;
 }
 function hubGroundY() { return mangaOn() ? hubStage().groundY : GY; }
 function hubStageDepth(y) {
@@ -255,10 +268,16 @@ function hubSceneScale() {
 function hubPortalHitRegion(p) {
   const s = hubStage();
   const ss = hubSceneScale();
+  const x = hubPortalX(p);
+  if (mangaOn()) {
+    const w = Math.max(112, Math.min(210, W * 0.118)) * ss;
+    const h = Math.max(118, Math.min(224, H * 0.275)) * ss;
+    return { x: x - w / 2, y: s.stationBaseY - h, w, h: h + 58 * ss };
+  }
   const isMtn = p.kind === 'mountain';
   const w = (isMtn ? 230 : Math.max(132, s.portalRadius * 1.15)) * ss;
   const h = (isMtn ? 265 : 205) * ss;
-  return { x: p.x - w / 2, y: s.groundY - h, w, h: h + 36 };
+  return { x: x - w / 2, y: s.groundY - h, w, h: h + 36 };
 }
 
 // ── Particle motes ────────────────────────────────────────────────────────
@@ -370,7 +389,7 @@ function update(dt) {
   player.nearPortal = null;
   for (const p of portals) {
     const radius = mangaOn() ? hubStage().portalRadius : PORTAL_RADIUS;
-    if (Math.abs(player.x - p.x) < radius) { player.nearPortal = p; break; }
+    if (Math.abs(player.x - hubPortalX(p)) < radius) { player.nearPortal = p; break; }
   }
 
   // Toad-only mushroom on Mt. Olympus — when the toad lands on it (or
@@ -380,7 +399,7 @@ function update(dt) {
   if (player.isToad) {
     const olympus = portals.find(p => p.kind === 'mountain');
     if (olympus) {
-      const dx = player.x - olympus.x;
+      const dx = player.x - hubPortalX(olympus);
       const dy = player.y - (groundY - 14);
       if (Math.abs(dx) < 30 && Math.abs(dy) < 32 && !player.onGround) {
         window.location.href = 'olympus-clues.html';
@@ -441,7 +460,7 @@ function spawnStormFlash() {
   const olympus = portals.find(p => p.kind === 'mountain') || portals[0];
   if (!olympus) return;
   const gy = hubGroundY();
-  const cx = olympus.x + (Math.random() - 0.5) * 140;
+  const cx = hubPortalX(olympus) + (Math.random() - 0.5) * 140;
   const cy = gy - 200 - Math.random() * 60;
   // Branching ink path drawn during render — pre-roll the segments now.
   const branches = [];
@@ -473,7 +492,7 @@ function renderToadMushroom() {
   const olympus = portals.find(p => p.kind === 'mountain');
   if (!olympus) return;
   const gy = hubGroundY();
-  const cx = olympus.x;
+  const cx = hubPortalX(olympus);
   const cy = gy - 14 + Math.sin(time * 2.6) * 1.2;
   // Faint glow halo so it reads at a glance.
   ctx.save();
@@ -523,7 +542,7 @@ function renderStorm() {
   if (_stormIntensity < 0.02) return;
   const olympus = portals.find(p => p.kind === 'mountain') || portals[0];
   if (!olympus) return;
-  const cx = olympus.x;
+  const cx = hubPortalX(olympus);
   const gy = hubGroundY();
   const ay = gy - 240;
   const intensity = _stormIntensity;
@@ -603,7 +622,7 @@ function renderInvocationSeal() {
   if (mangaOn || _codewordIdx <= 0) return;
   const olympus = portals.find(p => p.kind === 'mountain') || portals[0];
   if (!olympus) return;
-  const cx = olympus.x;
+  const cx = hubPortalX(olympus);
   const cy = Math.max(120, hubGroundY() - 320);
   const pulse = 0.5 + 0.5 * Math.sin(time * 5.2);
   const a = 0.36 + _codewordIdx * 0.12;
@@ -1072,19 +1091,85 @@ function drawPortal(p) {
   }
 }
 
-function drawMangaHubStageUnderlay() {
+function drawMangaHubBackdrop() {
+  const art = window.GodGames && GodGames.MangaArt;
+  let drewAsset = false;
+  if (art && typeof art.drawImage === 'function') {
+    drewAsset = art.drawImage(ctx, HUB_CONCOURSE_ASSET, 0, 0, W, H, {
+      fit: 'cover',
+      focusX: 0.50,
+      focusY: 0.54,
+    });
+  }
+
+  if (!drewAsset) {
+    drawMangaHubConcourseFallback();
+  }
+
+  if (art && art.overlay) art.overlay(ctx, W, H, {
+    top: 'rgba(0,0,0,0.08)',
+    mid: 'rgba(0,0,0,0.02)',
+    bottom: 'rgba(0,0,0,0.24)',
+  });
+  drawMangaHubStageUnderlay(drewAsset);
+  return drewAsset;
+}
+
+function drawMangaHubConcourseFallback() {
+  const s = hubStage();
+  ctx.save();
+  const sky = ctx.createLinearGradient(0, 0, 0, s.stationTopY);
+  sky.addColorStop(0, '#070917');
+  sky.addColorStop(0.55, '#1c2442');
+  sky.addColorStop(1, '#533451');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.fillStyle = 'rgba(248,232,190,0.86)';
+  ctx.strokeStyle = '#0a0a0a';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(0, s.stationTopY);
+  ctx.quadraticCurveTo(W * 0.5, s.stationTopY - H * 0.06, W, s.stationTopY);
+  ctx.lineTo(W, s.stationBaseY + H * 0.03);
+  ctx.quadraticCurveTo(W * 0.5, s.stationBaseY + H * 0.07, 0, s.stationBaseY + H * 0.03);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  for (const p of portals) {
+    const box = hubStationBox(p);
+    ctx.fillStyle = 'rgba(54,49,58,0.70)';
+    ctx.strokeStyle = '#0a0a0a';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.roundRect(box.x - box.w * 0.12, box.y - box.h * 0.20, box.w * 1.24, box.h * 1.34, 6);
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  const floor = ctx.createLinearGradient(0, s.stationBaseY, 0, H);
+  floor.addColorStop(0, '#d8c08b');
+  floor.addColorStop(0.55, '#9b8153');
+  floor.addColorStop(1, '#251b12');
+  ctx.fillStyle = floor;
+  ctx.fillRect(0, s.stationBaseY, W, H - s.stationBaseY);
+  ctx.restore();
+}
+
+function drawMangaHubStageUnderlay(assetReady = false) {
   const art = window.GodGames && GodGames.MangaArt;
   const s = hubStage();
   ctx.save();
   const floor = ctx.createLinearGradient(0, s.horizonY, 0, H);
-  floor.addColorStop(0, 'rgba(255,240,190,0.00)');
-  floor.addColorStop(0.60, 'rgba(255,225,140,0.10)');
-  floor.addColorStop(1, 'rgba(0,0,0,0.28)');
+  floor.addColorStop(0, assetReady ? 'rgba(255,240,190,0.00)' : 'rgba(255,240,190,0.06)');
+  floor.addColorStop(0.60, 'rgba(255,225,140,0.08)');
+  floor.addColorStop(1, 'rgba(0,0,0,0.30)');
   ctx.fillStyle = floor;
   ctx.fillRect(0, s.horizonY, W, H - s.horizonY);
 
-  ctx.strokeStyle = 'rgba(10,10,10,0.30)';
-  ctx.lineWidth = 1.4;
+  ctx.strokeStyle = 'rgba(10,10,10,0.20)';
+  ctx.lineWidth = 1.1;
   for (let i = 0; i <= 8; i++) {
     const t = i / 8;
     const x = W * (0.08 + t * 0.84);
@@ -1103,10 +1188,9 @@ function drawMangaHubStageUnderlay() {
   }
   if (art && art.contactShadow) {
     for (const p of portals) {
-      const isMtn = p.kind === 'mountain';
-      art.contactShadow(ctx, p.x, s.groundY + 7, {
-        w: isMtn ? 110 : 62,
-        h: isMtn ? 20 : 13,
+      art.contactShadow(ctx, hubPortalX(p), s.groundY + 7, {
+        w: player.nearPortal === p ? 78 : 58,
+        h: player.nearPortal === p ? 15 : 11,
         alpha: player.nearPortal === p ? 0.46 : 0.30,
         rim: p.hue,
       });
@@ -1115,172 +1199,229 @@ function drawMangaHubStageUnderlay() {
   ctx.restore();
 }
 
-function drawMangaPlacedPortal(p) {
+function hubStationBox(p) {
   const s = hubStage();
-  const ss = hubSceneScale();
-  const isMtn = p.kind === 'mountain';
+  const x = hubPortalX(p);
+  const w = Math.max(82, Math.min(178, W * 0.107));
+  const h = Math.max(84, Math.min(178, H * 0.245));
+  return {
+    x: x - w / 2,
+    y: s.stationTopY + H * 0.055,
+    w,
+    h,
+    cx: x,
+    cy: s.stationTopY + H * 0.055 + h / 2,
+  };
+}
+
+function drawMangaDestinationStation(p) {
+  const art = window.GodGames && GodGames.MangaArt;
+  const box = hubStationBox(p);
   const near = player.nearPortal === p;
-  const x = p.x;
-  const gy = s.groundY;
-  const glow = near ? 1 : 0.55 + Math.sin(time * 2.2 + x) * 0.12;
+  const pulse = near ? 0.74 + Math.sin(time * 5) * 0.18 : 0.28 + Math.sin(time * 1.7 + p.slot) * 0.05;
   ctx.save();
-  ctx.translate(x, gy);
 
-  if (isMtn) {
-    const peakH = 205 * ss;
-    const baseW = 220 * ss;
-    ctx.shadowColor = '#fff5c0';
-    ctx.shadowBlur = 24 * glow;
-    ctx.fillStyle = `rgba(255,232,150,${0.16 + glow * 0.10})`;
-    ctx.beginPath(); ctx.arc(0, -peakH + 12, peakH * 0.78, 0, Math.PI * 2); ctx.fill();
-    ctx.shadowBlur = 0;
+  ctx.shadowColor = p.hue;
+  ctx.shadowBlur = near ? 28 : 12;
+  ctx.fillStyle = `rgba(255,245,214,${0.10 + pulse * 0.11})`;
+  ctx.beginPath(); ctx.roundRect(box.x - 10, box.y - 10, box.w + 20, box.h + 34, 5); ctx.fill();
+  ctx.shadowBlur = 0;
 
-    ctx.fillStyle = 'rgba(28,32,58,0.82)';
-    ctx.beginPath();
-    ctx.moveTo(-baseW / 2, 0);
-    ctx.lineTo(-baseW * 0.22, -peakH * 0.56);
-    ctx.lineTo(-baseW * 0.06, -peakH * 0.84);
-    ctx.lineTo(0, -peakH);
-    ctx.lineTo(baseW * 0.08, -peakH * 0.82);
-    ctx.lineTo(baseW * 0.24, -peakH * 0.55);
-    ctx.lineTo(baseW / 2, 0);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = '#0a0a0a';
-    ctx.lineWidth = 4;
-    ctx.stroke();
+  ctx.fillStyle = 'rgba(12,12,15,0.64)';
+  ctx.strokeStyle = '#0a0a0a';
+  ctx.lineWidth = near ? 4.5 : 3.2;
+  ctx.beginPath(); ctx.roundRect(box.x - 5, box.y - 5, box.w + 10, box.h + 10, 5); ctx.fill(); ctx.stroke();
 
-    ctx.fillStyle = '#f7f2d8';
-    ctx.beginPath();
-    ctx.moveTo(-baseW * 0.11, -peakH * 0.65);
-    ctx.lineTo(-baseW * 0.05, -peakH * 0.84);
-    ctx.lineTo(0, -peakH);
-    ctx.lineTo(baseW * 0.07, -peakH * 0.82);
-    ctx.lineTo(baseW * 0.13, -peakH * 0.64);
-    ctx.lineTo(baseW * 0.04, -peakH * 0.73);
-    ctx.lineTo(0, -peakH * 0.70);
-    ctx.lineTo(-baseW * 0.05, -peakH * 0.75);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = '#0a0a0a';
-    ctx.lineWidth = 2.5;
-    ctx.stroke();
+  drawMangaStationPreview(p, box, near);
 
-    ctx.fillStyle = '#D4AF37';
-    ctx.strokeStyle = '#0a0a0a';
-    ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.roundRect(-28 * ss, -17 * ss, 56 * ss, 15 * ss, 3); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = '#fff5c0';
-    ctx.fillRect(-5 * ss, -31 * ss, 10 * ss, 12 * ss);
-  } else {
-    const archH = 148 * ss;
-    const archW = 72 * ss;
-    const hue = p.hue || GOLD;
-    ctx.shadowColor = hue;
-    ctx.shadowBlur = 28 * glow;
-    ctx.fillStyle = `rgba(255,245,210,${0.16 + glow * 0.12})`;
-    ctx.beginPath();
-    ctx.ellipse(0, -archH * 0.52, archW * 0.76, archH * 0.72, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.shadowBlur = 0;
-
-    ctx.fillStyle = 'rgba(210,188,132,0.88)';
-    ctx.strokeStyle = '#0a0a0a';
-    ctx.lineWidth = 4;
-    ctx.fillRect(-archW / 2 - 17 * ss, -archH, 17 * ss, archH);
-    ctx.strokeRect(-archW / 2 - 17 * ss, -archH, 17 * ss, archH);
-    ctx.fillRect(archW / 2, -archH, 17 * ss, archH);
-    ctx.strokeRect(archW / 2, -archH, 17 * ss, archH);
-    ctx.beginPath();
-    ctx.arc(0, -archH, archW / 2 + 17 * ss, Math.PI, 0);
-    ctx.lineTo(archW / 2 + 17 * ss, -archH + 4 * ss);
-    ctx.lineTo(archW / 2, -archH + 4);
-    ctx.arc(0, -archH, archW / 2, 0, Math.PI, true);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-
-    const g = ctx.createRadialGradient(0, -archH * 0.58, 4, 0, -archH * 0.58, archW * 0.78);
-    g.addColorStop(0, `rgba(255,255,255,${0.82 * glow})`);
-    g.addColorStop(0.34, `${hue}aa`);
-    g.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.rect(-archW / 2, -archH, archW, archH);
-    ctx.arc(0, -archH, archW / 2, Math.PI, 0);
-    ctx.fill();
-
-    ctx.strokeStyle = hue;
-    ctx.lineWidth = 2.2;
-    for (let i = 0; i < 3; i++) {
-      ctx.globalAlpha = 0.42 + i * 0.16;
-      ctx.beginPath();
-      ctx.ellipse(0, -archH * 0.54, archW * (0.30 + i * 0.13), archH * (0.30 + i * 0.08), 0, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-    ctx.globalAlpha = 1;
-  }
+  ctx.strokeStyle = near ? '#fff1b8' : 'rgba(212,175,55,0.76)';
+  ctx.lineWidth = near ? 3 : 1.8;
+  ctx.beginPath(); ctx.roundRect(box.x + 5, box.y + 5, box.w - 10, box.h - 10, 4); ctx.stroke();
   ctx.restore();
 
-  const labelY = isMtn ? gy - 240 * ss : gy - 166 * ss;
+  const labelY = box.y + box.h + Math.max(18, H * 0.027);
   ctx.save();
   ctx.textAlign = 'center';
   ctx.lineJoin = 'round';
-  ctx.shadowColor = p.hue || GOLD;
-  ctx.shadowBlur = near ? 18 : 8;
-  ctx.font = isMtn ? `900 ${24 * ss}px "Impact", "Arial Black", sans-serif` : `900 ${17 * ss}px "Impact", "Arial Black", sans-serif`;
-  ctx.lineWidth = isMtn ? 5 : 4;
+  ctx.shadowColor = p.hue;
+  ctx.shadowBlur = near ? 16 : 5;
+  const nameSize = Math.max(13, Math.min(18, W / 78));
+  const subSize = Math.max(8, Math.min(11, W / 122));
+  ctx.font = `900 ${nameSize}px "Impact", "Arial Black", sans-serif`;
+  ctx.lineWidth = 4;
   ctx.strokeStyle = '#0a0a0a';
-  ctx.strokeText(p.name, p.x, labelY);
+  ctx.strokeText(p.name, box.cx, labelY);
   ctx.fillStyle = GOLD;
-  ctx.fillText(p.name, p.x, labelY);
+  ctx.fillText(p.name, box.cx, labelY);
   ctx.shadowBlur = 0;
-  ctx.font = isMtn ? `bold ${12 * ss}px monospace` : `bold ${11 * ss}px monospace`;
-  ctx.lineWidth = 3;
-  ctx.strokeText(p.sub, p.x, labelY + 17);
+  ctx.font = `bold ${subSize}px monospace`;
+  ctx.lineWidth = 2.5;
+  ctx.strokeText(p.sub, box.cx, labelY + nameSize * 0.95);
   ctx.fillStyle = '#fff1b8';
-  ctx.fillText(p.sub, p.x, labelY + 17);
+  ctx.fillText(p.sub, box.cx, labelY + nameSize * 0.95);
   ctx.restore();
 
   p._btn = hubPortalHitRegion(p);
   if (near) {
-    const art = window.GodGames && GodGames.MangaArt;
-    const label = isMtn ? 'ASCEND' : 'PLAY';
-    const by = isMtn ? gy - 280 * ss : gy - 205 * ss;
-    if (art && art.drawPill) art.drawPill(ctx, p.x, by, label, { w: (isMtn ? 128 : 106) * ss, h: 38 * ss, accent: p.hue, font: `900 ${18 * ss}px "Impact", "Arial Black", sans-serif` });
+    const by = Math.min(H - 42, hubStage().groundY + Math.max(28, H * 0.064));
+    const label = p.kind === 'mountain' ? 'ASCEND' : 'ENTER';
+    const bw = p.kind === 'mountain' ? 118 : 98;
+    const bh = 30;
+    if (art && art.drawPanel) art.drawPanel(ctx, box.cx - bw / 2, by - bh / 2, bw, bh, {
+      radius: 5,
+      paper: 'rgba(255,224,92,0.96)',
+      bottom: 'rgba(212,175,55,0.96)',
+      accent: '#fff1b8',
+      toneAlpha: 0.05,
+      lineWidth: 3,
+    });
     else {
       ctx.save();
       ctx.fillStyle = GOLD;
-      ctx.fillRect(p.x - 54, by - 18, 108, 36);
-      ctx.fillStyle = '#0a0a0a';
-      ctx.textAlign = 'center';
-      ctx.font = 'bold 16px monospace';
-      ctx.fillText(label, p.x, by + 5);
+      ctx.fillRect(box.cx - bw / 2, by - bh / 2, bw, bh);
+      ctx.strokeStyle = '#0a0a0a'; ctx.lineWidth = 3;
+      ctx.strokeRect(box.cx - bw / 2, by - bh / 2, bw, bh);
       ctx.restore();
     }
     ctx.save();
     ctx.textAlign = 'center';
-    ctx.font = `bold ${10 * ss}px monospace`;
+    ctx.textBaseline = 'middle';
+    ctx.font = `900 ${Math.max(14, Math.min(17, W / 74))}px "Impact", "Arial Black", sans-serif`;
+    ctx.fillStyle = '#0a0a0a';
+    ctx.fillText(label, box.cx, by + 1);
+    ctx.restore();
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 10px monospace';
     ctx.fillStyle = '#fff1b8';
     ctx.strokeStyle = '#0a0a0a';
     ctx.lineWidth = 3;
-    ctx.strokeText('click or press SPACE', p.x, by + 34 * ss);
-    ctx.fillText('click or press SPACE', p.x, by + 34 * ss);
+    ctx.strokeText('click or press SPACE', box.cx, by + 30);
+    ctx.fillText('click or press SPACE', box.cx, by + 30);
     ctx.restore();
   }
 }
 
-function drawMangaPortalButton(p) {
-  const near = player.nearPortal === p;
-  p._btn = hubPortalHitRegion(p);
-  if (!near) return;
+function drawMangaStationPreview(p, box, near) {
   const art = window.GodGames && GodGames.MangaArt;
-  const isMtn = p.kind === 'mountain';
-  const gy = hubGroundY();
-  const ss = hubSceneScale();
-  const by = isMtn ? gy - 280 * ss : gy - 205 * ss;
-  const label = isMtn ? 'ASCEND' : 'PLAY';
-  if (art && art.drawPill) art.drawPill(ctx, p.x, by, label, { w: (isMtn ? 128 : 106) * ss, h: 38 * ss, accent: p.hue, font: `900 ${18 * ss}px "Impact", "Arial Black", sans-serif` });
+  const frameName = String(p.name || '').toLowerCase();
+  ctx.save();
+  ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 4); ctx.clip();
+  if (art && typeof art.drawFrameCover === 'function'
+      && art.drawFrameCover(ctx, HUB_DESTINATION_PANELS_ASSET, frameName, box.x, box.y, box.w, box.h, {
+        focusX: 0.5,
+        focusY: 0.48,
+      })) {
+    const shade = ctx.createLinearGradient(box.x, box.y, box.x, box.y + box.h);
+    shade.addColorStop(0, 'rgba(255,255,255,0.03)');
+    shade.addColorStop(0.58, 'rgba(0,0,0,0.00)');
+    shade.addColorStop(1, 'rgba(0,0,0,0.30)');
+    ctx.fillStyle = shade;
+    ctx.fillRect(box.x, box.y, box.w, box.h);
+    if (near) {
+      ctx.fillStyle = `${p.hue}26`;
+      ctx.fillRect(box.x, box.y, box.w, box.h);
+    }
+    ctx.restore();
+    return;
+  }
+
+  const g = ctx.createLinearGradient(box.x, box.y, box.x, box.y + box.h);
+  const palette = {
+    ORION:    ['#081225', '#3b2258', '#100915'],
+    ACHILLES: ['#2d0708', '#7d2418', '#160605'],
+    PERSEUS:  ['#08272c', '#1a6570', '#071214'],
+    OLYMPUS:  ['#1d2440', '#b58a34', '#17100a'],
+    ICARUS:   ['#14365a', '#e8872d', '#082133'],
+  }[p.name] || ['#101820', p.hue, '#080808'];
+  g.addColorStop(0, palette[0]);
+  g.addColorStop(0.52, palette[1]);
+  g.addColorStop(1, palette[2]);
+  ctx.fillStyle = g;
+  ctx.fillRect(box.x, box.y, box.w, box.h);
+
+  ctx.globalAlpha = 0.16;
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 1;
+  for (let y = box.y + 8; y < box.y + box.h; y += 11) {
+    ctx.beginPath(); ctx.moveTo(box.x, y); ctx.lineTo(box.x + box.w, y + Math.sin(y * 0.03 + time) * 5); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  const cx = box.cx;
+  const cy = box.cy;
+  const u = Math.min(box.w, box.h);
+  ctx.strokeStyle = '#0a0a0a';
+  ctx.fillStyle = '#fff1b8';
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  if (p.name === 'ICARUS') {
+    ctx.fillStyle = 'rgba(255,238,150,0.92)';
+    ctx.beginPath(); ctx.arc(cx + u * 0.20, cy - u * 0.22, u * 0.19, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#0a0a0a'; ctx.lineWidth = 2.5; ctx.stroke();
+    ctx.strokeStyle = '#fff1b8'; ctx.lineWidth = 3;
+    for (let i = 0; i < 4; i++) {
+      const yy = cy + u * (0.16 + i * 0.08);
+      ctx.beginPath(); ctx.moveTo(box.x + 8, yy); ctx.quadraticCurveTo(cx, yy - 10, box.x + box.w - 8, yy); ctx.stroke();
+    }
+    ctx.strokeStyle = '#0a0a0a'; ctx.lineWidth = 3.5;
+    ctx.beginPath(); ctx.moveTo(cx - u * 0.19, cy + u * 0.02); ctx.quadraticCurveTo(cx - u * 0.03, cy - u * 0.27, cx + u * 0.19, cy + u * 0.02); ctx.stroke();
+  } else if (p.name === 'ORION') {
+    const pts = [[-0.24,-0.24],[-0.03,-0.36],[0.15,-0.18],[0.04,0.04],[0.24,0.20]];
+    ctx.strokeStyle = '#fff1b8'; ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    pts.forEach(([px, py], i) => {
+      const x = cx + px * u, y = cy + py * u;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    ctx.fillStyle = '#fff1b8';
+    for (const [px, py] of pts) { ctx.beginPath(); ctx.arc(cx + px * u, cy + py * u, 3, 0, Math.PI * 2); ctx.fill(); }
+    ctx.strokeStyle = '#0a0a0a'; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.arc(cx + u * 0.12, cy + u * 0.22, u * 0.25, Math.PI * 0.15, Math.PI * 1.35); ctx.stroke();
+    ctx.strokeStyle = '#c084ff'; ctx.lineWidth = 2.6; ctx.stroke();
+  } else if (p.name === 'ACHILLES') {
+    ctx.strokeStyle = '#fff1b8'; ctx.lineWidth = 2.5;
+    for (let i = 0; i < 6; i++) {
+      const x = box.x + box.w * (0.10 + i * 0.16);
+      ctx.beginPath(); ctx.moveTo(x, box.y + 8); ctx.lineTo(x + 26, box.y + box.h - 12); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x + 26, box.y + box.h - 12); ctx.lineTo(x + 16, box.y + box.h - 24); ctx.moveTo(x + 26, box.y + box.h - 12); ctx.lineTo(x + 30, box.y + box.h - 26); ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(212,175,55,0.82)';
+    ctx.beginPath(); ctx.ellipse(cx, cy + u * 0.14, u * 0.20, u * 0.27, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#0a0a0a'; ctx.lineWidth = 3; ctx.stroke();
+  } else if (p.name === 'PERSEUS') {
+    ctx.fillStyle = 'rgba(235,255,255,0.78)';
+    ctx.beginPath(); ctx.ellipse(cx, cy, u * 0.26, u * 0.34, -0.2, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#0a0a0a'; ctx.lineWidth = 3.2; ctx.stroke();
+    ctx.strokeStyle = '#b8ffff'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(cx - u * 0.19, cy - u * 0.04); ctx.quadraticCurveTo(cx, cy - u * 0.15, cx + u * 0.19, cy - u * 0.04); ctx.stroke();
+    ctx.strokeStyle = '#143f45'; ctx.lineWidth = 2.4;
+    for (let i = 0; i < 4; i++) {
+      const sx = box.x + box.w * (0.20 + i * 0.18);
+      ctx.beginPath(); ctx.moveTo(sx, box.y + box.h - 9); ctx.quadraticCurveTo(sx + 10, cy, sx - 2, box.y + 10); ctx.stroke();
+    }
+  } else {
+    ctx.fillStyle = 'rgba(255,245,196,0.88)';
+    ctx.beginPath();
+    ctx.moveTo(cx - u * 0.36, cy + u * 0.30);
+    ctx.lineTo(cx - u * 0.10, cy - u * 0.18);
+    ctx.lineTo(cx, cy - u * 0.42);
+    ctx.lineTo(cx + u * 0.12, cy - u * 0.16);
+    ctx.lineTo(cx + u * 0.38, cy + u * 0.30);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#0a0a0a'; ctx.lineWidth = 3; ctx.stroke();
+    ctx.strokeStyle = '#fff1b8'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(cx + u * 0.12, cy - u * 0.34); ctx.lineTo(cx - u * 0.03, cy - u * 0.02); ctx.lineTo(cx + u * 0.15, cy - u * 0.05); ctx.lineTo(cx - u * 0.10, cy + u * 0.31); ctx.stroke();
+  }
+
+  if (near) {
+    ctx.fillStyle = `${p.hue}33`;
+    ctx.fillRect(box.x, box.y, box.w, box.h);
+  }
+  ctx.restore();
 }
 
 function drawMangaHubForeground() {
@@ -1594,18 +1735,8 @@ function render() {
   ctx.strokeStyle='rgba(200,180,130,0.22)'; ctx.lineWidth=2;
   ctx.beginPath(); ctx.moveTo(0,GY); ctx.lineTo(W,GY); ctx.stroke();
 
-  const mangaArt = window.GodGames && GodGames.MangaArt;
   let mangaSceneBackdrop = false;
-  if (mangaOn && mangaArt && typeof mangaArt.drawScene === 'function'
-      && mangaArt.drawScene(ctx, 'hubStage', 0, 0, W, H, { focusX: 0.50, focusY: 0.52, alpha: 1 })) {
-    mangaSceneBackdrop = true;
-    if (mangaArt.overlay) mangaArt.overlay(ctx, W, H, {
-      top: 'rgba(0,0,0,0.03)',
-      mid: 'rgba(0,0,0,0.02)',
-      bottom: 'rgba(0,0,0,0.18)',
-    });
-    drawMangaHubStageUnderlay();
-  }
+  if (mangaOn) mangaSceneBackdrop = drawMangaHubBackdrop();
 
   // ambient motes
   for (const m of motes) {
@@ -1630,26 +1761,24 @@ function render() {
     && typeof Manga.scenes?.column === 'function'
     && typeof Manga.scenes?.archPortal === 'function'
     && typeof Manga.scenes?.olympus === 'function';
-  if (!mangaSceneBackdrop) {
+  if (!mangaOn && !mangaSceneBackdrop) {
     for (const cx of colXs) {
       if (_mangaActive) Manga.scenes.column(ctx, { x: cx, gy: GY });
       else drawColumn(cx);
     }
   }
 
-  // Portals — manga path draws the arch/mountain art via Manga.scenes; the action
-  // button (proximity prompt + p._btn hit region) is drawn by the helper below
-  // since both paths need it.
+  // Destinations. Manga mode uses concourse shrine stations; normal mode keeps
+  // the original arch/mountain portals.
   for (const p of portals) {
-    if (mangaSceneBackdrop) {
-      drawMangaPlacedPortal(p);
+    if (mangaOn) {
+      drawMangaDestinationStation(p);
     } else if (_mangaActive) {
       if (p.kind === 'mountain') {
         Manga.scenes.olympus(ctx, { x: p.x, gy: GY, name: p.name, sub: p.sub, near: player.nearPortal === p, time });
       } else {
         Manga.scenes.archPortal(ctx, { x: p.x, gy: GY, name: p.name, sub: p.sub, hue: p.hue, near: player.nearPortal === p, time });
       }
-      drawMangaPortalButton(p);
     } else {
       if (p.kind === 'mountain') drawMountain(p); else drawPortal(p);
     }
@@ -1663,13 +1792,14 @@ function render() {
       const isMtn = p.kind === 'mountain';
       const w = isMtn ? 220 : 150;
       const h = isMtn ? 230 : 200;
-      p._btn = { x: p.x - w/2, y: gy - h, w, h };
+      const x = hubPortalX(p);
+      p._btn = { x: x - w/2, y: gy - h, w, h };
     }
   }
 
   // Player
   drawPlayer();
-  if (mangaSceneBackdrop) drawMangaHubForeground();
+  if (mangaOn) drawMangaHubForeground();
 
   // Manga atmosphere — bold overlay so the screen unmistakably reads "manga".
   // Drawn on top of the world but below the Zeus cinematic + title + toast.
@@ -1814,7 +1944,7 @@ function startZeusStrike() {
   const olympus = portals.find(p => p.kind === 'mountain') || portals[0];
   const gy = hubGroundY();
   _zeusStrike = Manga.fx.zeusStrike({
-    fromX: olympus.x,
+    fromX: hubPortalX(olympus),
     fromY: gy - 220,            // above the mountain peak
     toX:   player.x,
     toY:   player.y - 30,

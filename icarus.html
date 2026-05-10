@@ -357,7 +357,10 @@ function initGame() {
     facingRight: true,
     vx: 0,
     vy: -220,
+    visualVx: 0,
+    visualVy: -220,
     angle: 0,
+    spriteTilt: 0,
     spinV: 0,
     wingHealth: 50,
     burnDmg: 0,   // accumulated sun damage  (drives orange/fire visuals)
@@ -512,6 +515,25 @@ function recomputeWingHealth() {
   player.wingHealth = Math.max(0, WING_MAX - player.burnDmg - player.wetDmg - player.directDmg);
 }
 
+function updateIcarusSpriteMotion(dt, thrusting = false, diving = false) {
+  if (!player) return;
+  player.visualVx += (player.vx - player.visualVx) * Math.min(1, dt * 8.5);
+  player.visualVy += (player.vy - player.visualVy) * Math.min(1, dt * 8.5);
+
+  if (state === 'dying') {
+    player.spriteTilt += (player.angle * 0.16 - player.spriteTilt) * Math.min(1, dt * 10);
+    return;
+  }
+
+  const faceSign = player.facingRight ? 1 : -1;
+  const verticalTilt = Math.max(-0.24, Math.min(0.32, player.visualVy / 950)) * faceSign;
+  const bankTilt = Math.max(-0.10, Math.min(0.10, player.visualVx / 2400));
+  const flapKick = thrusting ? Math.sin(player.flapPhase) * 0.035 * faceSign : 0;
+  const diveKick = diving ? 0.24 * faceSign : 0;
+  const targetTilt = verticalTilt + bankTilt + flapKick + diveKick;
+  player.spriteTilt += (targetTilt - player.spriteTilt) * Math.min(1, dt * (diving ? 13 : 7));
+}
+
 // ── Update ─────────────────────────────────────────────────────────────────
 // `time` is synced from Engine.time before each call (see onUpdate in Engine.boot).
 function update(dt) {
@@ -545,6 +567,7 @@ function updatePlaying(dt) {
     player.vy = -55;
     player.y += player.vy * dt;
     player.flapPhase += dt * 4;
+    updateIcarusSpriteMotion(dt, false, false);
     rescueWorldMotion(dt);
     updateParticles(dt);
     updateClouds(dt);
@@ -582,6 +605,7 @@ function updatePlaying(dt) {
   player.vy += GRAVITY * dt;
   player.vy = Math.max(-MAX_SPEED, Math.min(MAX_SPEED, player.vy));
   player.y += player.vy * dt;
+  updateIcarusSpriteMotion(dt, thrusting, diving);
 
   // island landing & ocean clamping
   player.onIsland = false;
@@ -1148,6 +1172,7 @@ function updateDying(dt) {
   player.x += player.driftX * dt;
   player.angle += player.spinV * dt;
   player.spinV += (player.spinV > 0 ? 1 : -1) * 3 * dt;
+  updateIcarusSpriteMotion(dt, false, false);
 
   // death fire trail
   if (Math.random() < dt * 30) {
@@ -2193,7 +2218,7 @@ function renderPlayer(W, H) {
       wingHealth: p.wingHealth,
       burnDmg: p.burnDmg, wetDmg: p.wetDmg,
       thrusting: keys['ArrowUp'] || keys[' '],
-      dying: state === 'dying', angle: p.angle,
+      dying: state === 'dying', angle: state === 'dying' ? p.angle : (p.spriteTilt || 0),
       diving: diveT > 0,
     });
     return;
@@ -2207,7 +2232,7 @@ function renderPlayer(W, H) {
 
   ctx.save();
   ctx.translate(p.x, p.y);
-  if (state === 'dying') ctx.rotate(p.angle);
+  ctx.rotate(state === 'dying' ? p.angle : (p.spriteTilt || 0));
   ctx.scale(p.facingRight ? 0.65 : -0.65, 0.65);
 
   // glow aura
@@ -3602,7 +3627,7 @@ function drawIcarusMangaSprite() {
   const drew = Manga.assets.drawFrame(ctx, ICARUS_MANGA_SHEET_ASSET, frame, p.x, p.y, {
     scale,
     flipX: !p.facingRight,
-    rotate: state === 'dying' ? p.angle * 0.16 : 0,
+    rotate: state === 'dying' ? p.angle * 0.16 : (p.spriteTilt || 0),
   });
   ctx.filter = 'none';
   ctx.shadowBlur = 0;

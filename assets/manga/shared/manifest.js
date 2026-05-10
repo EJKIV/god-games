@@ -40,6 +40,29 @@
         },
       },
     });
+
+    M.assets.define('godgames.shared.hubConcourseV2', {
+      src: 'assets/manga/shared/hub-concourse-v2.jpg',
+      meta: {
+        usage: 'Clean manga/anime Mount Olympus hub concourse with five empty destination shrine bays; live canvas overlays provide labels, selection, and navigation.',
+      },
+    });
+
+    const hubPanelW = 1983 / 5;
+    const hubPanel = (idx) => ({ x: idx * hubPanelW + 28, y: 42, w: hubPanelW - 56, h: 662 });
+    M.assets.define('godgames.shared.hubDestinationPanelsV2', {
+      src: 'assets/manga/shared/hub-destination-panels-v2.jpg',
+      frames: {
+        orion: hubPanel(0),
+        achilles: hubPanel(1),
+        perseus: hubPanel(2),
+        olympus: hubPanel(3),
+        icarus: hubPanel(4),
+      },
+      meta: {
+        usage: 'Five cohesive manga destination murals used as live hub shrine insets.',
+      },
+    });
   }
 
   register();

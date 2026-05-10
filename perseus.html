@@ -247,8 +247,12 @@ function resetGame() {
     x: Engine.W * 0.24,
     y: groundY(),
     vx: 0,
+    visualVx: 0,
+    visualLean: 0,
     hp: HP_MAX,
     facing: 1,
+    slashFacing: 1,
+    hurtFacing: 1,
     walkPhase: 0,
     shield: 0,
     slashT: 0,
@@ -288,7 +292,11 @@ function setupLevel(idx) {
   player.x = Engine.W * (0.19 + levelIndex * 0.025);
   player.y = gy;
   player.vx = 0;
+  player.visualVx = 0;
+  player.visualLean = 0;
   player.facing = 1;
+  player.slashFacing = 1;
+  player.hurtFacing = 1;
   player.shield = 0;
   player.slashT = 0;
   player.petrify = 0;
@@ -428,9 +436,11 @@ function spawnSnake() {
 
 function slash() {
   if (!player || player.slashT > 0) return;
+  const f = player.facing;
+  player.slashFacing = f;
   player.slashT = 0.22;
   sfx.slash();
-  const reachX = player.x + player.facing * 42;
+  const reachX = player.x + f * 42;
   for (const s of snakes) {
     if (!s.alive) continue;
     if (Math.abs(s.x - reachX) < 48 && Math.abs(s.y - (player.y - 28)) < 54) {
@@ -555,6 +565,8 @@ if (new URLSearchParams(location.search).get('testHooks') === '1') {
 
 function damagePlayer(amount) {
   if (!player || player.iframes > 0 || Engine.state !== 'playing') return;
+  player.hurtFacing = medusa && player.x < medusa.x ? 1 : player.facing;
+  player.facing = player.hurtFacing;
   player.hp = Math.max(0, player.hp - amount);
   player.iframes = 1.0;
   player.hitFlash = 0.35;
@@ -600,6 +612,8 @@ function update(dt) {
     player.facing = player.vx > 0 ? 1 : -1;
     player.walkPhase += dt * 9.5;
   }
+  player.visualVx += (player.vx - player.visualVx) * Math.min(1, dt * 12);
+  player.visualLean += ((player.visualVx / 310) * 0.045 - player.visualLean) * Math.min(1, dt * 10);
   player.shield += ((shieldUsable ? 1 : 0) - player.shield) * Math.min(1, dt * 12);
   player.slashT = Math.max(0, player.slashT - dt);
   player.iframes = Math.max(0, player.iframes - dt);
@@ -1269,12 +1283,13 @@ function perseusMangaAssetsReady() {
 
 function currentPerseusMangaMotion() {
   if (Engine.state === 'victory') return { anim: 'perseusVictory', t: Engine.time, flipX: false };
-  if (player.petrify > 0.55 || Engine.state === 'dead') return { anim: 'perseusStone', t: Engine.time, flipX: player.facing < 0 };
-  if (player.hitFlash > 0) return { anim: 'perseusHit', t: 0.35 - player.hitFlash, flipX: player.facing < 0 };
-  if (player.slashT > 0) return { anim: 'perseusSlash', t: 0.22 - player.slashT, flipX: player.facing < 0 };
+  if (player.petrify > 0.55 || Engine.state === 'dead') return { anim: 'perseusStone', t: Engine.time, flipX: player.hurtFacing < 0, rotate: player.hurtFacing * 0.025 };
+  if (player.hitFlash > 0) return { anim: 'perseusHit', t: 0.35 - player.hitFlash, flipX: player.hurtFacing < 0, rotate: -player.hurtFacing * 0.035 };
+  if (player.slashT > 0) return { anim: 'perseusSlash', t: 0.22 - player.slashT, flipX: player.slashFacing < 0, rotate: player.slashFacing * 0.035 };
   if (player.shield > 0.45 || mirrorFocus > 0.02 || mirrorFlashT > 0) return { anim: 'perseusMirror', t: Engine.time, flipX: player.facing < 0 };
-  if (Math.abs(player.vx) > 12) return { anim: 'perseusRun', t: player.walkPhase / 9.5, flipX: player.facing < 0 };
-  return { anim: 'perseusIdle', t: Engine.time, flipX: player.facing < 0 };
+  const runVx = Math.abs(player.vx) > 12 ? player.vx : player.visualVx;
+  if (Math.abs(runVx) > 12) return { anim: 'perseusRun', t: player.walkPhase / 9.5, flipX: runVx < 0, rotate: player.visualLean };
+  return { anim: 'perseusIdle', t: Engine.time, flipX: player.facing < 0, rotate: player.visualLean * 0.35 };
 }
 
 function drawPerseusMangaSprite() {
@@ -1288,13 +1303,17 @@ function drawPerseusMangaSprite() {
   const art = perseusMangaArt();
   const fxReady = art && perseusMangaAssetReady(PERSEUS_FXHUD_SHEET);
   const shield = mangaPlayerShieldPoint();
+  const runAmount = Math.min(1, Math.abs(player.visualVx || player.vx) / 310);
+  const stride = Math.sin(player.walkPhase);
+  const spriteY = y - Math.abs(stride) * 4.5 * runAmount;
+  const moveFacing = Math.abs(player.vx) > 8 ? (player.vx > 0 ? 1 : -1) : player.facing;
 
   ctx.save();
   if (fxReady && Math.abs(player.vx) > 18) {
-    art.drawFrame(ctx, PERSEUS_FXHUD_SHEET, 'dustPuff', x - player.facing * 30, player.y + 14, {
+    art.drawFrame(ctx, PERSEUS_FXHUD_SHEET, 'dustPuff', x - moveFacing * 30, player.y + 14, {
       scale: 0.13 + scale * 0.16,
       alpha: 0.26 + Math.abs(Math.sin(player.walkPhase)) * 0.18,
-      flipX: player.facing < 0,
+      flipX: moveFacing < 0,
     });
   }
   if (fxReady && mirrorDullT > 0) {
@@ -1326,9 +1345,10 @@ function drawPerseusMangaSprite() {
     ctx.shadowColor = '#d6fbff';
     ctx.shadowBlur = 12 + mirrorFocus * 12;
   }
-  const drew = art.drawAnimation(ctx, PERSEUS_MANGA_SHEET, motion.anim, motion.t, x, y, {
+  const drew = art.drawAnimation(ctx, PERSEUS_MANGA_SHEET, motion.anim, motion.t, x, spriteY, {
     scale,
     flipX: motion.flipX,
+    rotate: motion.rotate || 0,
   });
   ctx.restore();
 
