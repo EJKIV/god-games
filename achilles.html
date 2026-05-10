@@ -655,6 +655,147 @@ function drawGround() {
   ctx.fillStyle = zoneG; ctx.fillRect(0, PLAYER_Y - 60, W, 120);
 }
 
+function clamp01(v) {
+  return Math.max(0, Math.min(1, v));
+}
+
+function mangaStage() {
+  const W = Engine.W, H = Engine.H;
+  return {
+    W, H,
+    vanishX: W * 0.5,
+    horizonY: H * 0.48,
+    wallY: archerLineY(),
+    playerY: PLAYER_Y,
+    nearY: H,
+  };
+}
+
+function mangaStageDepth(y) {
+  const s = mangaStage();
+  return clamp01((y - s.wallY) / Math.max(1, s.playerY - s.wallY));
+}
+
+function mangaStageProjectedX(x, y, opts = {}) {
+  const s = mangaStage();
+  const d = Math.pow(mangaStageDepth(y), opts.curve ?? 0.85);
+  const backPull = opts.backPull ?? 0.62;
+  const pull = backPull + (1 - backPull) * d;
+  return s.vanishX + (x - s.vanishX) * pull;
+}
+
+function mangaStageScale(y, farScale, nearScale, opts = {}) {
+  const d = Math.pow(mangaStageDepth(y), opts.curve ?? 0.72);
+  return farScale + (nearScale - farScale) * d;
+}
+
+function drawMangaContactShadow(x, y, opts = {}) {
+  const s = mangaStage();
+  const d = mangaStageDepth(y);
+  const w = opts.w ?? (18 + d * 58);
+  const h = opts.h ?? (4 + d * 15);
+  const alpha = opts.alpha ?? (0.18 + d * 0.34);
+  const rot = ((x - s.vanishX) / Math.max(1, s.W)) * 0.22;
+
+  ctx.save();
+  ctx.globalAlpha *= alpha;
+  ctx.fillStyle = opts.color || 'rgba(0,0,0,0.82)';
+  ctx.beginPath();
+  ctx.ellipse(x, y + (opts.offsetY ?? 8), w, h, rot, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha *= 0.32;
+  ctx.strokeStyle = 'rgba(255,210,120,0.55)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.ellipse(x, y + (opts.offsetY ?? 8), w * 0.72, h * 0.56, rot, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawMangaStageFloorUnderlay(opts = {}) {
+  const s = mangaStage();
+
+  ctx.save();
+  const wallBand = ctx.createLinearGradient(0, s.wallY - 74, 0, s.wallY + 58);
+  wallBand.addColorStop(0, 'rgba(0,0,0,0.00)');
+  wallBand.addColorStop(0.48, opts.title ? 'rgba(20,0,0,0.22)' : 'rgba(20,0,0,0.30)');
+  wallBand.addColorStop(1, 'rgba(0,0,0,0.00)');
+  ctx.fillStyle = wallBand;
+  ctx.fillRect(0, s.wallY - 74, s.W, 132);
+
+  ctx.strokeStyle = opts.title ? 'rgba(10,10,10,0.24)' : 'rgba(10,10,10,0.34)';
+  ctx.lineWidth = 1.4;
+  for (let i = 0; i <= 8; i++) {
+    const t = i / 8;
+    const x = LANE_L + (LANE_R - LANE_L) * t;
+    const hx = s.vanishX + (x - s.vanishX) * 0.18;
+    ctx.beginPath();
+    ctx.moveTo(hx, s.horizonY);
+    ctx.lineTo(x, s.H);
+    ctx.stroke();
+  }
+
+  const depthWash = ctx.createLinearGradient(0, s.horizonY, 0, s.H);
+  depthWash.addColorStop(0, 'rgba(255,190,90,0.00)');
+  depthWash.addColorStop(0.58, opts.title ? 'rgba(255,210,130,0.08)' : 'rgba(255,210,130,0.12)');
+  depthWash.addColorStop(1, 'rgba(0,0,0,0.18)');
+  ctx.fillStyle = depthWash;
+  ctx.fillRect(0, s.horizonY, s.W, s.H - s.horizonY);
+
+  const laneG = ctx.createRadialGradient(s.vanishX, s.playerY - 38, s.W * 0.06, s.vanishX, s.playerY - 20, s.W * 0.42);
+  laneG.addColorStop(0, 'rgba(255,235,160,0.13)');
+  laneG.addColorStop(0.45, 'rgba(255,210,120,0.06)');
+  laneG.addColorStop(1, 'rgba(255,235,160,0.00)');
+  ctx.fillStyle = laneG;
+  ctx.fillRect(0, s.horizonY, s.W, s.H - s.horizonY);
+  ctx.restore();
+}
+
+function drawMangaWallLip() {
+  const s = mangaStage();
+  ctx.save();
+  const g = ctx.createLinearGradient(0, s.wallY + 16, 0, s.wallY + 58);
+  g.addColorStop(0, 'rgba(10,4,2,0.38)');
+  g.addColorStop(0.44, 'rgba(10,4,2,0.20)');
+  g.addColorStop(1, 'rgba(10,4,2,0.00)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, s.wallY + 14, s.W, 52);
+  ctx.strokeStyle = 'rgba(8,8,8,0.46)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, s.wallY + 23);
+  ctx.lineTo(s.W, s.wallY + 23);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawMangaForegroundOcclusion() {
+  const s = mangaStage();
+  ctx.save();
+  const bottom = ctx.createLinearGradient(0, s.H * 0.76, 0, s.H);
+  bottom.addColorStop(0, 'rgba(0,0,0,0.00)');
+  bottom.addColorStop(0.58, 'rgba(10,2,1,0.16)');
+  bottom.addColorStop(1, 'rgba(0,0,0,0.48)');
+  ctx.fillStyle = bottom;
+  ctx.fillRect(0, s.H * 0.76, s.W, s.H * 0.24);
+
+  ctx.fillStyle = 'rgba(0,0,0,0.20)';
+  ctx.beginPath();
+  ctx.moveTo(0, s.H);
+  ctx.lineTo(0, s.H * 0.70);
+  ctx.quadraticCurveTo(s.W * 0.08, s.H * 0.84, s.W * 0.18, s.H);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(s.W, s.H);
+  ctx.lineTo(s.W, s.H * 0.70);
+  ctx.quadraticCurveTo(s.W * 0.92, s.H * 0.84, s.W * 0.82, s.H);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
 function drawMangaBattlefield(opts = {}) {
   const art = achillesMangaArt();
   const W = Engine.W, H = Engine.H;
@@ -674,25 +815,7 @@ function drawMangaBattlefield(opts = {}) {
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, W, H);
 
-  const horizonY = H * 0.48;
-  ctx.strokeStyle = 'rgba(10,10,10,0.34)';
-  ctx.lineWidth = 1.4;
-  for (let i = 0; i <= 8; i++) {
-    const t = i / 8;
-    const x = LANE_L + (LANE_R - LANE_L) * t;
-    const hx = W * 0.5 + (x - W * 0.5) * 0.18;
-    ctx.beginPath();
-    ctx.moveTo(hx, horizonY);
-    ctx.lineTo(x, H);
-    ctx.stroke();
-  }
-
-  const zoneG = ctx.createLinearGradient(0, PLAYER_Y - 58, 0, PLAYER_Y + 46);
-  zoneG.addColorStop(0, 'rgba(255,245,190,0.00)');
-  zoneG.addColorStop(0.50, 'rgba(255,235,140,0.11)');
-  zoneG.addColorStop(1, 'rgba(0,0,0,0.00)');
-  ctx.fillStyle = zoneG;
-  ctx.fillRect(0, PLAYER_Y - 58, W, 104);
+  drawMangaStageFloorUnderlay(opts);
 
   if (art.mangaAtmosphere) {
     art.mangaAtmosphere(ctx, W, H, {
@@ -713,7 +836,9 @@ function drawMangaArcher(a, archerIdx) {
 
   const downed = a.downT > 0;
   const y = archerLineY() + Math.sin(time * 2.2 + a.x * 0.01) * 2;
-  const scale = Math.max(0.12, Math.min(0.22, Math.min(Engine.W, Engine.H) / 3600));
+  const screenX = mangaStageProjectedX(a.x, y, { backPull: 0.90, curve: 0.95 });
+  const baseScale = Math.max(0.12, Math.min(0.22, Math.min(Engine.W, Engine.H) / 3600));
+  const scale = baseScale * mangaStageScale(y, 0.86, 1.02);
   let anim = 'idle';
   let animT = time + archerIdx * 0.13;
   let frame = null;
@@ -733,11 +858,17 @@ function drawMangaArcher(a, archerIdx) {
   }
 
   ctx.save();
+  drawMangaContactShadow(screenX, y, {
+    w: 24 * (scale / baseScale),
+    h: 5 * (scale / baseScale),
+    alpha: downed ? 0.12 : 0.20,
+    offsetY: 7,
+  });
   if (a.glow > 0) {
     ctx.globalAlpha = Math.min(0.85, 0.24 + a.glow);
     ctx.shadowColor = pendingSpecial === 'inferno' ? '#ff2200' : '#ffd54a';
     ctx.shadowBlur = 28;
-    art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, pendingSpecial === 'inferno' ? 'damageBurst' : 'bowFlare', a.x, y - 72, {
+    art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, pendingSpecial === 'inferno' ? 'damageBurst' : 'bowFlare', screenX, y - 72, {
       scale: scale * 1.9,
       alpha: Math.min(0.65, a.glow * 1.4),
     });
@@ -745,9 +876,14 @@ function drawMangaArcher(a, archerIdx) {
   }
 
   ctx.globalAlpha *= downed ? 0.62 : 0.96;
+  ctx.filter = 'sepia(0.18) saturate(1.12) brightness(0.78) contrast(1.08)';
+  ctx.shadowColor = 'rgba(255,100,40,0.22)';
+  ctx.shadowBlur = downed ? 0 : 7;
   const drew = frame
-    ? art.drawFrame(ctx, ACHILLES_MANGA_ARCHER_SHEET, frame, a.x, y, { scale })
-    : art.drawAnimation(ctx, ACHILLES_MANGA_ARCHER_SHEET, anim, animT, a.x, y, { scale });
+    ? art.drawFrame(ctx, ACHILLES_MANGA_ARCHER_SHEET, frame, screenX, y, { scale })
+    : art.drawAnimation(ctx, ACHILLES_MANGA_ARCHER_SHEET, anim, animT, screenX, y, { scale });
+  ctx.filter = 'none';
+  ctx.shadowBlur = 0;
 
   if (drew && archerIdx === 0) {
     const found = window.Engine && Engine.unlock && Engine.unlock.has('glyph_achilles_found');
@@ -756,7 +892,7 @@ function drawMangaArcher(a, archerIdx) {
     ctx.fillStyle = found ? 'rgba(255,213,74,0.20)' : 'rgba(0,0,0,0.16)';
     ctx.lineWidth = 2;
     if (found) { ctx.shadowColor = '#ffd54a'; ctx.shadowBlur = 12; }
-    const gx = a.x - 12 * scale * 10;
+    const gx = screenX - 12 * scale * 10;
     const gy = y - 125 * scale;
     ctx.beginPath(); ctx.arc(gx, gy, 7 * scale * 2, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     ctx.beginPath();
@@ -917,6 +1053,35 @@ function drawLandingShadows() {
   for (const a of arrows) {
     if (!a.alive) continue;
     const progress = Math.max(0, a.y / PLAYER_Y);
+
+    if (Engine.manga && achillesMangaAssetReady(ACHILLES_MANGA_FXHUD_SHEET)) {
+      const warn = clamp01((progress - 0.60) / 0.40);
+      drawMangaContactShadow(a.x, PLAYER_Y, {
+        w: 10 + progress * 34,
+        h: 3 + progress * 10,
+        alpha: progress * (a.targeted ? 0.46 : 0.28),
+        color: a.targeted ? 'rgba(70,0,0,0.86)' : 'rgba(0,0,0,0.70)',
+        offsetY: 8,
+      });
+      if (warn > 0) {
+        const art = achillesMangaArt();
+        art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, 'warningSlash', a.x, PLAYER_Y + 10, {
+          scale: 0.10 + warn * 0.13,
+          alpha: warn * (a.targeted ? 0.78 : 0.42),
+          rotate: ((a.x - Engine.W * 0.5) / Math.max(1, Engine.W)) * 0.18 + Math.sin(time * 16 + a.x) * 0.04,
+        });
+        ctx.save();
+        ctx.globalAlpha = warn * (a.targeted ? 0.42 : 0.24);
+        ctx.strokeStyle = a.targeted ? '#ff2200' : '#ff7700';
+        ctx.lineWidth = a.targeted ? 2.2 : 1.4;
+        ctx.beginPath();
+        ctx.ellipse(a.x, PLAYER_Y + 8, 32 + warn * 22, 8 + warn * 10, ((a.x - Engine.W * 0.5) / Engine.W) * 0.16, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+      continue;
+    }
+
     const alpha    = progress * 0.55;
     const rw = 6 + progress * 18;
     const rh = 3 + progress * 8;
@@ -951,25 +1116,28 @@ function drawMangaArrow(a, progress) {
   const art = achillesMangaArt();
   if (!art || !achillesMangaAssetReady(ACHILLES_MANGA_FXHUD_SHEET)) return false;
   const frame = a.inferno ? 'arrowDown2' : 'arrowDown1';
-  const scale = (0.08 + progress * 0.20) * (a.inferno ? 1.16 : 1);
-  const alpha = a.isEcho ? 0.50 : 1;
+  const depth = mangaStageDepth(a.y);
+  const screenX = mangaStageProjectedX(a.x, a.y, { backPull: 0.58, curve: 0.80 });
+  const scale = mangaStageScale(a.y, 0.055, 0.30) * (a.inferno ? 1.16 : 1);
+  const alpha = (a.isEcho ? 0.50 : 1) * (0.56 + depth * 0.44);
 
   ctx.save();
   ctx.globalAlpha *= alpha;
+  ctx.filter = `sepia(0.10) saturate(1.10) brightness(${0.82 + depth * 0.24}) contrast(1.08) blur(${Math.max(0, (1 - depth) * 0.45)}px)`;
   if (progress > 0.42 || a.inferno) {
     const g = a.inferno ? 1 : (progress - 0.42) / 0.58;
     ctx.shadowColor = a.inferno ? '#ff1100' : (a.targeted ? '#ff2200' : '#ff8800');
     ctx.shadowBlur = (a.inferno ? 28 : 18) * Math.max(0, g);
   }
   if (a.inferno && progress > 0.45) {
-    art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, 'damageBurst', a.x, a.y + 8, {
+    art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, 'damageBurst', screenX, a.y + 8, {
       scale: scale * 0.95,
       alpha: Math.min(0.65, progress),
     });
   }
-  const drew = art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, frame, a.x, a.y, {
+  const drew = art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, frame, screenX, a.y, {
     scale,
-    rotate: Math.sin(time * 8 + a.x * 0.02) * 0.035,
+    rotate: ((a.x - screenX) / Math.max(1, Engine.W)) * 0.45 + Math.sin(time * 8 + a.x * 0.02) * 0.035,
   });
   ctx.restore();
   return drew;
@@ -1106,20 +1274,20 @@ function drawAchillesMangaScene(frameName, opts = {}) {
 function drawAchillesMangaSprite() {
   if (!achillesMangaAssetsReady()) return false;
   const compact = Math.min(Engine.W, Engine.H);
-  const scale = Math.max(0.32, Math.min(0.46, compact / 1600));
-  const y = PLAYER_Y + 8;
+  const nearScale = Math.max(0.32, Math.min(0.46, compact / 1600));
+  const scale = mangaStageScale(PLAYER_Y, nearScale * 0.72, nearScale, { curve: 0.78 });
+  const y = PLAYER_Y + 10;
   const jitter = player.hitFlash > 0 ? Math.sin(time * 80) * 2 : 0;
   const art = achillesMangaArt();
   const hasV2 = achillesMangaAssetReady(ACHILLES_MANGA_ANIM_SHEET)
     && art && typeof art.drawAnimation === 'function';
 
-  ctx.save();
-  ctx.globalAlpha = 0.50;
-  ctx.fillStyle = '#000';
-  ctx.beginPath();
-  ctx.ellipse(player.x, PLAYER_Y + 11, 42 * scale / 0.40, 11 * scale / 0.40, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
+  drawMangaContactShadow(player.x, PLAYER_Y, {
+    w: 48 * scale / 0.40,
+    h: 12 * scale / 0.40,
+    alpha: player.hp <= 0 ? 0.28 : 0.46,
+    offsetY: 13,
+  });
 
   if (hasV2 && achillesMangaAssetReady(ACHILLES_MANGA_FXHUD_SHEET)) {
     const fxScale = Math.max(0.12, Math.min(0.24, compact / 3300));
@@ -1162,7 +1330,11 @@ function drawAchillesMangaSprite() {
   if (player.hitFlash > 0) {
     ctx.shadowColor = '#ff3322';
     ctx.shadowBlur = 18;
+  } else {
+    ctx.shadowColor = 'rgba(255,115,45,0.24)';
+    ctx.shadowBlur = 10;
   }
+  ctx.filter = 'sepia(0.10) saturate(1.08) brightness(0.94) contrast(1.06)';
   let drew = false;
   if (hasV2) {
     const motion = currentAchillesMangaMotion();
@@ -1202,6 +1374,12 @@ function drawAchillesMangaSprite() {
 function drawReturnArrow(ra) {
   const art = achillesMangaArt();
   if (Engine.manga && art && achillesMangaAssetReady(ACHILLES_MANGA_FXHUD_SHEET)) {
+    const target = archers[ra.targetIdx];
+    const targetY = archerLineY();
+    const targetX = target ? mangaStageProjectedX(target.x, targetY, { backPull: 0.90, curve: 0.95 }) : ra.x;
+    const travel = clamp01((ra.fromY - ra.y) / Math.max(1, ra.fromY - targetY));
+    const screenX = ra.fromX + (targetX - ra.fromX) * travel;
+    const screenY = ra.y;
     const trailLen = Math.min(140, ra.trailT * 760);
     ctx.save();
     ctx.strokeStyle = 'rgba(255,245,190,0.50)';
@@ -1209,16 +1387,16 @@ function drawReturnArrow(ra) {
     for (let i = 0; i < 5; i++) {
       const off = (i - 2) * 3.2;
       ctx.beginPath();
-      ctx.moveTo(ra.x + off, ra.y + trailLen);
-      ctx.lineTo(ra.x + off * 0.2, ra.y + 12);
+      ctx.moveTo(screenX + off, screenY + trailLen);
+      ctx.lineTo(screenX + off * 0.2, screenY + 12);
       ctx.stroke();
     }
     ctx.shadowColor = '#fff5c0';
     ctx.shadowBlur = 16;
-    art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, 'returnArrow', ra.x, ra.y, {
-      scale: Math.max(0.12, Math.min(0.21, Math.min(Engine.W, Engine.H) / 3800)),
+    art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, 'returnArrow', screenX, screenY, {
+      scale: mangaStageScale(screenY, 0.070, Math.max(0.12, Math.min(0.21, Math.min(Engine.W, Engine.H) / 3800))),
       alpha: 0.95,
-      rotate: Math.sin(time * 10) * 0.04,
+      rotate: ((targetX - ra.fromX) / Math.max(1, Engine.W)) * 0.34 + Math.sin(time * 10) * 0.04,
     });
     ctx.restore();
     return;
@@ -1463,11 +1641,13 @@ function drawWorldFrame() {
     window.Manga.effects.halftone(ctx, 0, 0, W, H, { density: 8, dotSize: 1.6, alpha: 0.12, color: '#000' });
   }
   drawArchers();
+  if (mangaField) drawMangaWallLip();
   drawLandingShadows();
   for (const a of arrows) drawArrow(a);
   // Player's counter-shot arrows rising at the archers (manga ability).
   for (const ra of returnArrows) drawReturnArrow(ra);
   drawPlayerRouted();
+  if (mangaField) drawMangaForegroundOcclusion();
 
   // Speed lines radiating from Achilles when an arrow lands near (manga only)
   if (Engine.manga && window.Manga && player && player.hitFlash > 0) {
