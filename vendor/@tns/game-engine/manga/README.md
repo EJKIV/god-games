@@ -18,6 +18,18 @@ A self-contained collection of manga visual effects, cinematic polish helpers, a
   Manga.effects.scanlines(ctx, W, H, { spacing: 3, alpha: 0.18 });
   Manga.effects.panelSplit(ctx, W, H, progress);
 
+  // Bitmap assets: project-local full art or sprite sheets.
+  Manga.assets.define('icarus.hero', { src: 'assets/manga/icarus/hero.png' });
+  Manga.assets.drawImage(ctx, 'icarus.hero', 0, 0, W, H, { fit: 'cover', focusX: 0.55 });
+
+  Manga.assets.define('icarus.sheet', {
+    src: 'assets/manga/icarus/sheet.png',
+    frames: {
+      fly: { x: 0, y: 0, w: 220, h: 160, anchorX: 110, anchorY: 84 },
+    },
+  });
+  Manga.assets.drawFrame(ctx, 'icarus.sheet', 'fly', 320, 240, { scale: 0.5 });
+
   // Stateful gameplay-feel helpers (factories)
   const punch = Manga.fx.cameraPunch();
   punch.trigger(8, -4, 0.22);
@@ -46,6 +58,7 @@ A self-contained collection of manga visual effects, cinematic polish helpers, a
 ```
 manga/
 ├── manga.js                  Loader — appends scripts in MANGA_FILES order.
+├── assets.js                 Bitmap asset registry + cover/contain/frame draw helpers
 ├── effects/                  Stateless render effects (pure ctx-only).
 │   ├── inkstroke.js          ctx setup helper
 │   ├── halftone.js           cached pattern; clip to a shape for shadows
@@ -70,6 +83,18 @@ manga/
 ```
 
 ## API
+
+### `Manga.assets` (bitmap registry)
+
+| Function | Purpose |
+|---|---|
+| `define(id, def)`                         | Register `{ src, frames?, crossOrigin?, preload? }` for a caller-owned image path. |
+| `image(id)`                               | Return the backing `Image`, starting load if needed. |
+| `ready(id)` / `failed(id)`                | Check load state before drawing or choosing a fallback. |
+| `drawImage(ctx, id, x, y, w, h, opts)`    | Draw full art with `fit: 'cover' | 'contain'`, `focusX/Y`, `alignX/Y`, `alpha`. Returns `false` until ready. |
+| `drawFrame(ctx, id, frame, x, y, opts)`   | Draw a named sprite-sheet frame with `scale`, `rotate`, `flipX/Y`, `alpha`. Returns `false` until ready. |
+
+Callers own asset files and paths; the library only loads and draws them. This keeps `manga/` portable while letting a game use generated raster art where canvas primitives are not enough.
 
 ### `Manga.effects` (stateless)
 

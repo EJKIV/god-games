@@ -9,7 +9,7 @@ Read root `CLAUDE.md` first. This file covers only `manga/` and descendants.
 
 `manga/` is a **portable canvas art library** — no `engine.js` import, no `Engine` global reference, no DOM coupling beyond `<canvas>` and `<script>` injection. Drop the whole folder into any project, include `<script src="manga/manga.js">`, and you have `window.Manga.{effects, fx, characters}` available.
 
-This folder owns: manga visual style (ink + halftone + flat color), per-character draw functions, cinematic polish helpers (camera punch, slo-mo, layered SFX, panel-split, vignette, scanlines, flash), and the loader that wires it all together. It does **not** own: game state, leaderboard wiring, mobile controls, audio context creation (callers pass an `AudioContext` in for SFX). Those belong to the root project.
+This folder owns: manga visual style (ink + halftone + flat color), per-character draw functions, bitmap asset loading/drawing helpers for caller-owned art, cinematic polish helpers (camera punch, slo-mo, layered SFX, panel-split, vignette, scanlines, flash), and the loader that wires it all together. It does **not** own: game state, leaderboard wiring, mobile controls, audio context creation (callers pass an `AudioContext` in for SFX), or project asset files. Those belong to the root project.
 
 ## Core Patterns
 
@@ -29,6 +29,7 @@ This folder owns: manga visual style (ink + halftone + flat color), per-characte
 - `Manga.effects.*(ctx, ...args)` — pure stateless render. Reads only ctx + args. Returns nothing.
 - `Manga.fx.<name>()` — factory returning a stateful object with `update(dt)` and trigger methods. Each game/scene creates its own instance (no singletons). Game integrates the state by reading `obj.x`, `obj.scale`, etc.
 - `Manga.characters.<name>` — `{ name, defaultState, preview, polish, draw(ctx, state, opts) }`. Draw is pure: reads only state + opts. `polish` profile drives the game's cinematic feel for hits and deaths.
+- `Manga.assets.*` — bitmap registry for caller-owned image paths. Games call `define(id, { src, frames? })`; library helpers load images and draw full art or named sprite-sheet frames, returning `false` until ready so callers can keep canvas fallbacks.
 
 **Per-character `polish` profile** lives in the character module (not the game) so a character's feel travels with the character to other projects:
 
@@ -45,6 +46,7 @@ polish: {
 ```
 manga/
 ├── manga.js                Loader — appends scripts in MANGA_FILES order. Init `window.Manga` first.
+├── assets.js               Bitmap registry: `define`, `ready`, `drawImage`, `drawFrame`.
 ├── README.md               Human-facing API docs + "use in another project" recipe.
 ├── CLAUDE.md (this file)   Agent contract for the manga subtree.
 ├── effects/                Stateless render: pure (ctx, …) → void
@@ -99,6 +101,7 @@ None — this folder has no build step or tests of its own. To smoke-test a char
 - **Character `draw(ctx, state, opts={})`** signature is mandatory. Never read globals; never reference `Engine` or call `localStorage`. The character is portable.
 - **Stateful fx are factories** (`Manga.fx.cameraPunch()` returns a fresh instance). Do not export shared singletons — that breaks multi-game pages and tests.
 - **Audio helpers accept an `AudioContext`** parameter — never reach for `Engine.audio._ctx` from inside the library.
+- **Bitmap assets are caller-owned**. `Manga.assets` may create `Image` objects and draw registered paths, but it must not hard-code game asset paths or require bundled art files.
 - **Namespace-init guard** at the top of every sub-file: `const M = (window.Manga = window.Manga || { effects: {}, characters: {}, fx: {}, INK: '#0a0a0a' });`. Means files load in any order if needed.
 
 ## Operational Boundaries
@@ -135,6 +138,7 @@ None — this folder has no build step or tests of its own. To smoke-test a char
 
 | Date       | Change                                                                | Author |
 |------------|-----------------------------------------------------------------------|--------|
+| 2026-05-10 | Added `Manga.assets` bitmap registry for project-owned manga illustrations and sprite sheets. | codex  |
 | 2026-05-10 | Added reusable anime facial-detail helpers for stronger character reads across manga mode. | codex  |
 | 2026-05-07 | Added `daedalus.js` (3 poses incl. divine-rescue hand) + `orca.js` (breach). New `polish.onRescue` / `polish.onBreach` profiles. | jim    |
 | 2026-05-07 | Split monolithic `manga.js` into per-piece files. Added `Manga.fx`. Added Achilles `polish` profile. | jim    |

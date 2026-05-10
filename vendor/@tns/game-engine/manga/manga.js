@@ -21,6 +21,7 @@
   M.characters = M.characters || {};
   M.fx         = M.fx         || {};
   M.scenes     = M.scenes     || {};
+  M.assets     = M.assets     || {};
   M.INK        = M.INK        || '#0a0a0a';
 
   const MANGA_FILES = [
@@ -34,6 +35,8 @@
     'effects/flash.js',
     'effects/vignette.js',
     'effects/scanlines.js',
+    // Bitmap asset registry (full illustrations + optional sprite sheets)
+    'assets.js',
     // FX (stateful gameplay-feel helpers)
     'fx/camerapunch.js',
     'fx/slomo.js',

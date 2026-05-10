@@ -32,6 +32,7 @@ packages/game-engine/
 │                               # character speech bubbles.
 ├── manga/                      # Visual library — see manga/CLAUDE.md
 │   ├── manga.js                # Module loader + INK constant
+│   ├── assets.js               # Caller-owned bitmap registry and draw helpers
 │   ├── characters/             # Character draw + polish profiles
 │   ├── effects/                # Stateless render helpers (halftone, ink, vignette, ...)
 │   ├── fx/                     # Stateful per-frame fx (camerapunch, slomo, sfxlayered,
@@ -101,6 +102,7 @@ Ported from `~/projects/god-games/` (engine.js, manga/, api/) on 2026-05-07. The
 
 | Date       | Change                                                | Author |
 |------------|-------------------------------------------------------|--------|
+| 2026-05-10 | Added `Manga.assets` for game-owned manga illustrations and sprite sheets. | codex  |
 | 2026-05-08 | Added the `myth-place-cut` example and clarified `Manga.fx.cinematic` as the overlay fallback factory. | codex  |
 | 2026-05-07 | Added `Engine.timeScale` + `Engine.setTimeScale(factor, dur)` for slo-mo dips. Engine multiplies dt by `timeScale` while `state==='playing'`; particles, floaters, time, and `config.onUpdate` all slow together. Shake decay stays on raw dt. | jim    |
 | 2026-05-07 | Added manga `daedalus.js` + `orca.js`. See `manga/CLAUDE.md`.        | jim    |
