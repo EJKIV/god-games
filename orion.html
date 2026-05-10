@@ -81,7 +81,11 @@ const MAX_SPEARS= 7;
 let orion, boss, spears, venoms, phantoms;
 let lastShiftTime = -1, lastSpaceTime = -1, lastXTime = -1;
 let ctx; // bound from Engine.ctx after boot
-const ORION_MANGA_SHEET = 'godgames.orion.scorpionSheet';
+const ORION_MANGA_LEGACY_SHEET = 'godgames.orion.scorpionSheet';
+const ORION_MANGA_ARENA = 'godgames.orion.arenaCleanV1';
+const ORION_MANGA_ORION_SHEET = 'godgames.orion.orionAnimV1';
+const ORION_MANGA_SCORPION_SHEET = 'godgames.orion.scorpionAnimV1';
+const ORION_MANGA_FXHUD_SHEET = 'godgames.orion.fxHudV1';
 
 // ── Manga abilities (player) ──────────────────────────────────────────────
 let constellationT  = 0;          // charge animation duration remaining
@@ -172,6 +176,73 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function groundY() { return Engine.H * 0.76; }
 
+function clamp01(v) {
+  return Math.max(0, Math.min(1, v));
+}
+
+function orionMangaArt() {
+  return window.GodGames && GodGames.MangaArt ? GodGames.MangaArt : null;
+}
+
+function orionMangaAssetReady(id) {
+  const art = orionMangaArt();
+  return !!(Engine.manga && art && typeof art.ready === 'function' && art.ready(id));
+}
+
+function orionMangaStage() {
+  const W = Engine.W, H = Engine.H;
+  const GY = groundY();
+  return {
+    W, H,
+    vanishX: W * 0.50,
+    horizonY: H * 0.52,
+    groundY: GY,
+    laneLeft: W * 0.08,
+    laneRight: W * 0.92,
+  };
+}
+
+function orionMangaDepth(y) {
+  const s = orionMangaStage();
+  return clamp01((y - s.horizonY) / Math.max(1, s.groundY - s.horizonY));
+}
+
+function orionMangaProjectedX(x, y, opts = {}) {
+  const s = orionMangaStage();
+  const d = Math.pow(orionMangaDepth(y), opts.curve ?? 0.86);
+  const backPull = opts.backPull ?? 0.60;
+  const pull = backPull + (1 - backPull) * d;
+  return s.vanishX + (x - s.vanishX) * pull;
+}
+
+function orionMangaScale(y, farScale, nearScale, opts = {}) {
+  const d = Math.pow(orionMangaDepth(y), opts.curve ?? 0.76);
+  return farScale + (nearScale - farScale) * d;
+}
+
+function drawMangaContactShadow(x, y, opts = {}) {
+  const s = orionMangaStage();
+  const d = orionMangaDepth(y);
+  const w = opts.w ?? (26 + d * 74);
+  const h = opts.h ?? (5 + d * 16);
+  const alpha = opts.alpha ?? (0.20 + d * 0.32);
+  const rot = ((x - s.vanishX) / Math.max(1, s.W)) * 0.18;
+
+  ctx.save();
+  ctx.globalAlpha *= alpha;
+  ctx.fillStyle = opts.color || 'rgba(0,0,0,0.82)';
+  ctx.beginPath();
+  ctx.ellipse(x, y + (opts.offsetY ?? 9), w, h, rot, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha *= 0.32;
+  ctx.strokeStyle = 'rgba(210,180,120,0.55)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.ellipse(x, y + (opts.offsetY ?? 9), w * 0.70, h * 0.55, rot, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
 // ── Audio (thematic SFX wrap Engine.audio.tone — bit-identical to original) ─
 const sfx = {
   spear:    () => Engine.audio.tone(300, 'sawtooth', 0.10, 0.25, 180),
@@ -206,6 +277,7 @@ function initGame() {
     hurtFlash:0, onGround:true,
     dodgeVx:0, dodgeT:0,
     spearCount:MAX_SPEARS, stabCD:0, stabFlash:0,
+    throwT:0,
     spearQueued:false, stabQueued:false,
     proneT:0, proneDmg:0,
   };
@@ -294,13 +366,26 @@ function updateOrion(dt) {
 
   // Throw spear
   orion.attackCD = Math.max(0, orion.attackCD-dt);
+  orion.throwT = Math.max(0, orion.throwT-dt);
   if(orion.spearQueued){
     if(orion.attackCD<=0 && orion.spearCount>0){
-      spears.push({x:orion.x+orion.facing*22, y:orion.y-38, vx:orion.facing*SPEAR_SPD, vy:orion.onGround?0:orion.vy*0.5, gravity:!orion.onGround, active:true});
+      const hand = Engine.manga ? orionMangaHandPoint('throw') : { x:orion.x+orion.facing*22, y:orion.y-38 };
+      spears.push({
+        x:hand.x, y:hand.y,
+        vx:orion.facing*SPEAR_SPD,
+        vy:orion.onGround?0:orion.vy*0.5,
+        gravity:!orion.onGround,
+        active:true,
+        originX:hand.x,
+        originY:hand.y,
+        trail:Engine.manga ? [{ x:hand.x, y:hand.y }] : null,
+        age:0,
+      });
       orion.spearCount--;
+      orion.throwT = 0.35;
       orion.attackCD = 0.62;
       sfx.spear();
-      burst(orion.x+orion.facing*22, orion.y-38, '#e8d090', 3, 50);
+      burst(hand.x, hand.y, '#e8d090', 3, 50);
     }
     orion.spearQueued = false;
   }
@@ -387,7 +472,7 @@ function updateBoss(dt) {
 
     case 'walk':
       boss.stateTimer += dt;
-      boss.x += (orion.x<boss.x?-1:1)*boss.phase===3?160:110 *dt;
+      boss.x += (orion.x<boss.x?-1:1) * (boss.phase===3 ? 160 : 110) * dt;
       if(boss.stateTimer>1.4 || dist<200) boss.state='idle';
       break;
 
@@ -411,17 +496,8 @@ function updateBoss(dt) {
       boss.stingT   += (1-boss.stingT  )*dt*18;
       if(!boss.stingFired){
         boss.stingFired = true;
-        const segs = 5, curl = 1.0;
-        const pts = [{x:-42,y:-18}];
-        for(let i=0;i<segs;i++){
-          const t = (i+1)/segs;
-          const angle = -0.25 + curl*(Math.PI*1.05)*t - 0.08;
-          const len = 28*(1-t*0.08);
-          const prev = pts[pts.length-1];
-          pts.push({x:prev.x-Math.cos(angle)*len, y:prev.y-Math.sin(angle)*len});
-        }
-        const tip = pts[segs];
-        const tx = boss.x+tip.x*boss.facing, ty = boss.y+tip.y;
+        const tail = scorpionTailTip(1.0);
+        const tx = tail.x, ty = tail.y;
         const dx = boss.stingTargetX-tx, dy = boss.stingTargetY-ty;
         const d  = Math.sqrt(dx*dx+dy*dy)||1;
         // Manga special: VENOM RAIN — fan of 4 venoms instead of one targeted.
@@ -433,10 +509,10 @@ function updateBoss(dt) {
             const off = (i - (N - 1) / 2) * 0.25;
             const a = baseAng + off;
             const sp = 380 + Math.random() * 60;
-            venoms.push({ x: tx, y: ty, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, active: true });
+            venoms.push({ x: tx, y: ty, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, active: true, originX: tx, originY: ty, trail: [{ x: tx, y: ty }], age: 0 });
           }
         } else {
-          venoms.push({x:tx, y:ty, vx:dx/d*420, vy:dy/d*420, active:true});
+          venoms.push({x:tx, y:ty, vx:dx/d*420, vy:dy/d*420, active:true, originX: tx, originY: ty, trail: Engine.manga ? [{ x: tx, y: ty }] : null, age: 0});
         }
         sfx.roar();
       }
@@ -471,7 +547,8 @@ function updateBoss(dt) {
         boss.clawOpen += (1 - boss.clawOpen) * dt * 12;
       } else if (!boss.phantomSpawned) {
         boss.phantomSpawned = true;
-        const sx = boss.x + boss.facing * 70, sy = boss.y - 38;
+        const claw = scorpionClawTip();
+        const sx = claw.x, sy = claw.y;
         const dx = orion.x - sx, dy = (orion.y - 30) - sy;
         const d = Math.sqrt(dx * dx + dy * dy) || 1;
         phantoms.push({
@@ -479,6 +556,8 @@ function updateBoss(dt) {
           vx: dx / d * 380, vy: dy / d * 380,
           angle: Math.atan2(dy, dx),
           life: 1.2, maxLife: 1.2, t: 0,
+          originX: sx, originY: sy,
+          trail: [{ x: sx, y: sy }],
         });
         sfx.roar();
         mangaTexts.push({ text: 'PHANTOM CLAW!', x: Engine.W / 2, y: Engine.H * 0.30, t: 0.9, color: '#cc88ff', size: 56 });
@@ -525,8 +604,13 @@ function updateSpears(dt){
   const W = Engine.W;
   for(let i=spears.length-1; i>=0; i--){
     const s = spears[i];
+    s.age = (s.age || 0) + dt;
     s.x += s.vx*dt;
     if(s.gravity){ s.vy += GRAVITY*dt; s.y += s.vy*dt; }
+    if(s.trail){
+      s.trail.push({ x:s.x, y:s.y });
+      if(s.trail.length>10) s.trail.shift();
+    }
     if(s.active && boss.state!=='dead'){
       if(Math.abs(s.x-boss.x)<95 && s.y>boss.y-140 && s.y<boss.y+5){
         boss.hp = Math.max(0, boss.hp-SPEAR_DMG);
@@ -546,7 +630,12 @@ function updateVenoms(dt){
   const W = Engine.W, GY = groundY();
   for(let i=venoms.length-1; i>=0; i--){
     const v = venoms[i];
+    v.age = (v.age || 0) + dt;
     v.x += v.vx*dt; v.y += v.vy*dt;
+    if(v.trail){
+      v.trail.push({ x:v.x, y:v.y });
+      if(v.trail.length>12) v.trail.shift();
+    }
     if(v.active && orion.invincible<=0){
       if(Math.abs(v.x-orion.x)<22 && Math.abs(v.y-orion.y)<34){
         hurtOrion();
@@ -647,6 +736,10 @@ function updatePhantoms(dt){
     p.x += p.vx*dt; p.y += p.vy*dt;
     p.t  += dt;
     p.life -= dt;
+    if(p.trail){
+      p.trail.push({ x:p.x, y:p.y });
+      if(p.trail.length>10) p.trail.shift();
+    }
     if(orion.invincible<=0 && Math.abs(p.x-orion.x)<32 && Math.abs(p.y-(orion.y-28))<42){
       hurtOrion();
       // Heavier hit feel than a venom — bigger violet burst, extra shake,
@@ -659,6 +752,177 @@ function updatePhantoms(dt){
     }
     if(p.life<=0 || p.x<-100 || p.x>W+100 || p.y>GY+80 || p.y<-100) phantoms.splice(i,1);
   }
+}
+
+function orionMangaHandPoint(kind = 'throw') {
+  const f = orion ? orion.facing : 1;
+  if (!orion) return { x:0, y:0 };
+  if (kind === 'stab') return { x: orion.x + f * 64, y: orion.y - 45 };
+  if (orion.dodgeT > 0) return { x: orion.x + f * 36, y: orion.y - 44 };
+  if (!orion.onGround) return { x: orion.x + f * 28, y: orion.y - 66 };
+  return { x: orion.x + f * 34, y: orion.y - 58 };
+}
+
+function scorpionTailTip(curl = boss ? boss.tailCurl : 1) {
+  if (!boss) return { x:0, y:0 };
+  const segs = 5;
+  const pts = [{ x:-42, y:-18 }];
+  for(let i=0;i<segs;i++){
+    const t = (i+1)/segs;
+    const angle = -0.25 + curl*(Math.PI*1.05)*t - 0.08;
+    const len = 28*(1-t*0.08);
+    const prev = pts[pts.length-1];
+    pts.push({ x:prev.x-Math.cos(angle)*len, y:prev.y-Math.sin(angle)*len });
+  }
+  const tip = pts[segs];
+  return { x: boss.x + tip.x * boss.facing, y: boss.y + tip.y };
+}
+
+function scorpionClawTip() {
+  if (!boss) return { x:0, y:0 };
+  return { x: boss.x + boss.facing * 112, y: boss.y - 30 };
+}
+
+function orionConstellationMetrics(W = Engine.W, H = Engine.H) {
+  if (Engine.manga) {
+    const cs = Math.min(W, H) * 0.18;
+    return { cx: W * 0.075, cy: H * 0.08, cs };
+  }
+  return { cx: W * 0.11, cy: H * 0.32, cs: 160 };
+}
+
+function drawOrionConstellation(c, W, H, time, opts = {}) {
+  const { cx, cy, cs } = orionConstellationMetrics(W, H);
+  c.save();
+  c.strokeStyle = opts.line || (Engine.manga ? 'rgba(170,215,255,0.42)' : 'rgba(140,190,255,0.22)');
+  c.lineWidth = opts.lineWidth || (Engine.manga ? 1.4 : 1);
+  for(const [a,b] of OL){
+    c.beginPath();
+    c.moveTo(cx+OC[a].x*cs, cy+OC[a].y*cs);
+    c.lineTo(cx+OC[b].x*cs, cy+OC[b].y*cs);
+    c.stroke();
+  }
+  for(let i = 0; i < OC.length; i++){
+    const s = OC[i];
+    const pulse = 0.82 + Math.sin(time * 2.1 + i) * 0.18;
+    c.fillStyle = opts.star || `rgba(180,225,255,${0.80 * pulse})`;
+    c.shadowColor = 'rgba(140,200,255,0.78)';
+    c.shadowBlur = Engine.manga ? 10 : 7;
+    c.beginPath();
+    c.arc(cx+s.x*cs, cy+s.y*cs, Engine.manga ? 2.4 : 2.8, 0, Math.PI*2);
+    c.fill();
+  }
+
+  const glyphFound = window.Engine && Engine.unlock && Engine.unlock.has('glyph_orion_found');
+  const bx = cx + OC[4].x * cs, by = cy + OC[4].y * cs;
+  c.shadowBlur = 0;
+  c.strokeStyle = glyphFound ? 'rgba(255, 213, 74, 0.88)' : `rgba(255, 213, 74, ${0.34 + Math.sin(time * 1.6) * 0.16})`;
+  c.shadowColor = glyphFound ? '#ffd54a' : 'transparent';
+  c.shadowBlur = glyphFound ? 12 : 0;
+  c.lineWidth = glyphFound ? 1.8 : 1.2;
+  c.beginPath();
+  c.arc(bx, by, Engine.manga ? 7 : 6, 0, Math.PI * 2);
+  c.stroke();
+  c.restore();
+}
+
+function drawOrionMangaFloorUnderlay(opts = {}) {
+  const s = orionMangaStage();
+  ctx.save();
+
+  const horizon = ctx.createLinearGradient(0, s.horizonY - 70, 0, s.horizonY + 86);
+  horizon.addColorStop(0, 'rgba(0,0,0,0.00)');
+  horizon.addColorStop(0.52, opts.title ? 'rgba(20,8,2,0.16)' : 'rgba(20,8,2,0.24)');
+  horizon.addColorStop(1, 'rgba(0,0,0,0.00)');
+  ctx.fillStyle = horizon;
+  ctx.fillRect(0, s.horizonY - 72, s.W, 160);
+
+  ctx.strokeStyle = opts.title ? 'rgba(10,10,10,0.22)' : 'rgba(10,10,10,0.34)';
+  ctx.lineWidth = 1.4;
+  for (let i = 0; i <= 9; i++) {
+    const t = i / 9;
+    const x = s.laneLeft + (s.laneRight - s.laneLeft) * t;
+    const hx = s.vanishX + (x - s.vanishX) * 0.10;
+    ctx.beginPath();
+    ctx.moveTo(hx, s.horizonY + 4);
+    ctx.lineTo(x, s.H);
+    ctx.stroke();
+  }
+
+  const lane = ctx.createRadialGradient(s.vanishX, s.groundY - 34, s.W * 0.05, s.vanishX, s.groundY - 4, s.W * 0.48);
+  lane.addColorStop(0, opts.title ? 'rgba(255,235,170,0.16)' : 'rgba(255,235,170,0.18)');
+  lane.addColorStop(0.48, 'rgba(255,210,120,0.07)');
+  lane.addColorStop(1, 'rgba(255,235,160,0.00)');
+  ctx.fillStyle = lane;
+  ctx.fillRect(0, s.horizonY, s.W, s.H - s.horizonY);
+
+  ctx.strokeStyle = 'rgba(255,225,155,0.36)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, s.groundY);
+  ctx.lineTo(s.W, s.groundY);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawOrionMangaArena(c, W, H, time, opts = {}) {
+  const art = orionMangaArt();
+  if (!Engine.manga || !art || typeof art.drawImage !== 'function') return false;
+  if (!art.drawImage(c, ORION_MANGA_ARENA, 0, 0, W, H, {
+    fit: 'cover',
+    focusX: opts.focusX ?? 0.50,
+    focusY: opts.focusY ?? 0.54,
+    alpha: opts.alpha ?? 1,
+  })) return false;
+
+  c.save();
+  const sky = c.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0, opts.title ? 'rgba(10,16,44,0.18)' : 'rgba(10,16,44,0.10)');
+  sky.addColorStop(0.48, 'rgba(0,0,0,0.00)');
+  sky.addColorStop(1, 'rgba(0,0,0,0.28)');
+  c.fillStyle = sky;
+  c.fillRect(0, 0, W, H);
+  drawOrionMangaFloorUnderlay(opts);
+  drawOrionConstellation(c, W, H, time, { lineWidth: opts.title ? 1.2 : 1.5 });
+  if (art.mangaAtmosphere) {
+    art.mangaAtmosphere(c, W, H, {
+      density: 9,
+      dotSize: 1.20,
+      halftoneAlpha: opts.title ? 0.09 : 0.12,
+      scanAlpha: opts.title ? 0.05 : 0.07,
+      vignette: opts.title ? 0.42 : 0.50,
+    });
+  }
+  c.restore();
+  return true;
+}
+
+function drawOrionMangaForegroundOcclusion() {
+  const s = orionMangaStage();
+  ctx.save();
+  const bottom = ctx.createLinearGradient(0, s.H * 0.78, 0, s.H);
+  bottom.addColorStop(0, 'rgba(0,0,0,0.00)');
+  bottom.addColorStop(0.60, 'rgba(18,8,3,0.15)');
+  bottom.addColorStop(1, 'rgba(0,0,0,0.46)');
+  ctx.fillStyle = bottom;
+  ctx.fillRect(0, s.H * 0.78, s.W, s.H * 0.22);
+
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  ctx.beginPath();
+  ctx.moveTo(0, s.H);
+  ctx.lineTo(0, s.H * 0.82);
+  ctx.quadraticCurveTo(s.W * 0.07, s.H * 0.91, s.W * 0.16, s.H);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(s.W, s.H);
+  ctx.lineTo(s.W, s.H * 0.82);
+  ctx.quadraticCurveTo(s.W * 0.93, s.H * 0.91, s.W * 0.84, s.H);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
 }
 
 // ── Draw: Orion ───────────────────────────────────────────────────────────
@@ -808,40 +1072,68 @@ function drawOrion() {
 }
 
 function orionMangaAssetsReady() {
-  return !!(Engine.manga
-    && window.GodGames && GodGames.MangaArt
-    && window.Manga && Manga.assets
-    && typeof Manga.assets.ready === 'function'
-    && Manga.assets.ready(ORION_MANGA_SHEET));
+  return orionMangaAssetReady(ORION_MANGA_ORION_SHEET)
+    || orionMangaAssetReady(ORION_MANGA_LEGACY_SHEET);
+}
+
+function currentOrionMangaMotion() {
+  if (Engine.state === 'victory') return { anim:'victory', t:Engine.time, flipX:false };
+  if (Engine.state === 'dead' || orion.hp <= 0) return { anim:'fallen', t:Engine.time, flipX:orion.facing < 0 };
+  if (orion.proneT > 0) return { anim:'prone', t:2.0 - orion.proneT, flipX:orion.facing < 0 };
+  if (orion.hurtFlash > 0 && orion.invincible > 0.25) return { anim:'hit', t:0.7 - orion.hurtFlash, flipX:orion.facing < 0 };
+  if (orion.stabFlash > 0) return { anim:'stab', t:0.22 - orion.stabFlash, flipX:orion.facing < 0 };
+  if (orion.throwT > 0) return { anim:'throw', t:0.35 - orion.throwT, flipX:orion.facing < 0 };
+  if (orion.dodgeT > 0) return { anim:'dodge', t:0.28 - orion.dodgeT, flipX:orion.facing < 0 };
+  if (!orion.onGround || Math.abs(orion.vy) > 80) return { anim:'jump', t:Engine.time, flipX:orion.facing < 0 };
+  if (Math.abs(orion.vx) > 18) return { anim:'run', t:orion.walkPhase / 7, flipX:orion.facing < 0 };
+  return { anim:'idle', t:Engine.time, flipX:orion.facing < 0 };
 }
 
 function currentOrionMangaFrame() {
-  if (orion.proneT > 0) return 'orionDodge';
-  if (orion.stabFlash > 0) return 'orionStab';
-  if (orion.spearQueued || (orion.spearCount > 0 && Math.sin(Engine.time * 5) > 0.78)) return 'orionThrow';
-  if (!orion.onGround || Math.abs(orion.vy) > 80) return 'orionJump';
-  if (orion.dodgeT > 0) return 'orionDodge';
-  if (Math.abs(orion.vx) > 18) return 'orionRun';
+  const motion = currentOrionMangaMotion();
+  if (motion.anim === 'throw') return 'orionThrow';
+  if (motion.anim === 'stab') return 'orionStab';
+  if (motion.anim === 'jump') return 'orionJump';
+  if (motion.anim === 'dodge' || motion.anim === 'prone') return 'orionDodge';
+  if (motion.anim === 'run') return 'orionRun';
   return 'orionIdle';
 }
 
 function drawOrionMangaSprite() {
   if (!orionMangaAssetsReady()) return false;
-  const frame = currentOrionMangaFrame();
   const compact = Math.min(Engine.W, Engine.H);
-  const scale = Math.max(0.31, Math.min(0.43, compact / 1750));
+  const nearScale = Math.max(0.38, Math.min(0.52, compact / 1500));
+  const scale = orionMangaScale(orion.y, nearScale * 0.84, nearScale, { curve: 0.78 });
+  const y = orion.y + 8;
+  const jitter = orion.hurtFlash > 0 ? Math.sin(Engine.time * 78) * 2 : 0;
+  const art = orionMangaArt();
+  const hasAnim = orionMangaAssetReady(ORION_MANGA_ORION_SHEET)
+    && art && typeof art.drawAnimation === 'function';
 
   ctx.save();
-  if (orion.hurtFlash > 0 && Math.sin(Engine.time * 28) > 0) {
-    ctx.filter = 'brightness(2.8) saturate(0.6)';
+  const flash = orion.hurtFlash > 0 && Math.sin(Engine.time * 28) > 0;
+  if (flash) {
+    ctx.filter = 'brightness(2.8) saturate(0.6) contrast(1.05)';
     ctx.shadowColor = '#ff5544';
     ctx.shadowBlur = 18;
+  } else {
+    ctx.filter = 'saturate(1.05) contrast(1.05)';
   }
-  const drew = Manga.assets.drawFrame(ctx, ORION_MANGA_SHEET, frame, orion.x, orion.y + 4, {
-    scale,
-    flipX: orion.facing < 0,
-    rotate: orion.proneT > 0 ? orion.facing * 0.10 : 0,
-  });
+  let drew = false;
+  if (hasAnim) {
+    const motion = currentOrionMangaMotion();
+    drew = art.drawAnimation(ctx, ORION_MANGA_ORION_SHEET, motion.anim, motion.t, orion.x + jitter, y, {
+      scale,
+      flipX: motion.flipX,
+    });
+  } else {
+    const frame = currentOrionMangaFrame();
+    drew = Manga.assets.drawFrame(ctx, ORION_MANGA_LEGACY_SHEET, frame, orion.x + jitter, orion.y + 4, {
+      scale,
+      flipX: orion.facing < 0,
+      rotate: orion.proneT > 0 ? orion.facing * 0.10 : 0,
+    });
+  }
   ctx.restore();
   return drew;
 }
@@ -927,11 +1219,25 @@ function currentScorpionMangaFrame() {
   return 'scorpionIdle';
 }
 
+function currentScorpionMangaMotion() {
+  if (boss.state === 'dead' || boss.hp <= 0) return { anim:'dead', t:boss.deadTimer || 0 };
+  if (boss.hurtFlash > 0) return { anim:'hurt', t:0.14 - boss.hurtFlash };
+  if (boss.state === 'charge') return { anim:'charge', t:boss.stateTimer };
+  if (boss.state === 'claw' || boss.state === 'phantom' || boss.clawOpen > 0.45) return { anim:'claw', t:boss.stateTimer };
+  if (boss.state === 'sting' || boss.stingT > 0.18 || boss.tailCurl > 0.72) return { anim:'sting', t:boss.stateTimer };
+  if (boss.phase >= 3) return { anim:'enraged', t:Engine.time };
+  if (boss.state === 'walk' || boss.state === 'idle' || boss.state === 'backup') return { anim:'crawl', t:Engine.time * (boss.phase >= 2 ? 1.15 : 1) };
+  return { anim:'idle', t:Engine.time };
+}
+
 function drawScorpionMangaSprite() {
-  if (!orionMangaAssetsReady()) return false;
-  const frame = currentScorpionMangaFrame();
+  if (!(orionMangaAssetReady(ORION_MANGA_SCORPION_SHEET) || orionMangaAssetReady(ORION_MANGA_LEGACY_SHEET))) return false;
   const compact = Math.min(Engine.W, Engine.H);
-  const scale = Math.max(0.42, Math.min(0.62, compact / 1250));
+  const nearScale = Math.max(0.50, Math.min(0.78, compact / 1180));
+  const scale = orionMangaScale(boss.y, nearScale * 0.84, nearScale, { curve: 0.74 });
+  const art = orionMangaArt();
+  const hasAnim = orionMangaAssetReady(ORION_MANGA_SCORPION_SHEET)
+    && art && typeof art.drawAnimation === 'function';
 
   ctx.save();
   if (boss.hurtFlash > 0 && Math.sin(Engine.time * 32) > 0) {
@@ -942,10 +1248,21 @@ function drawScorpionMangaSprite() {
     ctx.shadowColor = '#ff3300';
     ctx.shadowBlur = 16;
   }
-  const drew = Manga.assets.drawFrame(ctx, ORION_MANGA_SHEET, frame, boss.x, boss.y + 10, {
-    scale,
-    flipX: boss.facing < 0,
-  });
+  ctx.filter = 'saturate(1.06) contrast(1.06)';
+  let drew = false;
+  if (hasAnim) {
+    const motion = currentScorpionMangaMotion();
+    drew = art.drawAnimation(ctx, ORION_MANGA_SCORPION_SHEET, motion.anim, motion.t, boss.x, boss.y + 12, {
+      scale,
+      flipX: boss.facing < 0,
+    });
+  } else {
+    const frame = currentScorpionMangaFrame();
+    drew = Manga.assets.drawFrame(ctx, ORION_MANGA_LEGACY_SHEET, frame, boss.x, boss.y + 10, {
+      scale,
+      flipX: boss.facing < 0,
+    });
+  }
   ctx.restore();
   return drew;
 }
@@ -1018,6 +1335,23 @@ function drawClaw(open){
 function drawPhantomClaw(p) {
   const a = Math.min(1, p.life / 0.4);
   const wobble = Math.sin(p.t * 18) * 0.05;
+  if (p.trail && p.trail.length > 1) {
+    drawMangaRibbonTrail(p.trail, '#cc88ff', 5, 0.55);
+  }
+  const art = orionMangaArt();
+  if (Engine.manga && art && orionMangaAssetReady(ORION_MANGA_FXHUD_SHEET)) {
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.angle + wobble);
+    ctx.globalAlpha = 0.88 * a;
+    ctx.shadowColor = '#cc88ff';
+    ctx.shadowBlur = 20;
+    art.drawFrame(ctx, ORION_MANGA_FXHUD_SHEET, 'phantomClaw', 0, 0, {
+      scale: Math.max(0.13, Math.min(0.23, Math.min(Engine.W, Engine.H) / 3200)),
+    });
+    ctx.restore();
+    return;
+  }
   ctx.save();
   ctx.translate(p.x, p.y);
   ctx.rotate(p.angle + wobble);
@@ -1051,8 +1385,143 @@ function drawPhantomClaw(p) {
   ctx.restore();
 }
 
+function drawMangaRibbonTrail(points, color, width = 4, alpha = 0.45) {
+  if (!points || points.length < 2) return;
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  for (let i = 1; i < points.length; i++) {
+    const p0 = points[i - 1], p1 = points[i];
+    const t = i / points.length;
+    ctx.globalAlpha = alpha * t;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(1, width * t);
+    ctx.beginPath();
+    ctx.moveTo(p0.x, p0.y);
+    ctx.lineTo(p1.x, p1.y);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawMangaSpearProjectile(s, headOnly = false) {
+  const art = orionMangaArt();
+  const ready = art && orionMangaAssetReady(ORION_MANGA_FXHUD_SHEET);
+  const angle = s.constellation ? 0 : (s.gravity ? Math.atan2(s.vy, s.vx) : (s.vx > 0 ? 0 : Math.PI));
+  const scale = s.constellation
+    ? Math.max(0.12, Math.min(0.23, Math.min(Engine.W, Engine.H) / 3100))
+    : Math.max(0.065, Math.min(0.12, Math.min(Engine.W, Engine.H) / 5200));
+
+  if (!headOnly && s.trail && s.trail.length > 1) {
+    drawMangaRibbonTrail(s.trail, s.constellation ? '#aaddff' : '#fff5c0', s.constellation ? 5 : 3.5, s.constellation ? 0.42 : 0.34);
+  }
+
+  if (!headOnly && s.constellation) {
+    const skyX = s.skyX ?? s.x;
+    const skyY = s.skyY ?? Engine.H * 0.16;
+    ctx.save();
+    ctx.globalAlpha = 0.32 + Math.sin(Engine.time * 14 + s.x) * 0.08;
+    ctx.strokeStyle = '#aaddff';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 10]);
+    ctx.beginPath();
+    ctx.moveTo(skyX, skyY);
+    ctx.lineTo(s.x, s.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.shadowColor = '#aaddff';
+    ctx.shadowBlur = 16;
+    if (ready) {
+      art.drawFrame(ctx, ORION_MANGA_FXHUD_SHEET, 'constellationMark', skyX, skyY, {
+        scale: Math.max(0.08, Math.min(0.16, Math.min(Engine.W, Engine.H) / 4300)),
+        alpha: 0.72,
+      });
+    } else {
+      ctx.fillStyle = '#aaddff';
+      ctx.beginPath(); ctx.arc(skyX, skyY, 5, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
+  if (!headOnly) return;
+
+  if (ready) {
+    ctx.save();
+    ctx.translate(s.x, s.y);
+    ctx.rotate(angle);
+    ctx.shadowColor = s.constellation ? '#aaddff' : '#fff5c0';
+    ctx.shadowBlur = s.constellation ? 16 : 8;
+    art.drawFrame(ctx, ORION_MANGA_FXHUD_SHEET, s.constellation ? 'fallingSpear' : 'spearTrail1', 0, 0, {
+      scale,
+      flipX: !s.constellation && s.vx < 0,
+    });
+    ctx.restore();
+    return;
+  }
+
+  ctx.save(); ctx.translate(s.x,s.y); ctx.rotate(angle);
+  ctx.strokeStyle='#7a5028'; ctx.lineWidth=3; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(-18,0); ctx.lineTo(14,0); ctx.stroke();
+  ctx.fillStyle='#b8b8b8';
+  ctx.beginPath(); ctx.moveTo(14,0); ctx.lineTo(8,-4); ctx.lineTo(8,4); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+function drawMangaVenomProjectile(v, headOnly = false) {
+  const art = orionMangaArt();
+  const ready = art && orionMangaAssetReady(ORION_MANGA_FXHUD_SHEET);
+  if (!headOnly && v.trail && v.trail.length > 1) {
+    drawMangaRibbonTrail(v.trail, '#22ee44', 6, 0.42);
+  }
+  if (!headOnly) return;
+  const angle = Math.atan2(v.vy, v.vx);
+  if (ready) {
+    ctx.save();
+    ctx.translate(v.x, v.y);
+    ctx.rotate(angle);
+    ctx.shadowColor = '#22ee44';
+    ctx.shadowBlur = 18;
+    art.drawFrame(ctx, ORION_MANGA_FXHUD_SHEET, 'venomBlob', 0, 0, {
+      scale: Math.max(0.055, Math.min(0.10, Math.min(Engine.W, Engine.H) / 6200)),
+    });
+    ctx.restore();
+    return;
+  }
+  ctx.save();
+  ctx.shadowColor='#00ff44'; ctx.shadowBlur=18;
+  ctx.fillStyle='#22ee44';
+  ctx.beginPath(); ctx.arc(v.x,v.y,7,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='rgba(180,255,180,0.8)';
+  ctx.beginPath(); ctx.arc(v.x-2,v.y-2,3,0,Math.PI*2); ctx.fill();
+  ctx.shadowBlur=0;
+  ctx.restore();
+}
+
+function drawMangaStabFx() {
+  if (orion.stabFlash <= 0) return;
+  const art = orionMangaArt();
+  const hand = orionMangaHandPoint('stab');
+  const sf = orion.stabFlash / 0.22;
+  if (art && orionMangaAssetReady(ORION_MANGA_FXHUD_SHEET)) {
+    ctx.save();
+    ctx.globalAlpha = Math.min(0.88, sf + 0.12);
+    ctx.translate(hand.x, hand.y);
+    ctx.rotate(orion.facing === 1 ? -0.16 : Math.PI + 0.16);
+    ctx.shadowColor = '#fff5c0';
+    ctx.shadowBlur = 18 * sf;
+    art.drawFrame(ctx, ORION_MANGA_FXHUD_SHEET, 'stabSlash', 0, 0, {
+      scale: Math.max(0.13, Math.min(0.24, Math.min(Engine.W, Engine.H) / 3200)),
+      flipX: orion.facing < 0,
+    });
+    ctx.restore();
+  }
+}
+
 // ── HUD ───────────────────────────────────────────────────────────────────
 function renderHUD() {
+  if (Engine.manga) {
+    renderMangaHUD();
+    return;
+  }
   const W = Engine.W, H = Engine.H, time = Engine.time;
   ctx.save();
 
@@ -1163,6 +1632,113 @@ function renderHUD() {
   ctx.restore();
 }
 
+function renderMangaHUD() {
+  const W = Engine.W, H = Engine.H, time = Engine.time;
+  const art = orionMangaArt();
+  const fxReady = art && orionMangaAssetReady(ORION_MANGA_FXHUD_SHEET);
+  ctx.save();
+
+  const barW = Math.min(360, W * 0.46);
+  const barH = 28;
+  const bx = W / 2 - barW / 2;
+  const by = 14;
+  const bfrac = Math.max(0, boss.hp / BOSS_HP);
+  const bc = bfrac>0.6?'#44dd44':bfrac>0.3?'#ffcc00':'#ff2200';
+  ctx.fillStyle = 'rgba(5,5,5,0.82)';
+  ctx.beginPath(); ctx.roundRect(bx - 8, by - 5, barW + 16, barH + 10, 5); ctx.fill();
+  ctx.strokeStyle = '#0a0a0a';
+  ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.roundRect(bx - 8, by - 5, barW + 16, barH + 10, 5); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,245,210,0.12)';
+  ctx.beginPath(); ctx.roundRect(bx, by, barW, barH, 4); ctx.fill();
+  ctx.save();
+  ctx.beginPath(); ctx.roundRect(bx, by, barW * bfrac, barH, 4); ctx.clip();
+  const hpG = ctx.createLinearGradient(bx, by, bx + barW, by + barH);
+  hpG.addColorStop(0, bc);
+  hpG.addColorStop(1, boss.phase >= 3 ? '#ff3300' : '#fff5c0');
+  ctx.fillStyle = hpG;
+  ctx.fillRect(bx, by, barW, barH);
+  if (window.Manga && Manga.effects && Manga.effects.halftone) {
+    Manga.effects.halftone(ctx, bx, by, barW, barH, { density: 5, dotSize: 1.1, alpha: 0.18, color: '#0a0a0a' });
+  }
+  ctx.restore();
+  ctx.strokeStyle = '#0a0a0a';
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.roundRect(bx, by, barW, barH, 4); ctx.stroke();
+  ctx.font = '900 12px monospace';
+  ctx.textAlign = 'center';
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = '#0a0a0a';
+  ctx.strokeText('GIANT SCORPION', W/2, by + 19);
+  ctx.fillStyle = '#fff5c0';
+  ctx.fillText('GIANT SCORPION', W/2, by + 19);
+
+  if(boss.phase>1 && window.Manga && Manga.effects && Manga.effects.sfxText){
+    Manga.effects.sfxText(ctx, W/2, by + 52, boss.phase===3?'ENRAGED':'FRENZIED', {
+      size: boss.phase===3 ? 28 : 22,
+      color: boss.phase===3 ? '#ff4422' : '#ff9900',
+      outline: '#0a0a0a',
+      tilt: -5,
+      alpha: 0.70,
+    });
+  }
+
+  for(let i=0;i<ORION_HP;i++){
+    const alive = i<orion.hp;
+    const hx = 28 + i * 34, hy = 34;
+    if (fxReady) {
+      art.drawFrame(ctx, ORION_MANGA_FXHUD_SHEET, alive ? 'heartFull' : 'heartEmpty', hx, hy, {
+        scale: 0.075,
+        alpha: alive ? 0.98 : 0.42,
+      });
+    } else {
+      ctx.font='24px serif';
+      ctx.fillStyle = alive?'#ff2244':'rgba(80,30,30,0.4)';
+      ctx.fillText('♥', 18+i*32, 44);
+    }
+  }
+
+  const elapsed = (runEndMs != null ? runEndMs : performance.now()) - runStartMs;
+  ctx.textAlign='right';
+  ctx.fillStyle = 'rgba(0,0,0,0.68)';
+  ctx.beginPath(); ctx.roundRect(W - 138, 16, 116, 42, 5); ctx.fill();
+  ctx.strokeStyle = '#0a0a0a';
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.roundRect(W - 138, 16, 116, 42, 5); ctx.stroke();
+  ctx.font='bold 17px monospace';
+  ctx.fillStyle = boss.state==='dead' ? Engine.GOLD : '#fff5c0';
+  ctx.fillText(fmtRunTime(elapsed), W-32, 36);
+  ctx.font='10px monospace';
+  ctx.fillStyle='rgba(220,220,220,0.62)';
+  ctx.fillText('TIME', W-32, 51);
+
+  if(time<9){
+    ctx.globalAlpha = Math.min(1, (9-time)*0.5);
+    ctx.font='bold 11px monospace';
+    ctx.textAlign='center';
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = '#0a0a0a';
+    ctx.strokeText('Z SPEAR   X AIR-STAB   SHIFT x2 DODGE   Q CONSTELLATION', W/2, H-18);
+    ctx.fillStyle='#fff5c0';
+    ctx.fillText('Z SPEAR   X AIR-STAB   SHIFT x2 DODGE   Q CONSTELLATION', W/2, H-18);
+    ctx.globalAlpha=1;
+  }
+
+  drawAbilityRing(W - 34, H - 78, 'Q', constellationCD, CONSTELLATION_CD, constellationT > 0);
+
+  if (mangaTexts.length && window.Manga && Manga.effects && Manga.effects.sfxText) {
+    for (const mt of mangaTexts) {
+      const a = Math.min(1, mt.t * 1.6);
+      Manga.effects.sfxText(ctx, mt.x, mt.y, mt.text, {
+        size: mt.size || 38, color: mt.color || '#ffd54a',
+        outline: '#0a0a0a', tilt: -8, alpha: a,
+      });
+    }
+  }
+
+  ctx.restore();
+}
+
 // Bottom-right manga ability indicator: ring with cooldown sweep.
 function drawAbilityRing(cx, cy, key, cd, cdMax, active) {
   const r = 22;
@@ -1181,6 +1757,23 @@ function drawAbilityRing(cx, cy, key, cd, cdMax, active) {
     ctx.beginPath(); ctx.arc(cx, cy, r - 3, 0, Math.PI * 2); ctx.stroke();
     ctx.shadowBlur = 0;
   }
+  const art = orionMangaArt();
+  if (Engine.manga && art && orionMangaAssetReady(ORION_MANGA_FXHUD_SHEET)) {
+    art.drawFrame(ctx, ORION_MANGA_FXHUD_SHEET, 'abilityIcon', cx, cy, {
+      scale: 0.092,
+      alpha: cd > 0 ? 0.42 : 0.96,
+    });
+    ctx.font = '900 11px monospace';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineWidth = 3; ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#0a0a0a';
+    ctx.strokeText(key, cx, cy + r + 13);
+    ctx.fillStyle = cd > 0 ? '#aaa' : '#aaddff';
+    ctx.fillText(key, cx, cy + r + 13);
+    ctx.textBaseline = 'alphabetic';
+    ctx.restore();
+    return;
+  }
   ctx.font = '900 18px "Impact", "Arial Black", sans-serif';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.lineWidth = 4; ctx.lineJoin = 'round';
@@ -1194,25 +1787,7 @@ function drawAbilityRing(cx, cy, key, cd, cdMax, active) {
 
 // ── Background ────────────────────────────────────────────────────────────
 function drawBg(c, W, H, time) {
-  const art = window.GodGames && GodGames.MangaArt;
-  if (Engine.manga && art && typeof art.drawScene === 'function'
-      && art.drawScene(c, 'orion', 0, 0, W, H, { focusX: 0.46, focusY: 0.48 })) {
-    const GY = H * 0.76;
-    const dusk = c.createLinearGradient(0, 0, 0, H);
-    dusk.addColorStop(0, 'rgba(0,0,0,0.04)');
-    dusk.addColorStop(0.56, 'rgba(20,4,0,0.10)');
-    dusk.addColorStop(1, 'rgba(31,10,2,0.62)');
-    c.fillStyle = dusk;
-    c.fillRect(0, 0, W, H);
-    c.fillStyle = 'rgba(30,12,4,0.58)';
-    c.fillRect(0, GY, W, H - GY);
-    c.strokeStyle = 'rgba(255,232,160,0.42)';
-    c.lineWidth = 2;
-    c.beginPath();
-    c.moveTo(0, GY);
-    c.lineTo(W, GY);
-    c.stroke();
-    if (art.mangaAtmosphere) art.mangaAtmosphere(c, W, H, { halftoneAlpha: 0.10, scanAlpha: 0.08, vignette: 0.46 });
+  if (Engine.manga && drawOrionMangaArena(c, W, H, time)) {
     return;
   }
   // Manga arena scene: bold flat fields, ink silhouettes, halftone shading.
@@ -1320,6 +1895,258 @@ function drawTorch(c, x, y, time){
   c.shadowBlur=0; c.restore();
 }
 
+function drawMangaOrionPose(anim, x, y, opts = {}) {
+  const art = orionMangaArt();
+  if (!art || !orionMangaAssetReady(ORION_MANGA_ORION_SHEET)) return false;
+  const scale = opts.scale ?? orionMangaScale(y, 0.34, Math.max(0.42, Math.min(0.56, Math.min(Engine.W, Engine.H) / 1400)));
+  drawMangaContactShadow(x, y, {
+    w: (opts.shadowW ?? 48) * scale / 0.46,
+    h: (opts.shadowH ?? 12) * scale / 0.46,
+    alpha: opts.shadowAlpha ?? 0.40,
+    offsetY: opts.shadowOffsetY ?? 12,
+  });
+  ctx.save();
+  ctx.globalAlpha *= opts.alpha ?? 1;
+  ctx.filter = opts.filter || 'saturate(1.04) contrast(1.05)';
+  ctx.shadowColor = opts.shadowColor || 'rgba(170,215,255,0.22)';
+  ctx.shadowBlur = opts.shadowBlur ?? 10;
+  const drew = art.drawAnimation(ctx, ORION_MANGA_ORION_SHEET, anim, opts.t ?? Engine.time, x, y + 8, {
+    scale,
+    flipX: !!opts.flipX,
+  });
+  ctx.restore();
+  return drew;
+}
+
+function drawMangaScorpionPose(anim, x, y, opts = {}) {
+  const art = orionMangaArt();
+  if (!art || !orionMangaAssetReady(ORION_MANGA_SCORPION_SHEET)) return false;
+  const scale = opts.scale ?? orionMangaScale(y, 0.46, Math.max(0.58, Math.min(0.84, Math.min(Engine.W, Engine.H) / 1080)));
+  drawMangaContactShadow(x, y, {
+    w: (opts.shadowW ?? 118) * scale / 0.70,
+    h: (opts.shadowH ?? 22) * scale / 0.70,
+    alpha: opts.shadowAlpha ?? 0.48,
+    offsetY: opts.shadowOffsetY ?? 13,
+  });
+  ctx.save();
+  ctx.globalAlpha *= opts.alpha ?? 1;
+  ctx.filter = opts.filter || 'saturate(1.06) contrast(1.06)';
+  ctx.shadowColor = opts.shadowColor || (anim === 'enraged' ? '#ff3300' : 'rgba(255,120,30,0.24)');
+  ctx.shadowBlur = opts.shadowBlur ?? (anim === 'enraged' ? 22 : 12);
+  const drew = art.drawAnimation(ctx, ORION_MANGA_SCORPION_SHEET, anim, opts.t ?? Engine.time, x, y + 12, {
+    scale,
+    flipX: !!opts.flipX,
+  });
+  ctx.restore();
+  return drew;
+}
+
+function drawOrionMangaWorldFrame() {
+  const W = Engine.W, H = Engine.H;
+  if (boss) {
+    drawMangaContactShadow(boss.x, boss.y, { w:128, h:24, alpha:boss.state === 'dead' ? 0.32 : 0.50, offsetY:13 });
+  }
+  if (orion) {
+    drawMangaContactShadow(orion.x, orion.y, { w:52, h:13, alpha:orion.proneT > 0 ? 0.30 : 0.45, offsetY:13 });
+  }
+
+  for(const s of spears) drawMangaSpearProjectile(s, false);
+  for(const v of venoms) drawMangaVenomProjectile(v, false);
+  for(const p of phantoms) if (p.trail && p.trail.length > 1) drawMangaRibbonTrail(p.trail, '#cc88ff', 5, 0.36);
+
+  drawScorpion();
+  drawOrion();
+  drawOrionMangaForegroundOcclusion();
+
+  for(const s of spears) drawMangaSpearProjectile(s, true);
+  for(const v of venoms) drawMangaVenomProjectile(v, true);
+  for(const p of phantoms) drawPhantomClaw(p);
+  drawMangaStabFx();
+
+  if (orion && orion.hurtFlash > 0 && window.Manga && Manga.effects && Manga.effects.speedLines) {
+    const f = Math.min(1, orion.hurtFlash / 0.7);
+    Manga.effects.speedLines(ctx, orion.x, orion.y - 32, {
+      count:14, innerR:28, outerR:86 + f * 48,
+      color:'#ff2200', width:2.4, jitter:0.5,
+    });
+  }
+
+  renderHUD();
+  if (window.GodGames && GodGames.MythCinematic) GodGames.MythCinematic.render(ctx, W, H);
+}
+
+function renderOrionMangaTitle(c, eng) {
+  const W = eng.W, H = eng.H, time = eng.time;
+  const compact = H < 520;
+  drawOrionMangaArena(c, W, H, time, { title:true, focusY:0.52 });
+  const gy = H * 0.76;
+  drawMangaOrionPose('idle', W * (compact ? 0.24 : 0.26), gy, {
+    t:time,
+    scale:compact ? 0.34 : Math.max(0.44, Math.min(0.62, Math.min(W, H) / 1240)),
+    alpha:compact ? 0.78 : 1,
+  });
+  drawMangaScorpionPose('idle', W * (compact ? 0.63 : 0.69), gy, {
+    t:time,
+    flipX:true,
+    scale:compact ? 0.48 : Math.max(0.66, Math.min(0.92, Math.min(W, H) / 920)),
+    alpha:compact ? 0.82 : 1,
+  });
+  drawOrionMangaForegroundOcclusion();
+
+  const vig = c.createRadialGradient(W/2, H/2, H*0.18, W/2, H/2, H*0.90);
+  vig.addColorStop(0, 'rgba(0,0,0,0.02)');
+  vig.addColorStop(1, 'rgba(0,0,0,0.74)');
+  c.fillStyle = vig; c.fillRect(0, 0, W, H);
+
+  c.save();
+  c.textAlign = 'center';
+  c.lineJoin = 'round';
+  c.font = `900 ${compact ? 58 : 82}px "Impact", "Arial Black", serif`;
+  c.strokeStyle = '#0a0a0a';
+  c.lineWidth = compact ? 7 : 10;
+  const titleY = H * (compact ? 0.22 : 0.26);
+  c.strokeText('ORION', W/2, titleY);
+  c.fillStyle = eng.GOLD;
+  c.shadowColor = '#aaddff';
+  c.shadowBlur = compact ? 20 : 30;
+  c.fillText('ORION', W/2, titleY);
+  c.shadowBlur = 0;
+  c.font = `italic ${compact ? 17 : 22}px serif`;
+  c.fillStyle = 'rgba(255,235,185,0.88)';
+  c.fillText('& The Giant Scorpion', W/2, titleY + (compact ? 32 : 42));
+  c.font = `bold ${compact ? 10 : 14}px monospace`;
+  c.fillStyle = 'rgba(235,225,200,0.78)';
+  c.fillText(compact ? 'Z spear  ·  X stab  ·  Shift dodge  ·  Q strike' : 'Z throw spear  ·  X air-stab  ·  Shift x2 dodge  ·  Q constellation strike', W/2, H*(compact ? 0.43 : 0.49));
+
+  const pulse = 0.86 + Math.sin(time * 4.2) * 0.14;
+  const bw = compact ? 150 : 188, bh = compact ? 42 : 52, bx = W/2 - bw/2, by = H*(compact ? 0.56 : 0.61);
+  c.shadowColor = eng.GOLD;
+  c.shadowBlur = 24 * pulse;
+  c.fillStyle = `rgba(212,175,55,${0.92*pulse})`;
+  c.beginPath(); c.roundRect(bx, by, bw, bh, 8); c.fill();
+  c.shadowBlur = 0;
+  c.strokeStyle = '#0a0a0a'; c.lineWidth = 3;
+  c.beginPath(); c.roundRect(bx, by, bw, bh, 8); c.stroke();
+  c.fillStyle = '#1a0f00';
+  c.font = `bold ${compact ? 18 : 21}px monospace`;
+  c.textBaseline = 'middle';
+  c.fillText('BEGIN', W/2, by + bh/2);
+  c.textBaseline = 'alphabetic';
+  c.fillStyle = 'rgba(220,220,220,0.44)';
+  c.font = `${compact ? 9 : 11}px monospace`;
+  c.fillText('SPACE / ENTER to start  ·  ESC for hub', W/2, by + bh + (compact ? 24 : 34));
+  c.restore();
+}
+
+function renderOrionMangaGameOver(c, eng) {
+  const W = eng.W, H = eng.H, time = eng.time;
+  const isVictory = eng.state === 'victory';
+  const gy = H * 0.76;
+  drawOrionMangaArena(c, W, H, time, { title:true, focusY:0.52 });
+  if (isVictory) {
+    drawMangaScorpionPose('dead', W * 0.66, gy, {
+      t:Math.max(0, boss ? boss.deadTimer : 1),
+      flipX:true,
+      scale:Math.max(0.62, Math.min(0.88, Math.min(W, H) / 940)),
+      shadowAlpha:0.34,
+    });
+    drawMangaOrionPose('victory', W * 0.31, gy, {
+      t:time,
+      scale:Math.max(0.44, Math.min(0.62, Math.min(W, H) / 1240)),
+      shadowAlpha:0.44,
+      shadowColor:'#fff5c0',
+      shadowBlur:16,
+    });
+  } else {
+    drawMangaOrionPose('fallen', W * 0.34, gy, {
+      t:time,
+      scale:Math.max(0.43, Math.min(0.60, Math.min(W, H) / 1280)),
+      shadowAlpha:0.28,
+      alpha:0.92,
+    });
+    drawMangaScorpionPose('enraged', W * 0.67, gy, {
+      t:time,
+      flipX:true,
+      scale:Math.max(0.70, Math.min(0.98, Math.min(W, H) / 880)),
+      shadowAlpha:0.58,
+      shadowColor:'#ff3300',
+      shadowBlur:26,
+    });
+  }
+  drawOrionMangaForegroundOcclusion();
+
+  if (window.Manga && Manga.effects && Manga.effects.panelSplit) {
+    const since = time - (eng.config._orionGameOverT0 || time);
+    const split = Math.min(1, since / 0.45);
+    if (split < 1) Manga.effects.panelSplit(c, W, H, split);
+  }
+
+  const panel = c.createLinearGradient(0, H*0.18, 0, H*0.82);
+  panel.addColorStop(0, 'rgba(0,0,0,0.18)');
+  panel.addColorStop(0.44, isVictory ? 'rgba(0,0,0,0.42)' : 'rgba(20,0,0,0.52)');
+  panel.addColorStop(1, 'rgba(0,0,0,0.76)');
+  c.fillStyle = panel;
+  c.fillRect(0, 0, W, H);
+
+  c.save();
+  c.textAlign = 'center';
+  c.lineJoin = 'round';
+  const title = isVictory ? 'THE SCORPION IS SLAIN' : 'ORION HAS FALLEN';
+  const titleColor = isVictory ? eng.GOLD : '#ff4422';
+  c.font = '900 54px "Impact", "Arial Black", serif';
+  c.strokeStyle = '#0a0a0a';
+  c.lineWidth = 8;
+  c.strokeText(title, W/2, H*0.30);
+  c.fillStyle = titleColor;
+  c.shadowColor = titleColor;
+  c.shadowBlur = 22;
+  c.fillText(title, W/2, H*0.30);
+  c.shadowBlur = 0;
+  c.font = 'italic 15px serif';
+  c.fillStyle = 'rgba(235,220,178,0.78)';
+  c.fillText(isVictory ? 'Orion stands victorious in the same moonlit arena.' : 'The scorpion towers over the broken hunt.', W/2, H*0.38);
+
+  if (isVictory) {
+    const finalMs = (runEndMs != null ? runEndMs : performance.now()) - runStartMs;
+    c.font = '16px monospace';
+    c.fillStyle = 'rgba(255,220,150,0.72)';
+    c.fillText('FINAL TIME', W/2, H*0.49);
+    c.font = 'bold 56px monospace';
+    c.fillStyle = eng.GOLD;
+    c.shadowColor = eng.GOLD;
+    c.shadowBlur = 15;
+    c.fillText(fmtRunTime(finalMs), W/2, H*0.58);
+    c.shadowBlur = 0;
+    c.font = '14px monospace';
+    if (hallStatus === 'pending') {
+      c.fillStyle = 'rgba(255,220,140,0.60)';
+      c.fillText('inscribing your name on Olympus...', W/2, H*0.64);
+    } else if (hallStatus === 'ok' && hallRank != null) {
+      c.fillStyle = eng.GOLD;
+      c.shadowColor = eng.GOLD; c.shadowBlur = 10;
+      c.fillText('RANK #' + hallRank + ' ON MOUNT OLYMPUS', W/2, H*0.64);
+      c.shadowBlur = 0;
+    } else if (hallStatus === 'fail') {
+      c.fillStyle = 'rgba(180,140,140,0.65)';
+      c.fillText('the gods are silent (offline)', W/2, H*0.64);
+    }
+  }
+
+  if (Math.sin(time * 3) > 0) {
+    const promptColor = isVictory ? '#44ff88' : eng.GOLD;
+    c.font = 'bold 19px monospace';
+    c.fillStyle = promptColor;
+    c.shadowColor = promptColor;
+    c.shadowBlur = 9;
+    c.fillText(`PRESS  1  TO ${isVictory ? 'PLAY AGAIN' : 'TRY AGAIN'}`, W/2, H*0.76);
+  }
+  c.shadowBlur = 0;
+  c.font = '12px monospace';
+  c.fillStyle = 'rgba(200,200,200,0.50)';
+  c.fillText('ESC - Return to World    ·    H - Mount Olympus', W/2, H*0.84);
+  c.restore();
+}
+
 // ── Boot ──────────────────────────────────────────────────────────────────
 Engine.boot({
   title:    'ORION',
@@ -1389,6 +2216,14 @@ Engine.boot({
     }
   },
 
+  onTitleRender(ctx2, eng) {
+    if (eng.manga) {
+      renderOrionMangaTitle(ctx2, eng);
+      return;
+    }
+    eng._defaultTitle();
+  },
+
   onGameOverRender(ctx2, eng) {
     const W = eng.W, H = eng.H, time = eng.time;
     const isVictory = eng.state === 'victory';
@@ -1396,6 +2231,11 @@ Engine.boot({
     if (this._gameOverState !== eng.state) {
       this._gameOverState = eng.state;
       this._gameOverT0    = eng.time;
+      eng.config._orionGameOverT0 = eng.time;
+    }
+    if (eng.manga) {
+      renderOrionMangaGameOver(ctx2, eng);
+      return;
     }
     const since = eng.time - (this._gameOverT0 || eng.time);
 
@@ -1486,6 +2326,10 @@ Engine.boot({
   },
 
   onRender() {
+    if (Engine.manga) {
+      drawOrionMangaWorldFrame();
+      return;
+    }
     // Spears
     for(const s of spears){
       ctx.save(); ctx.translate(s.x,s.y); ctx.rotate(s.gravity?Math.atan2(s.vy,s.vx):(s.vx>0?0:Math.PI));
@@ -1532,11 +2376,17 @@ Engine.boot({
       // Three spears spawn above the boss with random spread, falling under gravity.
       const drop = (delay, off) => setTimeout(() => {
         if (boss.state === 'dead') return;
+        const skyX = boss.x + off * 0.55 + (Math.random() - 0.5) * 12;
+        const skyY = Engine.H * (0.13 + Math.random() * 0.04);
         spears.push({
           x: boss.x + off + (Math.random() - 0.5) * 20,
           y: -50,
           vx: 0, vy: 200,
           gravity: true, active: true, constellation: true,
+          skyX, skyY,
+          originX: skyX, originY: skyY,
+          trail: [{ x: skyX, y: skyY }],
+          age: 0,
         });
       }, delay);
       drop(0,   -60);
@@ -1587,8 +2437,7 @@ ctx = Engine.ctx;
 // when not yet found. Clicking it during a fight collects the glyph.
 function beltMidScreenPos() {
   const W = Engine.W, H = Engine.H;
-  const cs = 160;
-  const cx = W * 0.11, cy = H * 0.32;
+  const { cx, cy, cs } = orionConstellationMetrics(W, H);
   return { x: cx + OC[4].x * cs, y: cy + OC[4].y * cs };
 }
 Engine.canvas.addEventListener('click', (ev) => {
