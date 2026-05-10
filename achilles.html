@@ -159,7 +159,7 @@ function achillesMangaArt() {
 }
 
 function archerLineY() {
-  if (achillesMangaAssetReady(ACHILLES_MANGA_BATTLEFIELD)) return Engine.H * 0.405;
+  if (achillesMangaAssetReady(ACHILLES_MANGA_BATTLEFIELD)) return Engine.H * 0.46;
   return 28;
 }
 
@@ -316,12 +316,19 @@ function spawnWave(special) {
     const a = archers[ai];
     if (a) a.releaseT = Math.max(a.releaseT, 0.18);
     const startY = a ? archerArrowStartY() + (Math.random() - 0.5) * 4 : -(15 + Math.random() * 40);
+    const originX = a ? a.x : props.x;
+    const targetX = props.x;
     const speedScale = Engine.manga && a
       ? Math.max(0.45, (PLAYER_Y - startY) / Math.max(120, PLAYER_Y - 28))
       : 1;
     arrows.push({
-      x: props.x,
+      x: originX,
       y: startY,
+      originX,
+      originY: startY,
+      targetX,
+      targetY: PLAYER_Y,
+      arcOffset: (targetX - originX) * 0.08 + (Math.random() - 0.5) * 18,
       speed: props.speed * speedScale,
       alive: true, landed: false,
       targeted: !!props.targeted,
@@ -517,13 +524,21 @@ function update(dt) {
   for (const a of arrows) {
     if (!a.alive) continue;
     a.y += a.speed * dt;
+    updateArrowTrajectory(a);
 
     // Echo special: original arrow spawns a phantom mid-flight that lands later.
     if (a.echoArmed && !a.echoSpawned && a.y > PLAYER_Y * 0.5) {
       a.echoSpawned = true;
+      const echoOriginX = a.x + (Math.random() - 0.5) * 28;
+      const echoTargetX = (a.targetX ?? a.x) + (Math.random() - 0.5) * 28;
       arrows.push({
-        x: a.x + (Math.random() - 0.5) * 28,
+        x: echoOriginX,
         y: -10,
+        originX: echoOriginX,
+        originY: -10,
+        targetX: echoTargetX,
+        targetY: PLAYER_Y,
+        arcOffset: (Math.random() - 0.5) * 18,
         speed: a.speed,
         alive: true, landed: false,
         targeted: a.targeted,
@@ -687,6 +702,22 @@ function mangaStageProjectedX(x, y, opts = {}) {
 function mangaStageScale(y, farScale, nearScale, opts = {}) {
   const d = Math.pow(mangaStageDepth(y), opts.curve ?? 0.72);
   return farScale + (nearScale - farScale) * d;
+}
+
+function arrowFlightProgress(a) {
+  const originY = a.originY ?? 0;
+  const targetY = a.targetY ?? PLAYER_Y;
+  return clamp01((a.y - originY) / Math.max(1, targetY - originY));
+}
+
+function updateArrowTrajectory(a) {
+  const p = arrowFlightProgress(a);
+  if (typeof a.originX === 'number' && typeof a.targetX === 'number') {
+    const eased = Math.pow(p, 0.92);
+    const drift = Math.sin(p * Math.PI) * ((a.arcOffset ?? 0) * 0.18);
+    a.x = a.originX + (a.targetX - a.originX) * eased + drift;
+  }
+  return p;
 }
 
 function drawMangaContactShadow(x, y, opts = {}) {
@@ -1052,11 +1083,12 @@ function drawArchers() {
 function drawLandingShadows() {
   for (const a of arrows) {
     if (!a.alive) continue;
-    const progress = Math.max(0, a.y / PLAYER_Y);
+    const progress = arrowFlightProgress(a);
+    const shadowX = a.targetX ?? a.x;
 
     if (Engine.manga && achillesMangaAssetReady(ACHILLES_MANGA_FXHUD_SHEET)) {
       const warn = clamp01((progress - 0.60) / 0.40);
-      drawMangaContactShadow(a.x, PLAYER_Y, {
+      drawMangaContactShadow(shadowX, PLAYER_Y, {
         w: 10 + progress * 34,
         h: 3 + progress * 10,
         alpha: progress * (a.targeted ? 0.46 : 0.28),
@@ -1065,17 +1097,17 @@ function drawLandingShadows() {
       });
       if (warn > 0) {
         const art = achillesMangaArt();
-        art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, 'warningSlash', a.x, PLAYER_Y + 10, {
+        art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, 'warningSlash', shadowX, PLAYER_Y + 10, {
           scale: 0.10 + warn * 0.13,
           alpha: warn * (a.targeted ? 0.78 : 0.42),
-          rotate: ((a.x - Engine.W * 0.5) / Math.max(1, Engine.W)) * 0.18 + Math.sin(time * 16 + a.x) * 0.04,
+          rotate: ((shadowX - Engine.W * 0.5) / Math.max(1, Engine.W)) * 0.18 + Math.sin(time * 16 + shadowX) * 0.04,
         });
         ctx.save();
         ctx.globalAlpha = warn * (a.targeted ? 0.42 : 0.24);
         ctx.strokeStyle = a.targeted ? '#ff2200' : '#ff7700';
         ctx.lineWidth = a.targeted ? 2.2 : 1.4;
         ctx.beginPath();
-        ctx.ellipse(a.x, PLAYER_Y + 8, 32 + warn * 22, 8 + warn * 10, ((a.x - Engine.W * 0.5) / Engine.W) * 0.16, 0, Math.PI * 2);
+        ctx.ellipse(shadowX, PLAYER_Y + 8, 32 + warn * 22, 8 + warn * 10, ((shadowX - Engine.W * 0.5) / Engine.W) * 0.16, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
       }
@@ -1089,23 +1121,23 @@ function drawLandingShadows() {
     ctx.globalAlpha = alpha;
     ctx.fillStyle = a.targeted ? 'rgba(180,0,0,0.7)' : 'rgba(0,0,0,0.7)';
     ctx.beginPath();
-    ctx.ellipse(a.x, PLAYER_Y, rw, rh, 0, 0, Math.PI * 2);
+    ctx.ellipse(shadowX, PLAYER_Y, rw, rh, 0, 0, Math.PI * 2);
     ctx.fill();
     if (progress > 0.65) {
       const warn = (progress - 0.65) / 0.35;
       if (Engine.manga && achillesMangaAssetReady(ACHILLES_MANGA_FXHUD_SHEET)) {
         const art = achillesMangaArt();
-        art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, 'warningSlash', a.x, PLAYER_Y + 10, {
+        art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, 'warningSlash', shadowX, PLAYER_Y + 10, {
           scale: 0.10 + warn * 0.10,
           alpha: warn * (a.targeted ? 0.72 : 0.40),
-          rotate: Math.sin(time * 16 + a.x) * 0.05,
+          rotate: Math.sin(time * 16 + shadowX) * 0.05,
         });
       }
       ctx.globalAlpha = warn * (a.targeted ? 0.65 : 0.35);
       ctx.strokeStyle = a.targeted ? '#ff2200' : '#ff7700';
       ctx.lineWidth = a.targeted ? 2.5 : 1.5;
       ctx.beginPath();
-      ctx.ellipse(a.x, PLAYER_Y, rw * 1.7, rh * 1.7, 0, 0, Math.PI * 2);
+      ctx.ellipse(shadowX, PLAYER_Y, rw * 1.7, rh * 1.7, 0, 0, Math.PI * 2);
       ctx.stroke();
     }
     ctx.restore();
@@ -1118,11 +1150,32 @@ function drawMangaArrow(a, progress) {
   const frame = a.inferno ? 'arrowDown2' : 'arrowDown1';
   const depth = mangaStageDepth(a.y);
   const screenX = mangaStageProjectedX(a.x, a.y, { backPull: 0.58, curve: 0.80 });
+  const originScreenX = mangaStageProjectedX(a.originX ?? a.x, a.originY ?? archerArrowStartY(), { backPull: 0.90, curve: 0.95 });
+  const originScreenY = a.originY ?? archerArrowStartY();
   const scale = mangaStageScale(a.y, 0.055, 0.30) * (a.inferno ? 1.16 : 1);
   const alpha = (a.isEcho ? 0.50 : 1) * (0.56 + depth * 0.44);
 
   ctx.save();
   ctx.globalAlpha *= alpha;
+  if (progress < 0.72) {
+    const linkAlpha = (1 - progress / 0.72) * (a.targeted ? 0.46 : 0.28);
+    ctx.save();
+    ctx.globalAlpha *= linkAlpha;
+    ctx.strokeStyle = a.inferno ? '#ff5533' : '#fff0a8';
+    ctx.lineWidth = 1.2 + depth * 1.4;
+    ctx.shadowColor = a.inferno ? '#ff2200' : '#ffd54a';
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.moveTo(originScreenX, originScreenY);
+    ctx.quadraticCurveTo(
+      (originScreenX + screenX) * 0.5,
+      Math.min(originScreenY, a.y) - 26 - Math.abs(screenX - originScreenX) * 0.05,
+      screenX,
+      a.y,
+    );
+    ctx.stroke();
+    ctx.restore();
+  }
   ctx.filter = `sepia(0.10) saturate(1.10) brightness(${0.82 + depth * 0.24}) contrast(1.08) blur(${Math.max(0, (1 - depth) * 0.45)}px)`;
   if (progress > 0.42 || a.inferno) {
     const g = a.inferno ? 1 : (progress - 0.42) / 0.58;
@@ -1144,7 +1197,7 @@ function drawMangaArrow(a, progress) {
 }
 
 function drawArrow(a) {
-  const progress = Math.max(0.05, Math.min(1, a.y / PLAYER_Y));
+  const progress = Math.max(0.05, arrowFlightProgress(a));
   const scale    = 0.11 + progress * 0.89;
 
   if (Engine.manga && drawMangaArrow(a, progress)) return;

@@ -28,9 +28,9 @@
     });
 
     M.assets.define('godgames.achilles.battlefield', {
-      src: 'assets/manga/achilles/battlefield-v2.jpg',
+      src: 'assets/manga/achilles/battlefield-clean-v3.jpg',
       meta: {
-        usage: 'Asset-backed Achilles manga gameplay arena, title, death, and transition backdrop.',
+        usage: 'Clean asset-backed Achilles manga gameplay arena with no baked-in archers or active arrows.',
       },
     });
 

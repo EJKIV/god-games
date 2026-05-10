@@ -173,6 +173,7 @@ god-games/
 
 | Date       | Change                                                                                     | Author |
 |------------|--------------------------------------------------------------------------------------------|--------|
+| 2026-05-10 | Replaced the crowded Achilles manga backdrop with a clean arena and tied falling arrows to their firing archers through origin-to-target trajectories. | codex  |
 | 2026-05-10 | Added a layered manga stage pass for Achilles so gameplay sprites, arrows, shadows, wall depth, foreground occlusion, and lighting share the generated battlefield perspective. | codex  |
 | 2026-05-10 | Rebuilt Achilles manga gameplay around a coherent battlefield, animated Achilles and archer sheets, arrow/ability FX, HUD icons, and the shared `GodGames.MangaArt.drawAnimation` helper. | codex  |
 | 2026-05-10 | Spread generated manga/anime bitmap art across hub, all games, Olympus, clue review, mystery destinations, gameplay sprites, and transition screens through `assets/manga/` manifests and `GodGames.MangaArt`. | codex  |
