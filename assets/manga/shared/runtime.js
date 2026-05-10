@@ -28,6 +28,36 @@
     return A.drawFrame(ctx, id, frame, x, y, opts);
   }
 
+  function animation(id, name) {
+    const A = assets();
+    if (!A || typeof A.get !== 'function') return null;
+    const def = A.get(id);
+    return def && def.meta && def.meta.animations
+      ? def.meta.animations[name] || null
+      : null;
+  }
+
+  function animationFrame(id, name, t = 0, opts = {}) {
+    const anim = animation(id, name);
+    const frames = anim && Array.isArray(anim.frames) && anim.frames.length
+      ? anim.frames
+      : [name];
+    const fps = opts.fps ?? (anim && anim.fps) ?? 8;
+    const loop = opts.loop ?? (anim ? anim.loop !== false : true);
+    let idx = 0;
+
+    if (frames.length > 1 && fps > 0) {
+      idx = Math.floor(Math.max(0, t) * fps);
+      idx = loop ? idx % frames.length : Math.min(frames.length - 1, idx);
+    }
+
+    return frames[idx] || frames[0] || name;
+  }
+
+  function drawAnimation(ctx, id, name, t, x, y, opts = {}) {
+    return drawFrame(ctx, id, animationFrame(id, name, t, opts), x, y, opts);
+  }
+
   function drawFrameCover(ctx, id, frameName, x, y, w, h, opts = {}) {
     const A = assets();
     if (!A || typeof A.image !== 'function' || typeof A.frame !== 'function') return false;
@@ -97,6 +127,9 @@
   Art.ready = ready;
   Art.drawImage = drawImage;
   Art.drawFrame = drawFrame;
+  Art.animation = animation;
+  Art.animationFrame = animationFrame;
+  Art.drawAnimation = drawAnimation;
   Art.drawFrameCover = drawFrameCover;
   Art.drawScene = drawScene;
   Art.mangaAtmosphere = mangaAtmosphere;

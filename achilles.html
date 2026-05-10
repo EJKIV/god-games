@@ -80,6 +80,10 @@ let PLAYER_Y, LANE_L, LANE_R;
 let archerXs, tileColors, stars;
 let archers = []; // {x, downT, glow} per archer slot — manga state
 const ACHILLES_MANGA_SHEET = 'godgames.achilles.actionSheet';
+const ACHILLES_MANGA_ANIM_SHEET = 'godgames.achilles.animSheet';
+const ACHILLES_MANGA_ARCHER_SHEET = 'godgames.achilles.archerSheet';
+const ACHILLES_MANGA_FXHUD_SHEET = 'godgames.achilles.fxHudSheet';
+const ACHILLES_MANGA_BATTLEFIELD = 'godgames.achilles.battlefield';
 
 function initLayout() {
   const W = Engine.W, H = Engine.H;
@@ -141,6 +145,26 @@ function ensureMangaFx() {
   if (!mangaPunch) mangaPunch = Manga.fx.cameraPunch();
   if (!mangaSlomo) mangaSlomo = Manga.fx.slomo();
   return true;
+}
+
+function achillesMangaAssetReady(id) {
+  return !!(Engine.manga
+    && window.GodGames && GodGames.MangaArt
+    && typeof GodGames.MangaArt.ready === 'function'
+    && GodGames.MangaArt.ready(id));
+}
+
+function achillesMangaArt() {
+  return window.GodGames && GodGames.MangaArt ? GodGames.MangaArt : null;
+}
+
+function archerLineY() {
+  if (achillesMangaAssetReady(ACHILLES_MANGA_BATTLEFIELD)) return Engine.H * 0.405;
+  return 28;
+}
+
+function archerArrowStartY() {
+  return achillesMangaAssetReady(ACHILLES_MANGA_BATTLEFIELD) ? archerLineY() - 30 : 28;
 }
 
 // ── Hall of Mount Olympus ─────────────────────────────────────────────────
@@ -291,11 +315,14 @@ function spawnWave(special) {
   function spawnArrowFromArcher(ai, props) {
     const a = archers[ai];
     if (a) a.releaseT = Math.max(a.releaseT, 0.18);
-    const startY = a ? 28 + (Math.random() - 0.5) * 4 : -(15 + Math.random() * 40);
+    const startY = a ? archerArrowStartY() + (Math.random() - 0.5) * 4 : -(15 + Math.random() * 40);
+    const speedScale = Engine.manga && a
+      ? Math.max(0.45, (PLAYER_Y - startY) / Math.max(120, PLAYER_Y - 28))
+      : 1;
     arrows.push({
       x: props.x,
       y: startY,
-      speed: props.speed,
+      speed: props.speed * speedScale,
       alive: true, landed: false,
       targeted: !!props.targeted,
       originIdx: ai,
@@ -396,14 +423,15 @@ function update(dt) {
     ra.y += ra.vy * dt; // vy is negative
     ra.trailT += dt;
     const target = archers[ra.targetIdx];
-    if (target && ra.y <= 28 + 8) {
+    const targetY = archerLineY();
+    if (target && ra.y <= targetY + 8) {
       target.downT = 4;
       target.releaseT = 0;
       target.drawT = 0;
       // Manga particle burst at archer
-      burst(target.x, 28, '#fff5c0', 14, 1.0);
-      burst(target.x, 28, '#ffd54a', 8, 0.6);
-      mangaTexts.push({ text: 'HIT!', x: target.x, y: 14, t: 0.4, color: '#fff5c0', size: 26 });
+      burst(target.x, targetY, '#fff5c0', 14, 1.0);
+      burst(target.x, targetY, '#ffd54a', 8, 0.6);
+      mangaTexts.push({ text: 'HIT!', x: target.x, y: targetY - 28, t: 0.4, color: '#fff5c0', size: 26 });
       // Mystery: Shade of Patroclus — archer downs that all land within 2
       // seconds of each other earn 'lay'. Kept as a small ring buffer of
       // recent kill timestamps; trim everything older than 2s, then check
@@ -417,8 +445,8 @@ function update(dt) {
           Engine.unlock.set('glyph_achilles_found');
           GodGames.Mysteries.earnHint('glyph_first');
           GodGames.Mysteries.tally('glyphs_found');
-          mangaTexts.push({ text: 'A MARK!', x: target.x, y: 60, t: 1.0, color: '#ffd54a', size: 26 });
-          burst(target.x, 28, '#ffd54a', 22, 220);
+          mangaTexts.push({ text: 'A MARK!', x: target.x, y: targetY + 32, t: 1.0, color: '#ffd54a', size: 26 });
+          burst(target.x, targetY, '#ffd54a', 22, 220);
         }
       }
       returnArrows.splice(i, 1);
@@ -627,6 +655,121 @@ function drawGround() {
   ctx.fillStyle = zoneG; ctx.fillRect(0, PLAYER_Y - 60, W, 120);
 }
 
+function drawMangaBattlefield(opts = {}) {
+  const art = achillesMangaArt();
+  const W = Engine.W, H = Engine.H;
+  if (!Engine.manga || !art || typeof art.drawImage !== 'function') return false;
+  if (!art.drawImage(ctx, ACHILLES_MANGA_BATTLEFIELD, 0, 0, W, H, {
+    fit: 'cover',
+    focusX: opts.focusX ?? 0.50,
+    focusY: opts.focusY ?? 0.53,
+    alpha: opts.alpha ?? 1,
+  })) return false;
+
+  ctx.save();
+  const sky = ctx.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0, opts.title ? 'rgba(44,2,2,0.14)' : 'rgba(44,2,2,0.08)');
+  sky.addColorStop(0.45, 'rgba(0,0,0,0.00)');
+  sky.addColorStop(1, 'rgba(0,0,0,0.36)');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, H);
+
+  const horizonY = H * 0.48;
+  ctx.strokeStyle = 'rgba(10,10,10,0.34)';
+  ctx.lineWidth = 1.4;
+  for (let i = 0; i <= 8; i++) {
+    const t = i / 8;
+    const x = LANE_L + (LANE_R - LANE_L) * t;
+    const hx = W * 0.5 + (x - W * 0.5) * 0.18;
+    ctx.beginPath();
+    ctx.moveTo(hx, horizonY);
+    ctx.lineTo(x, H);
+    ctx.stroke();
+  }
+
+  const zoneG = ctx.createLinearGradient(0, PLAYER_Y - 58, 0, PLAYER_Y + 46);
+  zoneG.addColorStop(0, 'rgba(255,245,190,0.00)');
+  zoneG.addColorStop(0.50, 'rgba(255,235,140,0.11)');
+  zoneG.addColorStop(1, 'rgba(0,0,0,0.00)');
+  ctx.fillStyle = zoneG;
+  ctx.fillRect(0, PLAYER_Y - 58, W, 104);
+
+  if (art.mangaAtmosphere) {
+    art.mangaAtmosphere(ctx, W, H, {
+      density: 9,
+      dotSize: 1.25,
+      halftoneAlpha: opts.title ? 0.10 : 0.14,
+      scanAlpha: opts.title ? 0.05 : 0.07,
+      vignette: opts.title ? 0.45 : 0.52,
+    });
+  }
+  ctx.restore();
+  return true;
+}
+
+function drawMangaArcher(a, archerIdx) {
+  const art = achillesMangaArt();
+  if (!art || !achillesMangaAssetReady(ACHILLES_MANGA_ARCHER_SHEET)) return false;
+
+  const downed = a.downT > 0;
+  const y = archerLineY() + Math.sin(time * 2.2 + a.x * 0.01) * 2;
+  const scale = Math.max(0.12, Math.min(0.22, Math.min(Engine.W, Engine.H) / 3600));
+  let anim = 'idle';
+  let animT = time + archerIdx * 0.13;
+  let frame = null;
+
+  if (downed) {
+    anim = 'downed';
+    animT = Math.max(0, 4 - a.downT);
+  } else if (a.releaseT > 0) {
+    anim = 'release';
+    animT = 0.18 - a.releaseT;
+    if (pendingSpecial === 'inferno') frame = 'eliteRelease';
+  } else if (a.glow > 0) {
+    anim = 'telegraph';
+  } else if (a.drawT > 0) {
+    anim = 'draw';
+    animT = 0.35 - a.drawT;
+  }
+
+  ctx.save();
+  if (a.glow > 0) {
+    ctx.globalAlpha = Math.min(0.85, 0.24 + a.glow);
+    ctx.shadowColor = pendingSpecial === 'inferno' ? '#ff2200' : '#ffd54a';
+    ctx.shadowBlur = 28;
+    art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, pendingSpecial === 'inferno' ? 'damageBurst' : 'bowFlare', a.x, y - 72, {
+      scale: scale * 1.9,
+      alpha: Math.min(0.65, a.glow * 1.4),
+    });
+    ctx.shadowBlur = 0;
+  }
+
+  ctx.globalAlpha *= downed ? 0.62 : 0.96;
+  const drew = frame
+    ? art.drawFrame(ctx, ACHILLES_MANGA_ARCHER_SHEET, frame, a.x, y, { scale })
+    : art.drawAnimation(ctx, ACHILLES_MANGA_ARCHER_SHEET, anim, animT, a.x, y, { scale });
+
+  if (drew && archerIdx === 0) {
+    const found = window.Engine && Engine.unlock && Engine.unlock.has('glyph_achilles_found');
+    ctx.globalAlpha = found ? 0.98 : 0.45;
+    ctx.strokeStyle = found ? '#ffd54a' : '#b7822f';
+    ctx.fillStyle = found ? 'rgba(255,213,74,0.20)' : 'rgba(0,0,0,0.16)';
+    ctx.lineWidth = 2;
+    if (found) { ctx.shadowColor = '#ffd54a'; ctx.shadowBlur = 12; }
+    const gx = a.x - 12 * scale * 10;
+    const gy = y - 125 * scale;
+    ctx.beginPath(); ctx.arc(gx, gy, 7 * scale * 2, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(gx, gy - 7 * scale * 2);
+    ctx.lineTo(gx + 6 * scale * 2, gy + 6 * scale * 2);
+    ctx.lineTo(gx - 6 * scale * 2, gy + 6 * scale * 2);
+    ctx.closePath(); ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+  ctx.restore();
+  return drew;
+}
+
 function drawArchers() {
   const mangaOn = Engine.manga && window.Manga;
   const ink = mangaOn && Manga.effects && Manga.effects.inkStroke
@@ -639,6 +782,8 @@ function drawArchers() {
     const bob = Math.sin(time * 2.2 + ax * 0.01) * 1.5;
     const downed = a.downT > 0;
     const isHeelArcher = archerIdx === 0;
+
+    if (mangaOn && drawMangaArcher(a, archerIdx)) continue;
 
     ctx.save();
     ctx.translate(ax, 28 + bob);
@@ -783,6 +928,14 @@ function drawLandingShadows() {
     ctx.fill();
     if (progress > 0.65) {
       const warn = (progress - 0.65) / 0.35;
+      if (Engine.manga && achillesMangaAssetReady(ACHILLES_MANGA_FXHUD_SHEET)) {
+        const art = achillesMangaArt();
+        art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, 'warningSlash', a.x, PLAYER_Y + 10, {
+          scale: 0.10 + warn * 0.10,
+          alpha: warn * (a.targeted ? 0.72 : 0.40),
+          rotate: Math.sin(time * 16 + a.x) * 0.05,
+        });
+      }
       ctx.globalAlpha = warn * (a.targeted ? 0.65 : 0.35);
       ctx.strokeStyle = a.targeted ? '#ff2200' : '#ff7700';
       ctx.lineWidth = a.targeted ? 2.5 : 1.5;
@@ -794,9 +947,39 @@ function drawLandingShadows() {
   }
 }
 
+function drawMangaArrow(a, progress) {
+  const art = achillesMangaArt();
+  if (!art || !achillesMangaAssetReady(ACHILLES_MANGA_FXHUD_SHEET)) return false;
+  const frame = a.inferno ? 'arrowDown2' : 'arrowDown1';
+  const scale = (0.08 + progress * 0.20) * (a.inferno ? 1.16 : 1);
+  const alpha = a.isEcho ? 0.50 : 1;
+
+  ctx.save();
+  ctx.globalAlpha *= alpha;
+  if (progress > 0.42 || a.inferno) {
+    const g = a.inferno ? 1 : (progress - 0.42) / 0.58;
+    ctx.shadowColor = a.inferno ? '#ff1100' : (a.targeted ? '#ff2200' : '#ff8800');
+    ctx.shadowBlur = (a.inferno ? 28 : 18) * Math.max(0, g);
+  }
+  if (a.inferno && progress > 0.45) {
+    art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, 'damageBurst', a.x, a.y + 8, {
+      scale: scale * 0.95,
+      alpha: Math.min(0.65, progress),
+    });
+  }
+  const drew = art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, frame, a.x, a.y, {
+    scale,
+    rotate: Math.sin(time * 8 + a.x * 0.02) * 0.035,
+  });
+  ctx.restore();
+  return drew;
+}
+
 function drawArrow(a) {
   const progress = Math.max(0.05, Math.min(1, a.y / PLAYER_Y));
   const scale    = 0.11 + progress * 0.89;
+
+  if (Engine.manga && drawMangaArrow(a, progress)) return;
 
   const tipLen   = 20 * scale;
   const shaftLen = 32 * scale;
@@ -874,22 +1057,40 @@ function drawPlayerRouted() {
 }
 
 function achillesMangaAssetsReady() {
-  return !!(Engine.manga
-    && window.GodGames && GodGames.MangaArt
-    && window.Manga && Manga.assets
-    && typeof Manga.assets.ready === 'function'
-    && Manga.assets.ready(ACHILLES_MANGA_SHEET));
+  return achillesMangaAssetReady(ACHILLES_MANGA_ANIM_SHEET)
+    || achillesMangaAssetReady(ACHILLES_MANGA_SHEET);
+}
+
+function currentAchillesMangaMotion() {
+  if (Engine.state === 'victory') return { anim: 'victory', t: time, flipX: false };
+  if (player.hp <= 0 || Engine.state === 'dead') {
+    return { anim: 'fallen', t: mangaDeathT > 0 ? Math.max(0, time - mangaDeathT) : 1, flipX: false };
+  }
+  if (heelT > 0) return { anim: 'strike', t: HEEL_DUR - heelT, flipX: player.facing < 0 };
+  if (bashT > 0) return { anim: 'bash', t: BASH_DUR - bashT, flipX: player.facing < 0 };
+  if (bowT > 0) {
+    const t = BOW_POSE - bowT;
+    return { anim: t > BOW_POSE * 0.72 ? 'bowRelease' : 'bow', t, flipX: false };
+  }
+  if (player.hitFlash > 0) return { anim: 'hit', t: 0.35 - player.hitFlash, flipX: player.facing < 0 };
+  if (player.iframes > 0) return { anim: 'guarded', t: time, flipX: player.facing < 0 };
+  if (Math.abs(player.vx) > 20) return {
+    anim: player.vx < 0 ? 'runLeft' : 'runRight',
+    t: player.walkPhase / 10,
+    flipX: false,
+  };
+  return { anim: 'idle', t: time, flipX: player.facing < 0 };
 }
 
 function currentAchillesMangaFrame() {
-  if (Engine.state === 'victory') return 'victory';
-  if (player.hp <= 0 || Engine.state === 'dead') return 'fallen';
-  if (heelT > 0) return 'strike';
-  if (bashT > 0) return 'bash';
-  if (bowT > 0) return 'bow';
-  if (player.hitFlash > 0) return 'hit';
-  if (Math.abs(player.vx) > 20) return player.vx < 0 ? 'runLeft' : 'runRight';
-  return 'idle';
+  const motion = currentAchillesMangaMotion();
+  if (motion.anim === 'runLeft') return 'runLeft';
+  if (motion.anim === 'runRight') return 'runRight';
+  if (motion.anim === 'strike') return 'strike';
+  if (motion.anim === 'bash') return 'bash';
+  if (motion.anim === 'bow' || motion.anim === 'bowRelease') return 'bow';
+  if (motion.anim === 'hit' || motion.anim === 'guarded') return 'hit';
+  return motion.anim === 'fallen' || motion.anim === 'victory' ? motion.anim : 'idle';
 }
 
 function drawAchillesMangaScene(frameName, opts = {}) {
@@ -904,11 +1105,57 @@ function drawAchillesMangaScene(frameName, opts = {}) {
 
 function drawAchillesMangaSprite() {
   if (!achillesMangaAssetsReady()) return false;
-  const frame = currentAchillesMangaFrame();
   const compact = Math.min(Engine.W, Engine.H);
   const scale = Math.max(0.32, Math.min(0.46, compact / 1600));
-  const y = PLAYER_Y + 2;
+  const y = PLAYER_Y + 8;
   const jitter = player.hitFlash > 0 ? Math.sin(time * 80) * 2 : 0;
+  const art = achillesMangaArt();
+  const hasV2 = achillesMangaAssetReady(ACHILLES_MANGA_ANIM_SHEET)
+    && art && typeof art.drawAnimation === 'function';
+
+  ctx.save();
+  ctx.globalAlpha = 0.50;
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.ellipse(player.x, PLAYER_Y + 11, 42 * scale / 0.40, 11 * scale / 0.40, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  if (hasV2 && achillesMangaAssetReady(ACHILLES_MANGA_FXHUD_SHEET)) {
+    const fxScale = Math.max(0.12, Math.min(0.24, compact / 3300));
+    if (Math.abs(player.vx) > 20) {
+      art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, 'dustPuff', player.x - player.facing * 34, PLAYER_Y + 18, {
+        scale: fxScale,
+        alpha: 0.30 + Math.abs(Math.sin(player.walkPhase)) * 0.24,
+        flipX: player.facing < 0,
+      });
+    }
+    if (bashT > 0) {
+      art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, 'shieldBurst', player.x + player.facing * 22, PLAYER_Y - 48, {
+        scale: fxScale * 1.18,
+        alpha: Math.min(0.85, bashT / BASH_DUR + 0.15),
+        flipX: player.facing < 0,
+      });
+    }
+    if (bowT > 0) {
+      art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, 'bowFlare', player.x + 26, PLAYER_Y - 86, {
+        scale: fxScale * 0.92,
+        alpha: Math.min(0.70, bowT / BOW_POSE + 0.10),
+      });
+    }
+    if (heelT > 0) {
+      art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, 'slashCrescent', player.x + player.facing * 54, PLAYER_Y - 54, {
+        scale: fxScale * 1.42,
+        alpha: Math.min(0.78, heelT / HEEL_DUR + 0.08),
+        flipX: player.facing < 0,
+      });
+      art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, 'heelSpark', player.x + player.facing * 20, PLAYER_Y + 7, {
+        scale: fxScale * 0.86,
+        alpha: Math.min(0.90, heelT / HEEL_DUR + 0.10),
+        flipX: player.facing < 0,
+      });
+    }
+  }
 
   ctx.save();
   if (player.iframes > 0 && Math.floor(player.iframes * 14) % 2 === 0) ctx.globalAlpha *= 0.35;
@@ -916,10 +1163,20 @@ function drawAchillesMangaSprite() {
     ctx.shadowColor = '#ff3322';
     ctx.shadowBlur = 18;
   }
-  const drew = Manga.assets.drawFrame(ctx, ACHILLES_MANGA_SHEET, frame, player.x + jitter, y, {
-    scale,
-    flipX: frame === 'idle' && player.facing < 0,
-  });
+  let drew = false;
+  if (hasV2) {
+    const motion = currentAchillesMangaMotion();
+    drew = art.drawAnimation(ctx, ACHILLES_MANGA_ANIM_SHEET, motion.anim, motion.t, player.x + jitter, y, {
+      scale,
+      flipX: motion.flipX,
+    });
+  } else {
+    const frame = currentAchillesMangaFrame();
+    drew = Manga.assets.drawFrame(ctx, ACHILLES_MANGA_SHEET, frame, player.x + jitter, y, {
+      scale,
+      flipX: frame === 'idle' && player.facing < 0,
+    });
+  }
   ctx.restore();
 
   if (drew && player.hitFlash > 0) {
@@ -930,6 +1187,12 @@ function drawAchillesMangaSprite() {
     ctx.beginPath();
     ctx.ellipse(player.x, PLAYER_Y - 28, 54, 42, -0.12, 0, Math.PI * 2);
     ctx.fill();
+    if (achillesMangaAssetReady(ACHILLES_MANGA_FXHUD_SHEET)) {
+      art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, 'damageBurst', player.x, PLAYER_Y - 54, {
+        scale: Math.max(0.12, Math.min(0.24, compact / 3300)),
+        alpha: Math.min(0.75, player.hitFlash * 1.8),
+      });
+    }
     ctx.restore();
   }
   return drew;
@@ -937,6 +1200,30 @@ function drawAchillesMangaSprite() {
 
 // Player's counter-shot arrow rising upward — bright gold + ink trail line.
 function drawReturnArrow(ra) {
+  const art = achillesMangaArt();
+  if (Engine.manga && art && achillesMangaAssetReady(ACHILLES_MANGA_FXHUD_SHEET)) {
+    const trailLen = Math.min(140, ra.trailT * 760);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,245,190,0.50)';
+    ctx.lineWidth = 1.7; ctx.lineCap = 'round';
+    for (let i = 0; i < 5; i++) {
+      const off = (i - 2) * 3.2;
+      ctx.beginPath();
+      ctx.moveTo(ra.x + off, ra.y + trailLen);
+      ctx.lineTo(ra.x + off * 0.2, ra.y + 12);
+      ctx.stroke();
+    }
+    ctx.shadowColor = '#fff5c0';
+    ctx.shadowBlur = 16;
+    art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, 'returnArrow', ra.x, ra.y, {
+      scale: Math.max(0.12, Math.min(0.21, Math.min(Engine.W, Engine.H) / 3800)),
+      alpha: 0.95,
+      rotate: Math.sin(time * 10) * 0.04,
+    });
+    ctx.restore();
+    return;
+  }
+
   const trailLen = Math.min(120, ra.trailT * 700);
   ctx.save();
   // Speed-line trail
@@ -1051,6 +1338,58 @@ function drawPlayer() {
   }
 }
 
+function drawMangaHUD() {
+  const art = achillesMangaArt();
+  if (!art || !achillesMangaAssetReady(ACHILLES_MANGA_FXHUD_SHEET)) return false;
+  const W = Engine.W, H = Engine.H;
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.42)';
+  ctx.strokeStyle = 'rgba(212,175,55,0.54)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.roundRect(14, 14, 205, 58, 6); ctx.fill(); ctx.stroke();
+
+  for (let i = 0; i < HP_MAX; i++) {
+    art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, i < player.hp ? 'heartFull' : 'heartEmpty', 38 + i * 34, 42, {
+      scale: 0.080,
+      alpha: i < player.hp ? 1 : 0.58,
+    });
+  }
+
+  const sx = W - 226;
+  ctx.fillStyle = 'rgba(0,0,0,0.44)';
+  ctx.strokeStyle = 'rgba(212,175,55,0.52)';
+  ctx.beginPath(); ctx.roundRect(sx, 14, 206, 70, 6); ctx.fill(); ctx.stroke();
+  ctx.textAlign = 'right';
+  ctx.font = '900 20px "Arial Black", Impact, sans-serif';
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = '#0a0a0a';
+  ctx.fillStyle = '#fff0a8';
+  ctx.strokeText(`SCORE ${Math.floor(score)}`, W - 32, 38);
+  ctx.fillText(`SCORE ${Math.floor(score)}`, W - 32, 38);
+
+  const xpW = 168, xpH = 9, xpX = W - 32 - xpW, xpY = 51;
+  const xpPct = Math.min(1, (xp % 100) / 100);
+  ctx.fillStyle = 'rgba(8,8,8,0.76)';
+  ctx.beginPath(); ctx.roundRect(xpX, xpY, xpW, xpH, 5); ctx.fill();
+  const xpG = ctx.createLinearGradient(xpX, 0, xpX + xpW, 0);
+  xpG.addColorStop(0, '#cc2222'); xpG.addColorStop(0.55, '#D4AF37'); xpG.addColorStop(1, '#fff5c0');
+  ctx.fillStyle = xpG;
+  ctx.beginPath(); ctx.roundRect(xpX, xpY, xpW * xpPct, xpH, 5); ctx.fill();
+  ctx.strokeStyle = '#0a0a0a'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.roundRect(xpX, xpY, xpW, xpH, 5); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,245,190,0.70)';
+  ctx.font = '10px monospace';
+  ctx.fillText(`XP ${xp}`, W - 32, xpY + xpH + 13);
+
+  ctx.textAlign = 'center';
+  ctx.font = '900 12px monospace';
+  ctx.fillStyle = 'rgba(255,245,210,0.48)';
+  ctx.fillText(`${Math.floor(playTime)}s SURVIVED`, W / 2, H - 14);
+  ctx.restore();
+  return true;
+}
+
 function drawHUD() {
   const W = Engine.W, H = Engine.H;
 
@@ -1072,6 +1411,8 @@ function drawHUD() {
     ctx.fillText(`hint.u earned = ${!!earnedU}`, 14, 112);
     ctx.restore();
   }
+
+  if (Engine.manga && drawMangaHUD()) return;
 
   ctx.textAlign = 'left'; ctx.font = 'bold 24px serif';
   ctx.shadowColor = '#ff2222'; ctx.shadowBlur = 10;
@@ -1110,13 +1451,15 @@ function drawHUD() {
 function drawWorldFrame() {
   const W = Engine.W, H = Engine.H;
 
-  drawGround();
-  if (Engine.manga && drawAchillesMangaScene('achilles', { alpha: 0.30, focusX: 0.54, focusY: 0.52 })) {
-    ctx.fillStyle = 'rgba(34,8,4,0.36)';
-    ctx.fillRect(0, 0, W, H);
+  const mangaField = Engine.manga && drawMangaBattlefield();
+  if (!mangaField) {
+    drawGround();
+    if (Engine.manga && drawAchillesMangaScene('achilles', { alpha: 0.30, focusX: 0.54, focusY: 0.52 })) {
+      ctx.fillStyle = 'rgba(34,8,4,0.36)';
+      ctx.fillRect(0, 0, W, H);
+    }
   }
-  // Manga atmospheric halftone over the battlefield
-  if (Engine.manga && window.Manga) {
+  if (Engine.manga && window.Manga && !mangaField) {
     window.Manga.effects.halftone(ctx, 0, 0, W, H, { density: 8, dotSize: 1.6, alpha: 0.12, color: '#000' });
   }
   drawArchers();
@@ -1217,6 +1560,24 @@ function drawAbilityIcon(cx, cy, key, glyph, cd, cdMax, active) {
     ctx.beginPath(); ctx.arc(cx, cy, r - 3, 0, Math.PI * 2); ctx.stroke();
     ctx.shadowBlur = 0;
   }
+  const art = achillesMangaArt();
+  const iconFrame = glyph === '🛡' ? 'shieldIcon' : (glyph === '🏹' ? 'bowIcon' : 'heelSpark');
+  if (Engine.manga && art && achillesMangaAssetReady(ACHILLES_MANGA_FXHUD_SHEET)) {
+    art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, iconFrame, cx, cy, {
+      scale: iconFrame === 'heelSpark' ? 0.090 : 0.105,
+      alpha: cd > 0 ? 0.42 : 0.96,
+    });
+    ctx.font = '900 11px monospace';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineWidth = 3; ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#0a0a0a';
+    ctx.strokeText(key, cx, cy + r + 13);
+    ctx.fillStyle = cd > 0 ? '#aaa' : '#fff5c0';
+    ctx.fillText(key, cx, cy + r + 13);
+    ctx.textBaseline = 'alphabetic';
+    ctx.restore();
+    return;
+  }
   // Key letter — manga-styled
   ctx.font = '900 18px "Impact", "Arial Black", sans-serif';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -1232,7 +1593,17 @@ function drawAbilityIcon(cx, cy, key, glyph, cd, cdMax, active) {
 // ── Title screen ──────────────────────────────────────────────────────────
 function renderTitle() {
   const W = Engine.W, H = Engine.H;
-  if (Engine.manga && drawAchillesMangaScene('achilles', { alpha: 1, focusX: 0.52, focusY: 0.48 })) {
+  if (Engine.manga && drawMangaBattlefield({ title: true, focusY: 0.50 })) {
+    const art = achillesMangaArt();
+    if (art && achillesMangaAssetReady(ACHILLES_MANGA_ANIM_SHEET)) {
+      ctx.save();
+      ctx.globalAlpha = 0.86;
+      art.drawFrame(ctx, ACHILLES_MANGA_ANIM_SHEET, 'victory', W * 0.18, H * 0.94, {
+        scale: Math.max(0.36, Math.min(0.58, Math.min(W, H) / 1350)),
+      });
+      ctx.restore();
+    }
+  } else if (Engine.manga && drawAchillesMangaScene('achilles', { alpha: 1, focusX: 0.52, focusY: 0.48 })) {
     const art = window.GodGames && GodGames.MangaArt;
     if (art && typeof art.overlay === 'function') {
       art.overlay(ctx, W, H, {
@@ -1527,7 +1898,7 @@ Engine.boot({
           returnArrows.push({
             fromX: player.x, fromY: PLAYER_Y - 30,
             x: player.x, y: PLAYER_Y - 30,
-            vy: -(PLAYER_Y - 30 - 28) / 0.32, // reach archer in ~0.32s
+            vy: -(PLAYER_Y - 30 - archerLineY()) / 0.32, // reach archer in ~0.32s
             targetIdx: bestIdx,
             trailT: 0,
           });
@@ -1549,7 +1920,7 @@ Engine.boot({
           if (a.downT <= 0) {
             a.downT = 8;
             a.releaseT = 0; a.drawT = 0;
-            burst(a.x, 28, '#ff8800', 14, 1.0);
+            burst(a.x, archerLineY(), '#ff8800', 14, 1.0);
           }
         }
         Engine.shake(8);
