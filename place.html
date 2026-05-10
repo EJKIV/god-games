@@ -18,6 +18,19 @@
   }
   #returnBtn.visible { opacity: 1; pointer-events: auto; }
   #returnBtn:hover { background: rgba(212,175,55,0.22); transform: translateX(-50%) translateY(-1px); }
+  body.manga-mode #returnBtn {
+    background:#D4AF37;
+    border:3px solid #0a0a0a;
+    color:#0a0a0a;
+    border-radius:4px;
+    box-shadow:6px 6px 0 rgba(0,0,0,0.48);
+    font-weight:bold;
+  }
+  body.manga-mode #returnBtn:hover {
+    background:#fff1b8;
+    transform:translateX(-50%) translateY(-1px);
+    box-shadow:7px 8px 0 rgba(0,0,0,0.48);
+  }
 </style>
 </head>
 <body>
@@ -73,16 +86,7 @@ const SAFE_PLACE = {
 };
 const P = place || SAFE_PLACE;
 const MANGA_ON = localStorage.getItem('godgames_manga') === '1';
-const PLACE_MANGA_SCENE = {
-  oceanus: 'oceanus',
-  asphodel: 'asphodel',
-  erebus: 'erebus',
-  lethe: 'oceanus',
-  tartarus: 'tartarus',
-  elysium: 'olympus',
-  olympus: 'olympus',
-  dreams: 'zeus',
-};
+document.body.classList.toggle('manga-mode', MANGA_ON);
 
 // Route the character draw call to the correct manga character. Perseus is
 // local for now because the shared manga package does not yet ship him.
@@ -122,6 +126,16 @@ function drawCharacterAt(baseX, baseY, scale) {
   const facing = characterFacing(t);
   const walkPhase = characterWalkPhase(t);
 
+  const art = window.GodGames && GodGames.MangaArt;
+  if (MANGA_ON && art && typeof art.drawGameTraveler === 'function'
+      && art.drawGameTraveler(ctx, char, driftX, baseY, {
+        scale,
+        facing,
+        walkPhase,
+        t,
+        vx: characterVx(t),
+        accent: P.palette.accent || '#D4AF37',
+      })) return;
   if (MANGA_ON && drawAssetTraveler(char, driftX, baseY, scale, facing, walkPhase, t)) return;
 
   if (!char || (char !== 'perseus' && (!window.Manga || !Manga.characters || !Manga.characters[char]))) {
@@ -398,21 +412,26 @@ function render() {
 
   // Place silhouette = background.
   const art = window.GodGames && GodGames.MangaArt;
-  const scene = PLACE_MANGA_SCENE[placeId] || null;
-  if (MANGA_ON && scene && art && typeof art.drawScene === 'function'
-      && art.drawScene(ctx, scene, 0, 0, W, H, { focusX: 0.50, focusY: 0.52 })) {
-    if (art.overlay) art.overlay(ctx, W, H, {
-      top: 'rgba(0,0,0,0.10)',
-      mid: 'rgba(0,0,0,0.10)',
-      bottom: 'rgba(0,0,0,0.70)',
-    });
-    if (art.mangaAtmosphere) art.mangaAtmosphere(ctx, W, H, { halftoneAlpha: 0.10, scanAlpha: 0.08, vignette: 0.58 });
+  if (MANGA_ON && art && typeof art.drawPlaceScene === 'function'
+      && art.drawPlaceScene(ctx, placeId, 0, 0, W, H, { t })) {
+    // complete manga scene drawn by shared runtime
+  } else if (MANGA_ON) {
+    ctx.fillStyle = '#0a0a0a';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(244,235,210,0.08)';
+    ctx.fillRect(0, H * 0.54, W, H * 0.46);
+    if (art && art.mangaAtmosphere) art.mangaAtmosphere(ctx, W, H, { halftoneAlpha: 0.12, scanAlpha: 0.08, vignette: 0.60 });
   } else {
     P.silhouette(ctx, W, H, t);
   }
 
   // Character — placed by the place's transform, drawn idle.
-  const tf = (P.characterTransform || (() => ({ x: W/2, y: H*0.7, scale: 1 })))(ctx, W, H);
+  const mangaStage = MANGA_ON && art && typeof art.placeStage === 'function'
+    ? art.placeStage(placeId, W, H)
+    : null;
+  const tf = mangaStage
+    ? { x: W * 0.50, y: mangaStage.groundY, scale: mangaStage.travelerScale }
+    : (P.characterTransform || (() => ({ x: W/2, y: H*0.7, scale: 1 })))(ctx, W, H);
   drawCharacterAt(tf.x, tf.y, tf.scale);
 
   // Title — fades in over the first 1.0s.
@@ -420,15 +439,31 @@ function render() {
   ctx.save();
   ctx.globalAlpha = titleAlpha;
   ctx.textAlign = 'center';
-  ctx.font = 'bold 64px serif';
-  ctx.shadowColor = P.palette.accent || '#D4AF37';
-  ctx.shadowBlur = 32;
-  ctx.fillStyle = P.palette.accent || '#D4AF37';
-  ctx.fillText(P.name, W / 2, H * 0.18);
-  ctx.shadowBlur = 0;
-  ctx.font = 'italic 22px serif';
-  ctx.fillStyle = 'rgba(240,230,200,0.85)';
-  ctx.fillText(P.flavor, W / 2, H * 0.18 + 36);
+  if (MANGA_ON && art && art.inkText) {
+    art.inkText(ctx, P.name, W / 2, H * 0.17, {
+      font: `900 ${Math.max(42, Math.min(74, W / 13))}px "Impact", "Arial Black", sans-serif`,
+      fill: P.palette.accent || '#D4AF37',
+      shadow: P.palette.accent || '#D4AF37',
+      shadowBlur: 12,
+      strokeWidth: 7,
+    });
+    ctx.font = `bold ${Math.max(16, Math.min(22, W / 52))}px Georgia, serif`;
+    ctx.fillStyle = '#fff1b8';
+    ctx.strokeStyle = '#0a0a0a';
+    ctx.lineWidth = 4;
+    ctx.strokeText(P.flavor, W / 2, H * 0.17 + 38);
+    ctx.fillText(P.flavor, W / 2, H * 0.17 + 38);
+  } else {
+    ctx.font = 'bold 64px serif';
+    ctx.shadowColor = P.palette.accent || '#D4AF37';
+    ctx.shadowBlur = 32;
+    ctx.fillStyle = P.palette.accent || '#D4AF37';
+    ctx.fillText(P.name, W / 2, H * 0.18);
+    ctx.shadowBlur = 0;
+    ctx.font = 'italic 22px serif';
+    ctx.fillStyle = 'rgba(240,230,200,0.85)';
+    ctx.fillText(P.flavor, W / 2, H * 0.18 + 36);
+  }
   ctx.restore();
 
   // Decorative ink frame above + below the central tableau.
@@ -451,18 +486,30 @@ function render() {
       ctx.save();
       ctx.globalAlpha = a;
       // Soft scrim behind the text
-      ctx.fillStyle = 'rgba(2, 0, 6, 0.55)';
-      ctx.fillRect(0, H * 0.93 - 92, W, 84);
+      if (MANGA_ON && art && art.drawPanel) {
+        const bw = Math.min(W * 0.78, 880);
+        art.drawPanel(ctx, (W - bw) / 2, H * 0.93 - 104, bw, 96, {
+          paper: 'rgba(244,235,210,0.94)',
+          bottom: 'rgba(204,186,150,0.94)',
+          accent: P.palette.accent || '#D4AF37',
+          lineWidth: 4,
+          toneAlpha: 0.12,
+          shadow: 'rgba(0,0,0,0.48)',
+        });
+      } else {
+        ctx.fillStyle = 'rgba(2, 0, 6, 0.55)';
+        ctx.fillRect(0, H * 0.93 - 92, W, 84);
+      }
       // Heading
       ctx.textAlign = 'center';
       ctx.font = 'bold 12px monospace';
-      ctx.fillStyle = '#D4AF37';
-      ctx.shadowColor = '#D4AF37'; ctx.shadowBlur = 6;
+      ctx.fillStyle = MANGA_ON ? '#0a0a0a' : '#D4AF37';
+      ctx.shadowColor = '#D4AF37'; ctx.shadowBlur = MANGA_ON ? 0 : 6;
       ctx.fillText('A CLUE IS REVEALED', W / 2, H * 0.93 - 64);
       ctx.shadowBlur = 0;
       // Clue text
-      ctx.font = 'italic 18px serif';
-      ctx.fillStyle = 'rgba(240,235,210,0.95)';
+      ctx.font = MANGA_ON ? 'bold 18px Georgia, serif' : 'italic 18px serif';
+      ctx.fillStyle = MANGA_ON ? '#21170d' : 'rgba(240,235,210,0.95)';
       const lines = wrapText(clue.text, W * 0.7, ctx.font);
       lines.forEach((l, i) => ctx.fillText(l, W / 2, H * 0.93 - 38 + i * 22));
       ctx.restore();
@@ -475,8 +522,13 @@ function render() {
       ctx.save();
       ctx.globalAlpha = a;
       ctx.textAlign = 'center';
-      ctx.font = 'italic 18px serif';
-      ctx.fillStyle = 'rgba(240,235,210,0.85)';
+      ctx.font = MANGA_ON ? 'bold 18px Georgia, serif' : 'italic 18px serif';
+      ctx.fillStyle = MANGA_ON ? '#fff1b8' : 'rgba(240,235,210,0.85)';
+      if (MANGA_ON) {
+        ctx.strokeStyle = '#0a0a0a';
+        ctx.lineWidth = 4;
+        ctx.strokeText('You have learned something the gods do not give twice.', W / 2, H * 0.91);
+      }
       ctx.fillText('You have learned something the gods do not give twice.', W / 2, H * 0.91);
       ctx.restore();
     }

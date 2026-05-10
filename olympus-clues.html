@@ -15,6 +15,19 @@
     letter-spacing: 0.15em; cursor: pointer; border-radius: 4px;
   }
   #backBtn:hover { background: rgba(212,175,55,0.22); transform: translateX(-50%) translateY(-1px); }
+  body.manga-mode #backBtn {
+    background:#D4AF37;
+    border:3px solid #0a0a0a;
+    color:#0a0a0a;
+    border-radius:4px;
+    box-shadow:6px 6px 0 rgba(0,0,0,0.48);
+    font-weight:bold;
+  }
+  body.manga-mode #backBtn:hover {
+    background:#fff1b8;
+    transform:translateX(-50%) translateY(-1px);
+    box-shadow:7px 8px 0 rgba(0,0,0,0.48);
+  }
 </style>
 </head>
 <body>
@@ -44,6 +57,7 @@ window.addEventListener('resize', () => {
 
 const GOLD = '#D4AF37';
 const MANGA_ON = localStorage.getItem('godgames_manga') === '1';
+document.body.classList.toggle('manga-mode', MANGA_ON);
 
 document.getElementById('backBtn').addEventListener('click', () => { location.href = 'index.html'; });
 window.addEventListener('keydown', (e) => {
@@ -140,42 +154,69 @@ function render() {
   // ── Stone tablet: clues earned ───────────────────────────────────────
 
   // Tablet background
-  ctx.save();
-  ctx.fillStyle = 'rgba(8,7,7,0.96)';
-  ctx.beginPath(); ctx.roundRect(tx, ty, tabW, tabH, 12); ctx.fill();
-  ctx.fillStyle = 'rgba(30,24,16,0.72)';
-  ctx.beginPath(); ctx.roundRect(tx + 8, ty + 8, tabW - 16, tabH - 16, 8); ctx.fill();
-  ctx.strokeStyle = GOLD; ctx.lineWidth = 1.5;
-  ctx.shadowColor = GOLD; ctx.shadowBlur = 10;
-  ctx.beginPath(); ctx.roundRect(tx, ty, tabW, tabH, 12); ctx.stroke();
-  ctx.shadowBlur = 0;
-  ctx.restore();
+  if (MANGA_ON && art && art.drawPanel) {
+    art.drawPanel(ctx, tx, ty, tabW, tabH, {
+      paper: 'rgba(238,228,198,0.96)',
+      bottom: 'rgba(164,148,116,0.96)',
+      accent: GOLD,
+      lineWidth: 4.5,
+      toneAlpha: 0.16,
+      shadow: 'rgba(0,0,0,0.58)',
+    });
+    ctx.save();
+    ctx.strokeStyle = 'rgba(10,10,10,0.32)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(tx + 26, ty + 74);
+    ctx.lineTo(tx + tabW - 26, ty + 74);
+    ctx.stroke();
+    ctx.restore();
+  } else {
+    ctx.save();
+    ctx.fillStyle = 'rgba(8,7,7,0.96)';
+    ctx.beginPath(); ctx.roundRect(tx, ty, tabW, tabH, 12); ctx.fill();
+    ctx.fillStyle = 'rgba(30,24,16,0.72)';
+    ctx.beginPath(); ctx.roundRect(tx + 8, ty + 8, tabW - 16, tabH - 16, 8); ctx.fill();
+    ctx.strokeStyle = GOLD; ctx.lineWidth = 1.5;
+    ctx.shadowColor = GOLD; ctx.shadowBlur = 10;
+    ctx.beginPath(); ctx.roundRect(tx, ty, tabW, tabH, 12); ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
 
   // Title
   ctx.save();
   ctx.textAlign = 'center';
   const titleSize = Math.max(18, Math.min(26, tabW / 16.5));
-  ctx.font = `bold ${titleSize}px serif`;
-  ctx.fillStyle = GOLD;
-  ctx.shadowColor = GOLD; ctx.shadowBlur = 10;
-  ctx.fillText('WHAT YOU HAVE LEARNED', W / 2, ty + titleSize + 12);
-  ctx.shadowBlur = 0;
-  ctx.font = 'italic 14px serif';
-  ctx.fillStyle = 'rgba(220,200,150,0.7)';
+  if (MANGA_ON && art && art.inkText) {
+    art.inkText(ctx, 'WHAT YOU HAVE LEARNED', W / 2, ty + titleSize + 12, {
+      font: `900 ${titleSize + 3}px "Impact", "Arial Black", sans-serif`,
+      fill: '#fff1b8',
+      shadow: GOLD,
+      shadowBlur: 8,
+      strokeWidth: 4.5,
+    });
+  } else {
+    ctx.font = `bold ${titleSize}px serif`;
+    ctx.fillStyle = GOLD;
+    ctx.shadowColor = GOLD; ctx.shadowBlur = 10;
+    ctx.fillText('WHAT YOU HAVE LEARNED', W / 2, ty + titleSize + 12);
+    ctx.shadowBlur = 0;
+  }
+  ctx.font = MANGA_ON ? 'bold 14px monospace' : 'italic 14px serif';
+  ctx.fillStyle = MANGA_ON ? '#2f2114' : 'rgba(220,200,150,0.7)';
   ctx.fillText('the toad sees what the human cannot', W / 2, ty + titleSize + 34);
   ctx.restore();
 
-  if (MANGA_ON && window.Manga && typeof Manga.characters?.hubWalker?.draw === 'function') {
-    ctx.save();
-    ctx.globalAlpha = 0.92;
-    ctx.translate(tx + tabW - 74, ty + 82);
-    ctx.scale(0.78, 0.78);
-    Manga.characters.hubWalker.draw(ctx, {
-      x: 0, y: 0, facing: -1,
-      walkPhase: t * 4.2, vx: 40,
+  if (MANGA_ON && art && art.drawSharedWalker) {
+    art.drawSharedWalker(ctx, {
+      x: tx + tabW - 74,
+      y: ty + 104,
+      facing: -1,
+      walkPhase: t * 4.2,
+      vx: 40,
       form: 'toad',
-    });
-    ctx.restore();
+    }, { scale: 0.78, shadowAlpha: 0.28 });
   }
 
   // Clues earned — list them
@@ -187,23 +228,34 @@ function render() {
   ctx.textAlign = 'left';
   let y = ty + 100;
   if (earned.length === 0) {
-    ctx.font = 'italic 16px serif';
-    ctx.fillStyle = 'rgba(240,230,200,0.78)';
+    ctx.font = MANGA_ON ? 'bold 16px Georgia, serif' : 'italic 16px serif';
+    ctx.fillStyle = MANGA_ON ? '#2f2114' : 'rgba(240,230,200,0.78)';
     const empty = 'The toad sees only stone — no clues yet. Listen for whispers in the games.';
     wrapAndDraw(empty, tx + tabW / 2, y, tabW - 60, 22, 'center');
   } else {
     ctx.font = 'bold 12px monospace';
-    ctx.fillStyle = '#ffd54a';
+    ctx.fillStyle = MANGA_ON ? '#0a0a0a' : '#ffd54a';
     ctx.fillText('CLUES EARNED', tx + 28, y);
     y += 22;
     ctx.font = '15px serif';
-    ctx.fillStyle = 'rgba(240,230,200,0.95)';
+    ctx.fillStyle = MANGA_ON ? '#21170d' : 'rgba(240,230,200,0.95)';
     for (const c of earned) {
+      const lines = wrap(c.text, tabW - 94);
+      if (MANGA_ON && art && art.drawPanel) {
+        const boxH = Math.max(38, lines.length * 20 + 15);
+        art.drawPanel(ctx, tx + 24, y - 16, tabW - 48, boxH, {
+          paper: 'rgba(255,248,220,0.70)',
+          bottom: 'rgba(220,204,166,0.70)',
+          accent: '#ffd54a',
+          lineWidth: 2.4,
+          toneAlpha: 0.07,
+          shadow: 'rgba(0,0,0,0.18)',
+        });
+      }
       // Bullet + clue text
-      ctx.fillStyle = '#ffd54a';
+      ctx.fillStyle = MANGA_ON ? '#0a0a0a' : '#ffd54a';
       ctx.fillText('✦', tx + 28, y);
-      ctx.fillStyle = 'rgba(240,230,200,0.92)';
-      const lines = wrap(c.text, tabW - 80);
+      ctx.fillStyle = MANGA_ON ? '#21170d' : 'rgba(240,230,200,0.92)';
       lines.forEach((l, i) => ctx.fillText(l, tx + 50, y + i * 20));
       y += lines.length * 20 + 10;
     }
@@ -216,10 +268,10 @@ function render() {
     ctx.textAlign = 'left';
     const rY = ty + tabH - 100;
     ctx.font = 'bold 12px monospace';
-    ctx.fillStyle = '#cc88ff';
+    ctx.fillStyle = MANGA_ON ? '#5c2776' : '#cc88ff';
     ctx.fillText('WHAT REMAINS', tx + 28, rY);
     ctx.font = 'italic 14px serif';
-    ctx.fillStyle = 'rgba(204,136,255,0.85)';
+    ctx.fillStyle = MANGA_ON ? '#43204f' : 'rgba(204,136,255,0.85)';
     const masked = maskRiddle(next.text);
     wrapAndDraw(masked, tx + 28, rY + 22, tabW - 56, 20, 'left');
     ctx.restore();
@@ -228,8 +280,8 @@ function render() {
     ctx.save();
     ctx.textAlign = 'center';
     ctx.font = 'bold 14px monospace';
-    ctx.fillStyle = '#ff88cc';
-    ctx.shadowColor = '#ff88cc'; ctx.shadowBlur = 6;
+    ctx.fillStyle = MANGA_ON ? '#8f204f' : '#ff88cc';
+    ctx.shadowColor = '#ff88cc'; ctx.shadowBlur = MANGA_ON ? 0 : 6;
     wrapAndDraw('SPEAK THE KING\'S NAME ON THE MOUNTAIN', W / 2, ty + tabH - 64, tabW - 56, 18, 'center');
     ctx.shadowBlur = 0;
     ctx.restore();
@@ -239,7 +291,7 @@ function render() {
   ctx.save();
   ctx.textAlign = 'center';
   ctx.font = '11px monospace';
-  ctx.fillStyle = 'rgba(180,180,180,0.55)';
+  ctx.fillStyle = MANGA_ON ? 'rgba(30,20,12,0.70)' : 'rgba(180,180,180,0.55)';
   ctx.fillText('press T or ESC to return to the world', W / 2, Math.min(H - 96, ty + tabH + 34));
   ctx.restore();
 

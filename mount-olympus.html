@@ -213,6 +213,203 @@ footer {
 }
 .modal button:hover { transform:translateY(-1px); box-shadow:0 4px 14px rgba(212,175,55,0.4); }
 
+body.manga-mode {
+  background:#050505;
+  color:#21170d;
+}
+body.manga-mode .frame {
+  padding-top:34px;
+}
+body.manga-mode header {
+  text-shadow:none;
+}
+body.manga-mode header h1 {
+  font-family:"Impact", "Arial Black", sans-serif;
+  letter-spacing:0.05em;
+  color:#fff1b8;
+  -webkit-text-stroke:2px #0a0a0a;
+  text-shadow:4px 5px 0 rgba(0,0,0,0.58), 0 0 18px rgba(212,175,55,0.55);
+}
+body.manga-mode header .sub {
+  display:inline-block;
+  margin-top:8px;
+  padding:5px 18px;
+  background:rgba(244,235,210,0.92);
+  border:3px solid #0a0a0a;
+  border-radius:4px;
+  box-shadow:6px 6px 0 rgba(0,0,0,0.42);
+  color:#23170d;
+  font-family:monospace;
+  font-style:normal;
+  font-weight:bold;
+  letter-spacing:0.12em;
+}
+body.manga-mode nav.topbar a,
+body.manga-mode nav.topbar .who {
+  background:rgba(244,235,210,0.94);
+  border:3px solid #0a0a0a;
+  border-radius:4px;
+  box-shadow:6px 6px 0 rgba(0,0,0,0.42);
+  color:#23170d;
+  font-weight:bold;
+}
+body.manga-mode nav.topbar a:hover {
+  background:#fff5c8;
+  border-color:#0a0a0a;
+}
+body.manga-mode nav.topbar .who b { color:#9b2b2b; }
+body.manga-mode nav.topbar .who button {
+  color:#0a0a0a;
+  text-decoration:none;
+  border-left:2px solid #0a0a0a;
+  padding-left:10px;
+}
+body.manga-mode .hall-toggle button {
+  background:rgba(244,235,210,0.92);
+  border:3px solid #0a0a0a;
+  color:#21170d;
+  box-shadow:5px 5px 0 rgba(0,0,0,0.38);
+}
+body.manga-mode .hall-toggle button:first-child,
+body.manga-mode .hall-toggle button:last-child {
+  border-radius:4px;
+}
+body.manga-mode .hall-toggle button:last-child { border-left:3px solid #0a0a0a; margin-left:8px; }
+body.manga-mode .hall-toggle button.active,
+body.manga-mode .hall-toggle button[data-hall="manga"].active {
+  background:#D4AF37;
+  border-color:#0a0a0a;
+  color:#0a0a0a;
+  box-shadow:6px 7px 0 rgba(0,0,0,0.48);
+  text-shadow:none;
+}
+body.manga-mode main {
+  gap:22px;
+}
+body.manga-mode .tablet {
+  position:relative;
+  background:
+    radial-gradient(circle at 18px 18px, rgba(10,10,10,0.14) 0 2px, transparent 2.5px) 0 0/10px 10px,
+    linear-gradient(180deg, rgba(236,224,194,0.96), rgba(164,148,116,0.96));
+  border:4px solid #0a0a0a;
+  border-radius:5px;
+  box-shadow:10px 12px 0 rgba(0,0,0,0.48), inset 0 0 0 2px rgba(255,245,190,0.26);
+  overflow:hidden;
+}
+body.manga-mode .tablet::before {
+  content:"";
+  position:absolute; inset:8px;
+  border:1px solid rgba(10,10,10,0.42);
+  pointer-events:none;
+}
+body.manga-mode #tablet-icarus { --tablet-accent:#ff8800; }
+body.manga-mode #tablet-orion { --tablet-accent:#c87030; }
+body.manga-mode #tablet-achilles { --tablet-accent:#cc2222; }
+body.manga-mode #tablet-perseus { --tablet-accent:#3db0c6; }
+body.manga-mode .tablet header.thead {
+  background:linear-gradient(180deg, rgba(255,248,220,0.42), rgba(10,10,10,0.04));
+  border-bottom:4px solid #0a0a0a;
+  border-top:7px solid var(--tablet-accent, #D4AF37);
+  padding:15px 12px 11px;
+}
+body.manga-mode .tablet h2 {
+  font-family:"Impact", "Arial Black", sans-serif;
+  color:#fff1b8;
+  -webkit-text-stroke:1.5px #0a0a0a;
+  text-shadow:3px 3px 0 var(--tablet-accent, #D4AF37);
+  letter-spacing:0.05em;
+}
+body.manga-mode .tablet .label {
+  color:#22170c;
+  font-style:normal;
+  font-family:monospace;
+  font-weight:bold;
+}
+body.manga-mode .tablet ol {
+  color:#21170d;
+  scrollbar-color:#0a0a0a rgba(255,255,255,0.18);
+}
+body.manga-mode .row {
+  grid-template-columns:56px 1fr auto;
+  border-bottom:2px solid rgba(10,10,10,0.16);
+  color:#21170d;
+}
+body.manga-mode .row:hover { background:rgba(255,245,200,0.35); }
+body.manga-mode .row .rank {
+  color:#0a0a0a;
+  font-family:"Impact", "Arial Black", sans-serif;
+  letter-spacing:0.03em;
+}
+body.manga-mode .row .name { color:#21170d; font-weight:bold; }
+body.manga-mode .row .score {
+  color:#0a0a0a;
+  background:rgba(255,245,200,0.46);
+  border:2px solid rgba(10,10,10,0.36);
+  padding:2px 6px;
+}
+body.manga-mode .row.r1 .rank,
+body.manga-mode .row.r2 .rank,
+body.manga-mode .row.r3 .rank {
+  color:var(--tablet-accent, #D4AF37);
+  text-shadow:2px 2px 0 #0a0a0a;
+}
+body.manga-mode .row.me {
+  background:rgba(212,175,55,0.42);
+  border-left:6px solid #0a0a0a;
+  padding-left:12px;
+}
+body.manga-mode .row.me .name { color:#0a0a0a; }
+body.manga-mode .empty,
+body.manga-mode .loading,
+body.manga-mode .errmsg {
+  color:#21170d;
+  font-weight:bold;
+}
+body.manga-mode .errmsg { color:#8f1e1e; }
+body.manga-mode footer {
+  color:#fff1b8;
+  text-shadow:2px 2px 0 #0a0a0a;
+}
+body.manga-mode .modal {
+  background:
+    radial-gradient(circle at 18px 18px, rgba(10,10,10,0.15) 0 2px, transparent 2.5px) 0 0/10px 10px,
+    linear-gradient(180deg, #f4ead0, #cdbc96);
+  border:4px solid #0a0a0a;
+  border-radius:6px;
+  color:#21170d;
+  box-shadow:12px 12px 0 rgba(0,0,0,0.55);
+}
+body.manga-mode .modal h3 {
+  font-family:"Impact", "Arial Black", sans-serif;
+  color:#0a0a0a;
+  letter-spacing:0.04em;
+  text-shadow:2px 2px 0 #D4AF37;
+}
+body.manga-mode .modal p { color:#3a2a18; font-style:normal; font-weight:bold; }
+body.manga-mode .modal input {
+  background:#fff8df;
+  border:3px solid #0a0a0a;
+  color:#0a0a0a;
+  border-radius:4px;
+}
+body.manga-mode .modal button {
+  background:#D4AF37;
+  border:3px solid #0a0a0a;
+  color:#0a0a0a;
+  border-radius:4px;
+  box-shadow:5px 5px 0 rgba(0,0,0,0.45);
+}
+body.manga-mode .rotate-overlay {
+  background:#070707;
+  color:#fff1b8;
+  text-shadow:0 2px 0 #0a0a0a;
+}
+body.manga-mode .rotate-icon {
+  border:4px solid #0a0a0a;
+  background:#f1e6c8;
+  box-shadow:8px 8px 0 rgba(0,0,0,0.55), inset 0 0 0 3px #D4AF37;
+}
+
 @media (max-width: 1100px) {
   main { grid-template-columns: 1fr 1fr; gap:18px; }
 }
@@ -322,7 +519,10 @@ footer {
 <script src="assets/manga/shared/runtime.js"></script>
 <script>
 const NAME_KEY = 'godgames_playerName';
+const MANGA_KEY = 'godgames_manga';
 const $ = (id) => document.getElementById(id);
+const MANGA_UNLOCKED = localStorage.getItem(MANGA_KEY) === '1';
+document.body.classList.toggle('manga-mode', MANGA_UNLOCKED);
 
 // ─── Name handling ──────────────────────────────────────────────────────
 function getName() { return localStorage.getItem(NAME_KEY) || ''; }
@@ -391,7 +591,7 @@ let cachedIcarus = [], cachedOrion = [], cachedAchilles = [], cachedPerseus = []
 
 // Manga mode unlocks the IMMORTAL HALL toggle. Mortal mode shows only the
 // mortal leaderboards with no toggle (since there's only one option).
-const _mangaUnlocked = localStorage.getItem('godgames_manga') === '1';
+const _mangaUnlocked = MANGA_UNLOCKED;
 let currentHall = _mangaUnlocked ? 'manga' : 'mortal';
 function gameId(base) { return currentHall === 'manga' ? base + '-manga' : base; }
 // Hide the toggle entirely when the easter egg hasn't been triggered.

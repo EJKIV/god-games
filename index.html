@@ -85,6 +85,86 @@ canvas { display:block; cursor:default; }
   transition:transform 0.1s, box-shadow 0.15s;
 }
 .modal button:hover { transform:translateY(-1px); box-shadow:0 4px 14px rgba(212,175,55,0.4); }
+
+body.manga-mode {
+  background:#050505;
+  font-family: "Trebuchet MS", "Arial Black", sans-serif;
+}
+body.manga-mode .rotate-overlay {
+  background:#070707;
+  color:#fff1b8;
+  text-shadow:0 2px 0 #0a0a0a;
+}
+body.manga-mode .rotate-icon {
+  border:4px solid #0a0a0a;
+  background:#f1e6c8;
+  box-shadow:8px 8px 0 rgba(0,0,0,0.55), inset 0 0 0 3px #D4AF37;
+}
+body.manga-mode #whoBar {
+  background:rgba(241,230,200,0.92);
+  border:3px solid #0a0a0a;
+  border-radius:4px;
+  box-shadow:7px 7px 0 rgba(0,0,0,0.45);
+  color:#23170d;
+  font-weight:bold;
+  letter-spacing:0.04em;
+}
+body.manga-mode #whoBar b { color:#9b2b2b; text-shadow:none; }
+body.manga-mode #whoBar button {
+  color:#0a0a0a;
+  text-decoration:none;
+  border-left:2px solid #0a0a0a;
+  padding-left:10px;
+}
+body.manga-mode .modal-bg {
+  background:rgba(0,0,0,0.72);
+}
+body.manga-mode .modal {
+  background:
+    radial-gradient(circle at 18px 18px, rgba(10,10,10,0.16) 0 2px, transparent 2.4px) 0 0/10px 10px,
+    linear-gradient(180deg, #f4ead0, #cdbc96);
+  border:4px solid #0a0a0a;
+  border-radius:6px;
+  color:#1f170d;
+  box-shadow:12px 12px 0 rgba(0,0,0,0.55);
+}
+body.manga-mode .modal h3 {
+  font-family:"Impact", "Arial Black", sans-serif;
+  color:#0a0a0a;
+  text-shadow:2px 2px 0 #D4AF37;
+  letter-spacing:0.04em;
+}
+body.manga-mode .modal p { color:#3a2a18; font-style:normal; font-weight:bold; }
+body.manga-mode .modal input {
+  background:#fff8df;
+  border:3px solid #0a0a0a;
+  color:#0a0a0a;
+  border-radius:4px;
+  box-shadow:inset 3px 3px 0 rgba(0,0,0,0.16);
+}
+body.manga-mode .modal input:focus {
+  border-color:#0a0a0a;
+  box-shadow:0 0 0 3px #D4AF37, inset 3px 3px 0 rgba(0,0,0,0.12);
+}
+body.manga-mode .modal button {
+  background:#D4AF37;
+  border:3px solid #0a0a0a;
+  border-radius:4px;
+  box-shadow:5px 5px 0 rgba(0,0,0,0.45);
+  color:#0a0a0a;
+}
+body.manga-mode .modal button:hover {
+  transform:translateY(-1px);
+  box-shadow:6px 7px 0 rgba(0,0,0,0.45);
+}
+@media (max-height: 460px) {
+  body.manga-mode #whoBar {
+    top:8px; right:10px;
+    font-size:11px;
+    padding:4px 9px;
+    box-shadow:4px 4px 0 rgba(0,0,0,0.45);
+  }
+}
 </style>
 </head>
 <body>
@@ -109,7 +189,6 @@ canvas { display:block; cursor:default; }
 <script src="vendor/@tns/game-engine/manga/manga.js"></script>
 <script src="assets/manga/shared/manifest.js"></script>
 <script src="assets/manga/shared/runtime.js"></script>
-<script src="assets/manga/achilles/manifest.js"></script>
 <script src="mysteries.js"></script>
 <script src="progress-sync.js"></script>
 <script>
@@ -119,7 +198,12 @@ canvas.width  = window.innerWidth;
 canvas.height = window.innerHeight;
 const W = canvas.width, H = canvas.height;
 const GOLD = '#D4AF37';
+const MANGA_KEY = 'godgames_manga';
 const GY   = H * 0.73;   // ground y
+
+function mangaOn() { return localStorage.getItem(MANGA_KEY) === '1'; }
+function syncMangaClass() { document.body.classList.toggle('manga-mode', mangaOn()); }
+syncMangaClass();
 
 // ── Stars ─────────────────────────────────────────────────────────────────
 const stars = Array.from({length:160}, () => ({
@@ -141,6 +225,41 @@ const portals = [
 portals.forEach((p, i) => { p.x = W * (i + 1) / (portals.length + 1); p._btn = null; });
 const PORTAL_RADIUS = Math.min(130, (W / (portals.length + 1)) * 0.45);
 const IS_TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+
+function hubStage() {
+  const groundY = H * 0.735;
+  const portalGap = W / (portals.length + 1);
+  const portalRadius = Math.min(145, portalGap * 0.48);
+  return {
+    W, H,
+    groundY,
+    horizonY: H * 0.48,
+    vanishX: W * 0.50,
+    playerLane: { minX: Math.max(42, W * 0.035), maxX: Math.min(W - 42, W * 0.965) },
+    portalRadius,
+    foregroundY: H * 0.80,
+  };
+}
+function hubGroundY() { return mangaOn() ? hubStage().groundY : GY; }
+function hubStageDepth(y) {
+  const s = hubStage();
+  return Math.max(0, Math.min(1, (y - s.horizonY) / Math.max(1, s.groundY - s.horizonY)));
+}
+function hubStageScale(y, farScale, nearScale) {
+  const d = Math.pow(hubStageDepth(y), 0.75);
+  return farScale + (nearScale - farScale) * d;
+}
+function hubSceneScale() {
+  return Math.max(0.58, Math.min(1, H / 680));
+}
+function hubPortalHitRegion(p) {
+  const s = hubStage();
+  const ss = hubSceneScale();
+  const isMtn = p.kind === 'mountain';
+  const w = (isMtn ? 230 : Math.max(132, s.portalRadius * 1.15)) * ss;
+  const h = (isMtn ? 265 : 205) * ss;
+  return { x: p.x - w / 2, y: s.groundY - h, w, h: h + 36 };
+}
 
 // ── Particle motes ────────────────────────────────────────────────────────
 const motes = Array.from({length:28}, () => ({
@@ -207,6 +326,8 @@ function ribbit() {
 // ── Update ────────────────────────────────────────────────────────────────
 function update(dt) {
   time += dt;
+  const groundY = hubGroundY();
+  const lane = mangaOn() ? hubStage().playerLane : { minX: 50, maxX: W - 50 };
 
   // movement — toad is twice as fast
   const left  = keys['ArrowLeft']  || keys['a'];
@@ -215,7 +336,7 @@ function update(dt) {
   const speed = player.isToad ? 440 : 220;
   player.vx = right ? speed : left ? -speed : 0;
   if (player.vx !== 0) { player.facing = player.vx > 0 ? 1 : -1; player.walkPhase += dt*7; }
-  player.x = Math.max(50, Math.min(W-50, player.x + player.vx*dt));
+  player.x = Math.max(lane.minX, Math.min(lane.maxX, player.x + player.vx*dt));
 
   // Toad jump physics — Up or Space launches when on ground; gravity pulls
   // back to GY. Only the toad form gets vertical control. Space in human
@@ -228,13 +349,13 @@ function update(dt) {
     if (!player.onGround) {
       player.vy += TOAD_GRAVITY * dt;
       player.y  += player.vy * dt;
-      if (player.y >= GY) {
-        player.y = GY; player.vy = 0; player.onGround = true;
+      if (player.y >= groundY) {
+        player.y = groundY; player.vy = 0; player.onGround = true;
       }
     }
   } else {
     // Human form snaps to ground.
-    player.y = GY; player.vy = 0; player.onGround = true;
+    player.y = groundY; player.vy = 0; player.onGround = true;
   }
 
   // ribbit once per hop while moving as toad
@@ -248,7 +369,8 @@ function update(dt) {
   // portal proximity
   player.nearPortal = null;
   for (const p of portals) {
-    if (Math.abs(player.x - p.x) < PORTAL_RADIUS) { player.nearPortal = p; break; }
+    const radius = mangaOn() ? hubStage().portalRadius : PORTAL_RADIUS;
+    if (Math.abs(player.x - p.x) < radius) { player.nearPortal = p; break; }
   }
 
   // Toad-only mushroom on Mt. Olympus — when the toad lands on it (or
@@ -259,7 +381,7 @@ function update(dt) {
     const olympus = portals.find(p => p.kind === 'mountain');
     if (olympus) {
       const dx = player.x - olympus.x;
-      const dy = player.y - (GY - 14);
+      const dy = player.y - (groundY - 14);
       if (Math.abs(dx) < 30 && Math.abs(dy) < 32 && !player.onGround) {
         window.location.href = 'olympus-clues.html';
       }
@@ -318,12 +440,13 @@ function update(dt) {
 function spawnStormFlash() {
   const olympus = portals.find(p => p.kind === 'mountain') || portals[0];
   if (!olympus) return;
+  const gy = hubGroundY();
   const cx = olympus.x + (Math.random() - 0.5) * 140;
-  const cy = GY - 200 - Math.random() * 60;
+  const cy = gy - 200 - Math.random() * 60;
   // Branching ink path drawn during render — pre-roll the segments now.
   const branches = [];
   let x = cx, y = cy;
-  while (y < GY - 60 + Math.random() * 30) {
+  while (y < gy - 60 + Math.random() * 30) {
     const nx = x + (Math.random() - 0.5) * 30;
     const ny = y + 12 + Math.random() * 20;
     branches.push([x, y, nx, ny]);
@@ -349,10 +472,16 @@ function spawnStormFlash() {
 function renderToadMushroom() {
   const olympus = portals.find(p => p.kind === 'mountain');
   if (!olympus) return;
+  const gy = hubGroundY();
   const cx = olympus.x;
-  const cy = GY - 14 + Math.sin(time * 2.6) * 1.2;
+  const cy = gy - 14 + Math.sin(time * 2.6) * 1.2;
   // Faint glow halo so it reads at a glance.
   ctx.save();
+  if (mangaOn() && window.GodGames && GodGames.MangaArt) {
+    GodGames.MangaArt.contactShadow(ctx, cx, cy + 12, { w: 28, h: 7, alpha: 0.34, rim: '#ffd54a' });
+    ctx.fillStyle = 'rgba(255,213,74,0.22)';
+    ctx.beginPath(); ctx.ellipse(cx, cy + 7, 36, 13, 0, 0, Math.PI * 2); ctx.fill();
+  }
   ctx.shadowColor = '#ffd54a'; ctx.shadowBlur = 22;
   ctx.fillStyle = 'rgba(255,213,74,0.18)';
   ctx.beginPath(); ctx.ellipse(cx, cy + 8, 28, 9, 0, 0, Math.PI * 2); ctx.fill();
@@ -395,7 +524,8 @@ function renderStorm() {
   const olympus = portals.find(p => p.kind === 'mountain') || portals[0];
   if (!olympus) return;
   const cx = olympus.x;
-  const ay = GY - 240;
+  const gy = hubGroundY();
+  const ay = gy - 240;
   const intensity = _stormIntensity;
 
   ctx.save();
@@ -417,7 +547,7 @@ function renderStorm() {
   ctx.globalAlpha = Math.min(1, intensity);
   ctx.shadowColor = '#ff8800'; ctx.shadowBlur = 20 * intensity;
   ctx.fillStyle = `rgba(255,140,40,${0.06 + intensity * 0.18})`;
-  ctx.beginPath(); ctx.arc(cx, GY - 50, 90 + intensity * 40, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx, gy - 50, 90 + intensity * 40, 0, Math.PI * 2); ctx.fill();
   ctx.shadowBlur = 0;
   ctx.globalAlpha = 1;
   // Lightning flashes — bright ink branches with bloom.
@@ -444,7 +574,7 @@ function renderStorm() {
   // Codeword progress strip showing only letters the player has typed;
   // unknown positions stay as dots. Sits just above the mountain.
   if (_codewordIdx > 0) {
-    const stripY = GY - 320;
+    const stripY = gy - 320;
     const cellW = 22;
     const total = CODEWORD.length;
     ctx.font = 'bold 22px monospace';
@@ -474,7 +604,7 @@ function renderInvocationSeal() {
   const olympus = portals.find(p => p.kind === 'mountain') || portals[0];
   if (!olympus) return;
   const cx = olympus.x;
-  const cy = Math.max(120, GY - 320);
+  const cy = Math.max(120, hubGroundY() - 320);
   const pulse = 0.5 + 0.5 * Math.sin(time * 5.2);
   const a = 0.36 + _codewordIdx * 0.12;
 
@@ -942,91 +1072,302 @@ function drawPortal(p) {
   }
 }
 
-function drawPlayer() {
-  if (localStorage.getItem(MANGA_KEY) === '1'
-      && !player.isToad
-      && window.Manga
-      && Manga.assets
-      && typeof Manga.assets.ready === 'function'
-      && Manga.assets.ready('godgames.achilles.actionSheet')
-      && typeof Manga.assets.drawFrame === 'function') {
-    const frame = Math.abs(player.vx) > 10 ? (player.vx < 0 ? 'runLeft' : 'runRight') : 'idle';
-    Manga.assets.drawFrame(ctx, 'godgames.achilles.actionSheet', frame, player.x, player.y + 3, {
-      scale: 0.27,
-      flipX: frame === 'idle' && player.facing < 0,
-    });
-    return;
+function drawMangaHubStageUnderlay() {
+  const art = window.GodGames && GodGames.MangaArt;
+  const s = hubStage();
+  ctx.save();
+  const floor = ctx.createLinearGradient(0, s.horizonY, 0, H);
+  floor.addColorStop(0, 'rgba(255,240,190,0.00)');
+  floor.addColorStop(0.60, 'rgba(255,225,140,0.10)');
+  floor.addColorStop(1, 'rgba(0,0,0,0.28)');
+  ctx.fillStyle = floor;
+  ctx.fillRect(0, s.horizonY, W, H - s.horizonY);
+
+  ctx.strokeStyle = 'rgba(10,10,10,0.30)';
+  ctx.lineWidth = 1.4;
+  for (let i = 0; i <= 8; i++) {
+    const t = i / 8;
+    const x = W * (0.08 + t * 0.84);
+    const hx = s.vanishX + (x - s.vanishX) * 0.18;
+    ctx.beginPath();
+    ctx.moveTo(hx, s.horizonY);
+    ctx.lineTo(x, H);
+    ctx.stroke();
   }
-  // Manga path uses the portable hub-walker character module.
-  if (localStorage.getItem(MANGA_KEY) === '1'
-      && window.Manga
-      && Manga.characters
-      && Manga.characters.hubWalker
-      && typeof Manga.characters.hubWalker.draw === 'function') {
-    Manga.characters.hubWalker.draw(ctx, {
-      x: player.x, y: player.y, facing: player.facing,
-      walkPhase: player.walkPhase, vx: player.vx,
-      form: player.isToad ? 'toad' : 'human',
-    });
-    return;
+  ctx.strokeStyle = 'rgba(255,236,160,0.22)';
+  for (let i = 0; i < 5; i++) {
+    const y = s.groundY + i * 32;
+    ctx.beginPath();
+    ctx.ellipse(s.vanishX, y, W * (0.24 + i * 0.10), 9 + i * 4, 0, 0, Math.PI * 2);
+    ctx.stroke();
   }
-  if (player.isToad) drawToad(); else drawHuman();
+  if (art && art.contactShadow) {
+    for (const p of portals) {
+      const isMtn = p.kind === 'mountain';
+      art.contactShadow(ctx, p.x, s.groundY + 7, {
+        w: isMtn ? 110 : 62,
+        h: isMtn ? 20 : 13,
+        alpha: player.nearPortal === p ? 0.46 : 0.30,
+        rim: p.hue,
+      });
+    }
+  }
+  ctx.restore();
 }
 
-function drawMangaScenePortalLabel(p) {
+function drawMangaPlacedPortal(p) {
+  const s = hubStage();
+  const ss = hubSceneScale();
   const isMtn = p.kind === 'mountain';
-  const y = isMtn ? GY - 250 : GY - 170;
-  const glow = player.nearPortal === p ? 18 : 8;
+  const near = player.nearPortal === p;
+  const x = p.x;
+  const gy = s.groundY;
+  const glow = near ? 1 : 0.55 + Math.sin(time * 2.2 + x) * 0.12;
+  ctx.save();
+  ctx.translate(x, gy);
+
+  if (isMtn) {
+    const peakH = 205 * ss;
+    const baseW = 220 * ss;
+    ctx.shadowColor = '#fff5c0';
+    ctx.shadowBlur = 24 * glow;
+    ctx.fillStyle = `rgba(255,232,150,${0.16 + glow * 0.10})`;
+    ctx.beginPath(); ctx.arc(0, -peakH + 12, peakH * 0.78, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+
+    ctx.fillStyle = 'rgba(28,32,58,0.82)';
+    ctx.beginPath();
+    ctx.moveTo(-baseW / 2, 0);
+    ctx.lineTo(-baseW * 0.22, -peakH * 0.56);
+    ctx.lineTo(-baseW * 0.06, -peakH * 0.84);
+    ctx.lineTo(0, -peakH);
+    ctx.lineTo(baseW * 0.08, -peakH * 0.82);
+    ctx.lineTo(baseW * 0.24, -peakH * 0.55);
+    ctx.lineTo(baseW / 2, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#0a0a0a';
+    ctx.lineWidth = 4;
+    ctx.stroke();
+
+    ctx.fillStyle = '#f7f2d8';
+    ctx.beginPath();
+    ctx.moveTo(-baseW * 0.11, -peakH * 0.65);
+    ctx.lineTo(-baseW * 0.05, -peakH * 0.84);
+    ctx.lineTo(0, -peakH);
+    ctx.lineTo(baseW * 0.07, -peakH * 0.82);
+    ctx.lineTo(baseW * 0.13, -peakH * 0.64);
+    ctx.lineTo(baseW * 0.04, -peakH * 0.73);
+    ctx.lineTo(0, -peakH * 0.70);
+    ctx.lineTo(-baseW * 0.05, -peakH * 0.75);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#0a0a0a';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+
+    ctx.fillStyle = '#D4AF37';
+    ctx.strokeStyle = '#0a0a0a';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.roundRect(-28 * ss, -17 * ss, 56 * ss, 15 * ss, 3); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#fff5c0';
+    ctx.fillRect(-5 * ss, -31 * ss, 10 * ss, 12 * ss);
+  } else {
+    const archH = 148 * ss;
+    const archW = 72 * ss;
+    const hue = p.hue || GOLD;
+    ctx.shadowColor = hue;
+    ctx.shadowBlur = 28 * glow;
+    ctx.fillStyle = `rgba(255,245,210,${0.16 + glow * 0.12})`;
+    ctx.beginPath();
+    ctx.ellipse(0, -archH * 0.52, archW * 0.76, archH * 0.72, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    ctx.fillStyle = 'rgba(210,188,132,0.88)';
+    ctx.strokeStyle = '#0a0a0a';
+    ctx.lineWidth = 4;
+    ctx.fillRect(-archW / 2 - 17 * ss, -archH, 17 * ss, archH);
+    ctx.strokeRect(-archW / 2 - 17 * ss, -archH, 17 * ss, archH);
+    ctx.fillRect(archW / 2, -archH, 17 * ss, archH);
+    ctx.strokeRect(archW / 2, -archH, 17 * ss, archH);
+    ctx.beginPath();
+    ctx.arc(0, -archH, archW / 2 + 17 * ss, Math.PI, 0);
+    ctx.lineTo(archW / 2 + 17 * ss, -archH + 4 * ss);
+    ctx.lineTo(archW / 2, -archH + 4);
+    ctx.arc(0, -archH, archW / 2, 0, Math.PI, true);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    const g = ctx.createRadialGradient(0, -archH * 0.58, 4, 0, -archH * 0.58, archW * 0.78);
+    g.addColorStop(0, `rgba(255,255,255,${0.82 * glow})`);
+    g.addColorStop(0.34, `${hue}aa`);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.rect(-archW / 2, -archH, archW, archH);
+    ctx.arc(0, -archH, archW / 2, Math.PI, 0);
+    ctx.fill();
+
+    ctx.strokeStyle = hue;
+    ctx.lineWidth = 2.2;
+    for (let i = 0; i < 3; i++) {
+      ctx.globalAlpha = 0.42 + i * 0.16;
+      ctx.beginPath();
+      ctx.ellipse(0, -archH * 0.54, archW * (0.30 + i * 0.13), archH * (0.30 + i * 0.08), 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+
+  const labelY = isMtn ? gy - 240 * ss : gy - 166 * ss;
   ctx.save();
   ctx.textAlign = 'center';
   ctx.lineJoin = 'round';
   ctx.shadowColor = p.hue || GOLD;
-  ctx.shadowBlur = glow;
-  ctx.font = isMtn ? '900 24px "Impact", "Arial Black", sans-serif' : '900 17px "Impact", "Arial Black", sans-serif';
+  ctx.shadowBlur = near ? 18 : 8;
+  ctx.font = isMtn ? `900 ${24 * ss}px "Impact", "Arial Black", sans-serif` : `900 ${17 * ss}px "Impact", "Arial Black", sans-serif`;
   ctx.lineWidth = isMtn ? 5 : 4;
   ctx.strokeStyle = '#0a0a0a';
-  ctx.strokeText(p.name, p.x, y);
+  ctx.strokeText(p.name, p.x, labelY);
   ctx.fillStyle = GOLD;
-  ctx.fillText(p.name, p.x, y);
+  ctx.fillText(p.name, p.x, labelY);
   ctx.shadowBlur = 0;
-  ctx.font = isMtn ? 'bold 12px monospace' : 'bold 11px monospace';
+  ctx.font = isMtn ? `bold ${12 * ss}px monospace` : `bold ${11 * ss}px monospace`;
   ctx.lineWidth = 3;
-  ctx.strokeText(p.sub, p.x, y + 17);
+  ctx.strokeText(p.sub, p.x, labelY + 17);
   ctx.fillStyle = '#fff1b8';
-  ctx.fillText(p.sub, p.x, y + 17);
+  ctx.fillText(p.sub, p.x, labelY + 17);
   ctx.restore();
-  drawMangaPortalButton(p);
+
+  p._btn = hubPortalHitRegion(p);
+  if (near) {
+    const art = window.GodGames && GodGames.MangaArt;
+    const label = isMtn ? 'ASCEND' : 'PLAY';
+    const by = isMtn ? gy - 280 * ss : gy - 205 * ss;
+    if (art && art.drawPill) art.drawPill(ctx, p.x, by, label, { w: (isMtn ? 128 : 106) * ss, h: 38 * ss, accent: p.hue, font: `900 ${18 * ss}px "Impact", "Arial Black", sans-serif` });
+    else {
+      ctx.save();
+      ctx.fillStyle = GOLD;
+      ctx.fillRect(p.x - 54, by - 18, 108, 36);
+      ctx.fillStyle = '#0a0a0a';
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 16px monospace';
+      ctx.fillText(label, p.x, by + 5);
+      ctx.restore();
+    }
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.font = `bold ${10 * ss}px monospace`;
+    ctx.fillStyle = '#fff1b8';
+    ctx.strokeStyle = '#0a0a0a';
+    ctx.lineWidth = 3;
+    ctx.strokeText('click or press SPACE', p.x, by + 34 * ss);
+    ctx.fillText('click or press SPACE', p.x, by + 34 * ss);
+    ctx.restore();
+  }
 }
 
-// Manga-styled action button: bold ink-outlined gold pill above the portal.
-// Mirrors the hit-region (`p._btn`) the existing canvas click listener reads.
 function drawMangaPortalButton(p) {
   const near = player.nearPortal === p;
-  if (!near) { p._btn = null; return; }
+  p._btn = hubPortalHitRegion(p);
+  if (!near) return;
+  const art = window.GodGames && GodGames.MangaArt;
   const isMtn = p.kind === 'mountain';
-  const archH = isMtn ? 220 : 150;
+  const gy = hubGroundY();
+  const ss = hubSceneScale();
+  const by = isMtn ? gy - 280 * ss : gy - 205 * ss;
   const label = isMtn ? 'ASCEND' : 'PLAY';
-  const bw = isMtn ? 130 : 110;
-  const bh = 40;
-  const bx = p.x;
-  const by = GY - archH - 60;
-  const pulse = 0.86 + Math.sin(time * 5) * 0.14;
+  if (art && art.drawPill) art.drawPill(ctx, p.x, by, label, { w: (isMtn ? 128 : 106) * ss, h: 38 * ss, accent: p.hue, font: `900 ${18 * ss}px "Impact", "Arial Black", sans-serif` });
+}
+
+function drawMangaHubForeground() {
+  const s = hubStage();
   ctx.save();
-  // Pill background — flat gold with thick ink outline
-  ctx.fillStyle = `rgba(255, 215, 90, ${0.95 * pulse})`;
-  ctx.beginPath(); ctx.roundRect(bx - bw / 2, by - bh / 2, bw, bh, 8); ctx.fill();
-  ctx.strokeStyle = '#0a0a0a'; ctx.lineWidth = 4; ctx.lineJoin = 'round';
-  ctx.beginPath(); ctx.roundRect(bx - bw / 2, by - bh / 2, bw, bh, 8); ctx.stroke();
-  // Label — bold sans-serif with thicker ink outline
-  ctx.font = '900 19px "Impact", "Arial Black", sans-serif';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.lineWidth = 4; ctx.strokeStyle = '#0a0a0a';
-  ctx.strokeText(label, bx, by);
-  ctx.fillStyle = '#1a0f00';
-  ctx.fillText(label, bx, by);
-  ctx.textBaseline = 'alphabetic';
+  const bottom = ctx.createLinearGradient(0, s.foregroundY, 0, H);
+  bottom.addColorStop(0, 'rgba(0,0,0,0.00)');
+  bottom.addColorStop(0.50, 'rgba(0,0,0,0.18)');
+  bottom.addColorStop(1, 'rgba(0,0,0,0.58)');
+  ctx.fillStyle = bottom;
+  ctx.fillRect(0, s.foregroundY, W, H - s.foregroundY);
+  ctx.fillStyle = 'rgba(0,0,0,0.24)';
+  ctx.beginPath();
+  ctx.moveTo(0, H);
+  ctx.lineTo(0, H * 0.73);
+  ctx.quadraticCurveTo(W * 0.10, H * 0.88, W * 0.22, H);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(W, H);
+  ctx.lineTo(W, H * 0.73);
+  ctx.quadraticCurveTo(W * 0.90, H * 0.88, W * 0.78, H);
+  ctx.closePath();
+  ctx.fill();
   ctx.restore();
-  p._btn = { x: bx - bw / 2, y: by - bh / 2, w: bw, h: bh };
+}
+
+function drawMangaHubTitle() {
+  const art = window.GodGames && GodGames.MangaArt;
+  if (art && art.inkText) {
+    const ss = Math.max(0.72, Math.min(1, H / 620));
+    art.inkText(ctx, 'GOD GAMES', W / 2, 48, {
+      font: `900 ${38 * ss}px "Impact", "Arial Black", sans-serif`,
+      fill: '#fff1b8',
+      shadow: GOLD,
+      shadowBlur: 10,
+      strokeWidth: 6 * ss,
+    });
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.font = `bold ${12 * ss}px monospace`;
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#0a0a0a';
+    ctx.fillStyle = '#f6d86d';
+    ctx.strokeText('Walk the marble lane  ·  Arrow keys to move', W / 2, 72 * ss);
+    ctx.fillText('Walk the marble lane  ·  Arrow keys to move', W / 2, 72 * ss);
+    ctx.restore();
+    return;
+  }
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 30px serif';
+  ctx.fillStyle = GOLD;
+  ctx.shadowColor = GOLD;
+  ctx.shadowBlur = 20;
+  ctx.fillText('GOD GAMES', W / 2, 46);
+  ctx.shadowBlur = 0;
+  ctx.font = '13px monospace';
+  ctx.fillStyle = 'rgba(255,255,200,0.45)';
+  ctx.fillText('Walk to a portal  ·  Arrow keys to move', W / 2, 70);
+  ctx.restore();
+}
+
+function drawPlayer() {
+  if (mangaOn()) {
+    const art = window.GodGames && GodGames.MangaArt;
+    const shortScale = Math.max(0.72, Math.min(1, H / 620));
+    const scale = (player.isToad ? hubStageScale(player.y, 0.92, 1.06) : hubStageScale(player.y, 0.92, 1.10)) * shortScale;
+    if (art && art.drawSharedWalker && art.drawSharedWalker(ctx, {
+      x: player.x, y: player.y, facing: player.facing,
+      walkPhase: player.walkPhase, vx: player.vx,
+      form: player.isToad ? 'toad' : 'human',
+    }, { scale })) return;
+    if (window.Manga && Manga.characters && Manga.characters.hubWalker) {
+      ctx.save();
+      ctx.translate(player.x, player.y);
+      ctx.scale(scale, scale);
+      Manga.characters.hubWalker.draw(ctx, {
+        x: 0, y: 0, facing: player.facing,
+        walkPhase: player.walkPhase, vx: player.vx,
+        form: player.isToad ? 'toad' : 'human',
+      });
+      ctx.restore();
+      return;
+    }
+  }
+  if (player.isToad) drawToad(); else drawHuman();
 }
 
 function drawHuman() {
@@ -1256,12 +1597,14 @@ function render() {
   const mangaArt = window.GodGames && GodGames.MangaArt;
   let mangaSceneBackdrop = false;
   if (mangaOn && mangaArt && typeof mangaArt.drawScene === 'function'
-      && mangaArt.drawScene(ctx, 'hub', 0, 0, W, H, { focusX: 0.50, focusY: 0.52, alpha: 0.62 })) {
+      && mangaArt.drawScene(ctx, 'hubStage', 0, 0, W, H, { focusX: 0.50, focusY: 0.52, alpha: 1 })) {
     mangaSceneBackdrop = true;
-    ctx.fillStyle = 'rgba(2,4,12,0.18)';
-    ctx.fillRect(0, 0, W, GY);
-    ctx.fillStyle = 'rgba(14,10,4,0.44)';
-    ctx.fillRect(0, GY, W, H - GY);
+    if (mangaArt.overlay) mangaArt.overlay(ctx, W, H, {
+      top: 'rgba(0,0,0,0.03)',
+      mid: 'rgba(0,0,0,0.02)',
+      bottom: 'rgba(0,0,0,0.18)',
+    });
+    drawMangaHubStageUnderlay();
   }
 
   // ambient motes
@@ -1299,7 +1642,7 @@ function render() {
   // since both paths need it.
   for (const p of portals) {
     if (mangaSceneBackdrop) {
-      drawMangaScenePortalLabel(p);
+      drawMangaPlacedPortal(p);
     } else if (_mangaActive) {
       if (p.kind === 'mountain') {
         Manga.scenes.olympus(ctx, { x: p.x, gy: GY, name: p.name, sub: p.sub, near: player.nearPortal === p, time });
@@ -1315,16 +1658,18 @@ function render() {
   // On touch devices, expand each portal's tap region to cover the whole arch
   // so the player can navigate by tapping any portal directly (no walking).
   if (IS_TOUCH) {
+    const gy = hubGroundY();
     for (const p of portals) {
       const isMtn = p.kind === 'mountain';
       const w = isMtn ? 220 : 150;
       const h = isMtn ? 230 : 200;
-      p._btn = { x: p.x - w/2, y: GY - h, w, h };
+      p._btn = { x: p.x - w/2, y: gy - h, w, h };
     }
   }
 
   // Player
   drawPlayer();
+  if (mangaSceneBackdrop) drawMangaHubForeground();
 
   // Manga atmosphere — bold overlay so the screen unmistakably reads "manga".
   // Drawn on top of the world but below the Zeus cinematic + title + toast.
@@ -1358,16 +1703,20 @@ function render() {
   if (_zeusStrike) _zeusStrike.render(ctx, W, H);
 
   // Title
-  ctx.save();
-  ctx.textAlign='center';
-  ctx.font='bold 30px serif';
-  ctx.fillStyle=GOLD; ctx.shadowColor=GOLD; ctx.shadowBlur=20;
-  ctx.fillText('GOD GAMES', W/2, 46);
-  ctx.shadowBlur=0;
-  ctx.font='13px monospace';
-  ctx.fillStyle='rgba(255,255,200,0.45)';
-  ctx.fillText('Walk to a portal  ·  Arrow keys to move', W/2, 70);
-  ctx.restore();
+  if (mangaOn) {
+    drawMangaHubTitle();
+  } else {
+    ctx.save();
+    ctx.textAlign='center';
+    ctx.font='bold 30px serif';
+    ctx.fillStyle=GOLD; ctx.shadowColor=GOLD; ctx.shadowBlur=20;
+    ctx.fillText('GOD GAMES', W/2, 46);
+    ctx.shadowBlur=0;
+    ctx.font='13px monospace';
+    ctx.fillStyle='rgba(255,255,200,0.45)';
+    ctx.fillText('Walk to a portal  ·  Arrow keys to move', W/2, 70);
+    ctx.restore();
+  }
 
   // Manga easter-egg toast (centered, fades out)
   renderMangaAwakening();
@@ -1376,10 +1725,25 @@ function render() {
     ctx.save();
     ctx.globalAlpha = a;
     ctx.textAlign = 'center';
-    ctx.font = 'bold 26px monospace';
-    ctx.fillStyle = _mangaToast.color;
-    ctx.shadowColor = _mangaToast.color; ctx.shadowBlur = 18;
-    ctx.fillText(_mangaToast.text, W/2, H * 0.42);
+    if (mangaOn && window.GodGames && GodGames.MangaArt && GodGames.MangaArt.drawPanel) {
+      const bw = Math.min(560, W * 0.66);
+      GodGames.MangaArt.drawPanel(ctx, W / 2 - bw / 2, H * 0.39 - 42, bw, 84, {
+        accent: _mangaToast.color,
+        paper: 'rgba(246,236,210,0.96)',
+        bottom: 'rgba(210,192,150,0.96)',
+        toneAlpha: 0.12,
+      });
+      GodGames.MangaArt.inkText(ctx, _mangaToast.text, W / 2, H * 0.39 + 10, {
+        font: '900 28px "Impact", "Arial Black", sans-serif',
+        fill: _mangaToast.color,
+        strokeWidth: 5,
+      });
+    } else {
+      ctx.font = 'bold 26px monospace';
+      ctx.fillStyle = _mangaToast.color;
+      ctx.shadowColor = _mangaToast.color; ctx.shadowBlur = 18;
+      ctx.fillText(_mangaToast.text, W/2, H * 0.42);
+    }
     ctx.restore();
   }
 
@@ -1411,7 +1775,6 @@ function inputBusy(e) {
 // 'normal' reverts.
 // Persisted in localStorage so the toggle survives navigation to game pages,
 // where engine.js reads it at boot and exposes Engine.manga.
-const MANGA_KEY = 'godgames_manga';
 const CODEWORD = (window.GodGames && window.GodGames.Mysteries && window.GodGames.Mysteries.MANGA_CODEWORD) || 'zeus';
 const DEV_BYPASS_CODEWORD = 'shankle';
 let _typedBuf = '';
@@ -1436,6 +1799,7 @@ function activateMangaMode() {
   const M = window.GodGames && window.GodGames.Mysteries;
   if (M && typeof M.triggerMangaUnlock === 'function') M.triggerMangaUnlock();
   else localStorage.setItem(MANGA_KEY, '1');
+  syncMangaClass();
   _mangaAwakenT = 3.8;
   for (let i = 0; i < 5; i++) spawnStormFlash();
 }
@@ -1448,9 +1812,10 @@ function startZeusStrike() {
   }
   ensureAudio();
   const olympus = portals.find(p => p.kind === 'mountain') || portals[0];
+  const gy = hubGroundY();
   _zeusStrike = Manga.fx.zeusStrike({
     fromX: olympus.x,
-    fromY: GY - 220,            // above the mountain peak
+    fromY: gy - 220,            // above the mountain peak
     toX:   player.x,
     toY:   player.y - 30,
     audioCtx,
@@ -1498,6 +1863,7 @@ window.addEventListener('keydown', e => {
     }
     if (_typedBuf.endsWith('normal')) {
       localStorage.removeItem(MANGA_KEY);
+      syncMangaClass();
       showMangaToast('NORMAL MODE', '#D4AF37');
       _typedBuf = '';
       _codewordIdx = 0;

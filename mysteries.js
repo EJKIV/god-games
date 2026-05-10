@@ -24,6 +24,10 @@
   // library has loaded. Falls back to a minimal stub if it hasn't (so tests
   // and bare pages still work).
   function makeCinematic() {
+    const art = window.GodGames && window.GodGames.MangaArt;
+    if (art && typeof art.createCinematic === 'function' && art.mangaEnabled && art.mangaEnabled()) {
+      return art.createCinematic();
+    }
     if (window.Manga && Manga.fx && typeof Manga.fx.cinematic === 'function') {
       return Manga.fx.cinematic();
     }
