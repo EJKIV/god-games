@@ -60,6 +60,9 @@ canvas { display:block; }
 <script src="vendor/@tns/game-engine/core/engine.js"></script>
 <script src="vendor/@tns/game-engine/unlock/index.js"></script>
 <script src="vendor/@tns/game-engine/manga/manga.js"></script>
+<script src="assets/manga/shared/manifest.js"></script>
+<script src="assets/manga/shared/runtime.js"></script>
+<script src="assets/manga/orion/manifest.js"></script>
 <script src="mysteries.js"></script>
 <script src="progress-sync.js"></script>
 <script>
@@ -78,6 +81,7 @@ const MAX_SPEARS= 7;
 let orion, boss, spears, venoms, phantoms;
 let lastShiftTime = -1, lastSpaceTime = -1, lastXTime = -1;
 let ctx; // bound from Engine.ctx after boot
+const ORION_MANGA_SHEET = 'godgames.orion.scorpionSheet';
 
 // ── Manga abilities (player) ──────────────────────────────────────────────
 let constellationT  = 0;          // charge animation duration remaining
@@ -659,6 +663,7 @@ function updatePhantoms(dt){
 
 // ── Draw: Orion ───────────────────────────────────────────────────────────
 function drawOrion() {
+  if (Engine.manga && drawOrionMangaSprite()) return;
   // Route through the manga library when manga mode is on.
   if (Engine.manga && window.Manga && typeof window.Manga.characters?.orion?.draw === 'function') {
     Manga.characters.orion.draw(ctx, {
@@ -802,8 +807,48 @@ function drawOrion() {
   }
 }
 
+function orionMangaAssetsReady() {
+  return !!(Engine.manga
+    && window.GodGames && GodGames.MangaArt
+    && window.Manga && Manga.assets
+    && typeof Manga.assets.ready === 'function'
+    && Manga.assets.ready(ORION_MANGA_SHEET));
+}
+
+function currentOrionMangaFrame() {
+  if (orion.proneT > 0) return 'orionDodge';
+  if (orion.stabFlash > 0) return 'orionStab';
+  if (orion.spearQueued || (orion.spearCount > 0 && Math.sin(Engine.time * 5) > 0.78)) return 'orionThrow';
+  if (!orion.onGround || Math.abs(orion.vy) > 80) return 'orionJump';
+  if (orion.dodgeT > 0) return 'orionDodge';
+  if (Math.abs(orion.vx) > 18) return 'orionRun';
+  return 'orionIdle';
+}
+
+function drawOrionMangaSprite() {
+  if (!orionMangaAssetsReady()) return false;
+  const frame = currentOrionMangaFrame();
+  const compact = Math.min(Engine.W, Engine.H);
+  const scale = Math.max(0.31, Math.min(0.43, compact / 1750));
+
+  ctx.save();
+  if (orion.hurtFlash > 0 && Math.sin(Engine.time * 28) > 0) {
+    ctx.filter = 'brightness(2.8) saturate(0.6)';
+    ctx.shadowColor = '#ff5544';
+    ctx.shadowBlur = 18;
+  }
+  const drew = Manga.assets.drawFrame(ctx, ORION_MANGA_SHEET, frame, orion.x, orion.y + 4, {
+    scale,
+    flipX: orion.facing < 0,
+    rotate: orion.proneT > 0 ? orion.facing * 0.10 : 0,
+  });
+  ctx.restore();
+  return drew;
+}
+
 // ── Draw: Scorpion ────────────────────────────────────────────────────────
 function drawScorpion() {
+  if (Engine.manga && drawScorpionMangaSprite()) return;
   // Route through the manga library when manga mode is on.
   if (Engine.manga && window.Manga && typeof window.Manga.characters?.scorpion?.draw === 'function') {
     const frenzied = boss.hp < BOSS_HP * 0.33;
@@ -871,6 +916,38 @@ function drawScorpion() {
 
   ctx.filter='none';
   ctx.restore();
+}
+
+function currentScorpionMangaFrame() {
+  if (boss.state === 'dead' || boss.hp <= 0) return 'scorpionDead';
+  if (boss.hurtFlash > 0) return 'scorpionHurt';
+  if (boss.state === 'charge') return 'scorpionCharge';
+  if (boss.stingT > 0.18 || boss.tailCurl > 0.72) return 'scorpionSting';
+  if (boss.clawOpen > 0.45 || boss.state === 'claw') return 'scorpionClaw';
+  return 'scorpionIdle';
+}
+
+function drawScorpionMangaSprite() {
+  if (!orionMangaAssetsReady()) return false;
+  const frame = currentScorpionMangaFrame();
+  const compact = Math.min(Engine.W, Engine.H);
+  const scale = Math.max(0.42, Math.min(0.62, compact / 1250));
+
+  ctx.save();
+  if (boss.hurtFlash > 0 && Math.sin(Engine.time * 32) > 0) {
+    ctx.filter = 'brightness(2.8) saturate(0.1)';
+    ctx.shadowColor = '#fff5c0';
+    ctx.shadowBlur = 18;
+  } else if (boss.phase >= 3) {
+    ctx.shadowColor = '#ff3300';
+    ctx.shadowBlur = 16;
+  }
+  const drew = Manga.assets.drawFrame(ctx, ORION_MANGA_SHEET, frame, boss.x, boss.y + 10, {
+    scale,
+    flipX: boss.facing < 0,
+  });
+  ctx.restore();
+  return drew;
 }
 
 function drawTail(){
@@ -1117,6 +1194,27 @@ function drawAbilityRing(cx, cy, key, cd, cdMax, active) {
 
 // ── Background ────────────────────────────────────────────────────────────
 function drawBg(c, W, H, time) {
+  const art = window.GodGames && GodGames.MangaArt;
+  if (Engine.manga && art && typeof art.drawScene === 'function'
+      && art.drawScene(c, 'orion', 0, 0, W, H, { focusX: 0.46, focusY: 0.48 })) {
+    const GY = H * 0.76;
+    const dusk = c.createLinearGradient(0, 0, 0, H);
+    dusk.addColorStop(0, 'rgba(0,0,0,0.04)');
+    dusk.addColorStop(0.56, 'rgba(20,4,0,0.10)');
+    dusk.addColorStop(1, 'rgba(31,10,2,0.62)');
+    c.fillStyle = dusk;
+    c.fillRect(0, 0, W, H);
+    c.fillStyle = 'rgba(30,12,4,0.58)';
+    c.fillRect(0, GY, W, H - GY);
+    c.strokeStyle = 'rgba(255,232,160,0.42)';
+    c.lineWidth = 2;
+    c.beginPath();
+    c.moveTo(0, GY);
+    c.lineTo(W, GY);
+    c.stroke();
+    if (art.mangaAtmosphere) art.mangaAtmosphere(c, W, H, { halftoneAlpha: 0.10, scanAlpha: 0.08, vignette: 0.46 });
+    return;
+  }
   // Manga arena scene: bold flat fields, ink silhouettes, halftone shading.
   if (Engine.manga && window.Manga && typeof window.Manga.scenes?.orionArena === 'function') {
     Manga.scenes.orionArena(c, W, H, time);
@@ -1300,6 +1398,16 @@ Engine.boot({
       this._gameOverT0    = eng.time;
     }
     const since = eng.time - (this._gameOverT0 || eng.time);
+
+    const art = window.GodGames && GodGames.MangaArt;
+    if (eng.manga && art && typeof art.drawScene === 'function'
+        && art.drawScene(ctx2, isVictory ? 'olympus' : 'orion', 0, 0, W, H, { focusX: 0.5, focusY: 0.5 })) {
+      if (art.overlay) art.overlay(ctx2, W, H, {
+        top: 'rgba(0,0,0,0.20)',
+        mid: 'rgba(0,0,0,0.18)',
+        bottom: 'rgba(0,0,0,0.70)',
+      });
+    }
 
     // Manga panel-split death/victory cinematic — slabs slide off-screen
     // before the dead screen settles into the gold/red title typography.

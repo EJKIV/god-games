@@ -55,6 +55,7 @@ When `@tns/game-engine` is published to npm, both the `file:` dep and the `vendo
 - **Hub & Mt. Olympus do *not* use the engine** — they have their own loops. They duplicate the landscape-overlay CSS inline (single source not feasible without a build step).
 - **Mobile contract**: each game declares `mobile: { movement, actions }` in its `Engine.boot` config. Engine renders translucent on-screen buttons that synthesize keydown/keyup, so existing keyboard branches run unchanged. Modes per action: `'tap'` (default), `'hold'` (sustained), `'doubleTap'` (fires two presses ~80ms apart for double-tap detectors).
 - **Manga easter egg**: typing `'shankle'` on the hub sets `localStorage.godgames_manga='1'`; `'normal'` clears. The engine reads at boot and exposes `Engine.manga`. Game render branches on it. The manga library is portable — see `vendor/@tns/game-engine/manga/CLAUDE.md`.
+- **Project manga bitmap assets** live under `assets/manga/`. Each asset folder has a small `manifest.js` that registers project-owned images with `Manga.assets`; shared scene panels route through `assets/manga/shared/runtime.js` as `GodGames.MangaArt`. Pages should draw these bitmap assets first in manga mode, then fall back to portable procedural `Manga.characters` / `Manga.scenes` while images load.
 - **Mystery scene-cuts**: game secrets call `GodGames.Mysteries.unlockAndDepart({ hintId, placeId, fromGame })`, which earns the hint, advances the clue chain, and navigates to `place.html`. `places.js` is the data-driven catalog consumed by that page; see its top-of-file docs before adding locations.
 - **Progress sync**: `progress-sync.js` bridges `Engine.unlock` state to `/api/progress` using the player name as identity. Server-side merge policy lives in `api/progress.js`.
 - **Score submission contract**: each game submits to `/api/leaderboard` POST `{ game, name, score }` on death/victory. Game must be registered in `api/leaderboard.js` `GAMES` table — see `api/CLAUDE.md`.
@@ -105,6 +106,7 @@ god-games/
 ├── places.js                   Data-driven place catalog; see top-of-file docs.
 ├── mysteries.js                Mysteries.unlockAndDepart + clue-chain definitions.
 ├── progress-sync.js            Redis sync bridge for Engine.unlock progress.
+├── assets/manga/               Project-owned manga scene atlas + sprite sheets registered via `Manga.assets`.
 ├── template.html               Skeleton: copy this when adding a new game.
 ├── package.json                Declares dep on @tns/game-engine (file: link to sibling tellandshow clone).
 ├── api/                        Vercel serverless functions (leaderboard + progress) — stays here for Vercel routing.
@@ -170,6 +172,7 @@ god-games/
 
 | Date       | Change                                                                                     | Author |
 |------------|--------------------------------------------------------------------------------------------|--------|
+| 2026-05-10 | Spread generated manga/anime bitmap art across hub, all games, Olympus, clue review, mystery destinations, gameplay sprites, and transition screens through `assets/manga/` manifests and `GodGames.MangaArt`. | codex  |
 | 2026-05-10 | Added an asset-backed Icarus manga gameplay sprite sheet and warmer manga-mode flight scene treatment matching the generated sample art. | codex  |
 | 2026-05-09 | Tuned Perseus around mirror focus, shield heat, serpent reflection, and upgraded the ZEUS invocation payoff so it solves `manga_mode` through the mystery system. | codex  |
 | 2026-05-09 | Reworked Perseus into three chambers with clearer Medusa defeat rules, serpent-veil variety, final hazards, local manga rendering, and a hidden sigma trigger for the `S` letter. | codex  |

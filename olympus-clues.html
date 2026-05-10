@@ -24,6 +24,8 @@
 <script src="vendor/@tns/game-engine/core/engine.js"></script>
 <script src="vendor/@tns/game-engine/unlock/index.js"></script>
 <script src="vendor/@tns/game-engine/manga/manga.js"></script>
+<script src="assets/manga/shared/manifest.js"></script>
+<script src="assets/manga/shared/runtime.js"></script>
 <script src="mysteries.js"></script>
 <script src="progress-sync.js"></script>
 <script>
@@ -70,7 +72,20 @@ function render() {
   const tx = (W - tabW) / 2;
   const ty = Math.max(86, (H - tabH) * 0.52);
 
+  const art = window.GodGames && GodGames.MangaArt;
+  const mangaBackdrop = MANGA_ON && art && typeof art.drawScene === 'function'
+    && art.drawScene(ctx, 'clues', 0, 0, W, H, { focusX: 0.56, focusY: 0.50 });
+  if (mangaBackdrop) {
+    if (art.overlay) art.overlay(ctx, W, H, {
+      top: 'rgba(0,0,0,0.12)',
+      mid: 'rgba(0,0,0,0.06)',
+      bottom: 'rgba(0,0,0,0.74)',
+    });
+    if (art.mangaAtmosphere) art.mangaAtmosphere(ctx, W, H, { halftoneAlpha: 0.10, scanAlpha: 0.08, vignette: 0.54 });
+  }
+
   // ── Backdrop: Mt. Olympus night sky ──────────────────────────────────
+  if (!mangaBackdrop) {
   const sky = ctx.createLinearGradient(0, 0, 0, H);
   sky.addColorStop(0,   '#04071a');
   sky.addColorStop(0.55,'#0e1438');
@@ -120,6 +135,7 @@ function render() {
   aura.addColorStop(1,   'rgba(212,175,55,0)');
   ctx.fillStyle = aura;
   ctx.fillRect(0, 0, W, H);
+  }
 
   // ── Stone tablet: clues earned ───────────────────────────────────────
 

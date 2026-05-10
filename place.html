@@ -27,6 +27,12 @@
 <script src="vendor/@tns/game-engine/core/engine.js"></script>
 <script src="vendor/@tns/game-engine/unlock/index.js"></script>
 <script src="vendor/@tns/game-engine/manga/manga.js"></script>
+<script src="assets/manga/shared/manifest.js"></script>
+<script src="assets/manga/shared/runtime.js"></script>
+<script src="assets/manga/icarus/manifest.js"></script>
+<script src="assets/manga/achilles/manifest.js"></script>
+<script src="assets/manga/orion/manifest.js"></script>
+<script src="assets/manga/perseus/manifest.js"></script>
 <script src="places.js"></script>
 <script src="mysteries.js"></script>
 <script src="progress-sync.js"></script>
@@ -66,6 +72,17 @@ const SAFE_PLACE = {
   characterTransform: (_c, W, H) => ({ x: W / 2, y: H * 0.7, scale: 1 }),
 };
 const P = place || SAFE_PLACE;
+const MANGA_ON = localStorage.getItem('godgames_manga') === '1';
+const PLACE_MANGA_SCENE = {
+  oceanus: 'oceanus',
+  asphodel: 'asphodel',
+  erebus: 'erebus',
+  lethe: 'oceanus',
+  tartarus: 'tartarus',
+  elysium: 'olympus',
+  olympus: 'olympus',
+  dreams: 'zeus',
+};
 
 // Route the character draw call to the correct manga character. Perseus is
 // local for now because the shared manga package does not yet ship him.
@@ -104,6 +121,8 @@ function drawCharacterAt(baseX, baseY, scale) {
   const driftX = characterDriftX(t, baseX, W * 0.18);
   const facing = characterFacing(t);
   const walkPhase = characterWalkPhase(t);
+
+  if (MANGA_ON && drawAssetTraveler(char, driftX, baseY, scale, facing, walkPhase, t)) return;
 
   if (!char || (char !== 'perseus' && (!window.Manga || !Manga.characters || !Manga.characters[char]))) {
     // Tiny fallback figure
@@ -146,6 +165,45 @@ function drawCharacterAt(baseX, baseY, scale) {
     });
   }
   ctx.restore();
+}
+
+function drawAssetTraveler(char, x, y, scale, facing, walkPhase, t) {
+  if (!char || !window.Manga || !Manga.assets || typeof Manga.assets.ready !== 'function') return false;
+  const A = Manga.assets;
+  const vx = characterVx(t);
+  let id = null, frame = null, spriteScale = scale;
+  if (char === 'icarus') {
+    id = 'godgames.icarus.flightSheet';
+    frame = Math.sin(t * 2.2) > 0 ? 'flapUp' : 'glide';
+    spriteScale *= 0.34;
+    y -= 22;
+  } else if (char === 'achilles') {
+    id = 'godgames.achilles.actionSheet';
+    frame = Math.abs(vx) > 1 ? (facing < 0 ? 'runLeft' : 'runRight') : 'idle';
+    spriteScale *= 0.30;
+    y += 4;
+  } else if (char === 'orion') {
+    id = 'godgames.orion.scorpionSheet';
+    frame = Math.abs(vx) > 1 ? 'orionRun' : 'orionIdle';
+    spriteScale *= 0.31;
+    y += 2;
+  } else if (char === 'perseus') {
+    id = 'godgames.perseus.gorgonSheet';
+    frame = Math.abs(Math.sin(walkPhase)) > 0.18 ? 'perseusRun' : 'perseusIdle';
+    spriteScale *= 0.32;
+    y += 3;
+  }
+  if (!id || !frame || !A.ready(id) || typeof A.drawFrame !== 'function') return false;
+
+  ctx.save();
+  ctx.shadowColor = P.palette.accent || '#D4AF37';
+  ctx.shadowBlur = 12;
+  const drew = A.drawFrame(ctx, id, frame, x, y, {
+    scale: spriteScale,
+    flipX: char === 'achilles' ? false : facing < 0,
+  });
+  ctx.restore();
+  return drew;
 }
 
 function drawPerseusTraveler(ctx, state) {
@@ -339,7 +397,19 @@ function render() {
   const t = performance.now() / 1000;
 
   // Place silhouette = background.
-  P.silhouette(ctx, W, H, t);
+  const art = window.GodGames && GodGames.MangaArt;
+  const scene = PLACE_MANGA_SCENE[placeId] || null;
+  if (MANGA_ON && scene && art && typeof art.drawScene === 'function'
+      && art.drawScene(ctx, scene, 0, 0, W, H, { focusX: 0.50, focusY: 0.52 })) {
+    if (art.overlay) art.overlay(ctx, W, H, {
+      top: 'rgba(0,0,0,0.10)',
+      mid: 'rgba(0,0,0,0.10)',
+      bottom: 'rgba(0,0,0,0.70)',
+    });
+    if (art.mangaAtmosphere) art.mangaAtmosphere(ctx, W, H, { halftoneAlpha: 0.10, scanAlpha: 0.08, vignette: 0.58 });
+  } else {
+    P.silhouette(ctx, W, H, t);
+  }
 
   // Character — placed by the place's transform, drawn idle.
   const tf = (P.characterTransform || (() => ({ x: W/2, y: H*0.7, scale: 1 })))(ctx, W, H);

@@ -60,6 +60,9 @@ canvas { display:block; }
 <script src="vendor/@tns/game-engine/core/engine.js"></script>
 <script src="vendor/@tns/game-engine/unlock/index.js"></script>
 <script src="vendor/@tns/game-engine/manga/manga.js"></script>
+<script src="assets/manga/shared/manifest.js"></script>
+<script src="assets/manga/shared/runtime.js"></script>
+<script src="assets/manga/achilles/manifest.js"></script>
 <script src="mysteries.js"></script>
 <script src="progress-sync.js"></script>
 <script>
@@ -76,6 +79,7 @@ const TILE     = 72;
 let PLAYER_Y, LANE_L, LANE_R;
 let archerXs, tileColors, stars;
 let archers = []; // {x, downT, glow} per archer slot — manga state
+const ACHILLES_MANGA_SHEET = 'godgames.achilles.actionSheet';
 
 function initLayout() {
   const W = Engine.W, H = Engine.H;
@@ -850,6 +854,7 @@ function drawArrow(a) {
 // portable manga library. The library is loaded by manga/manga.js and
 // exposed as window.Manga; we no-op gracefully if it hasn't loaded yet.
 function drawPlayerRouted() {
+  if (Engine.manga && drawAchillesMangaSprite()) return;
   if (Engine.manga && window.Manga && window.Manga.characters && window.Manga.characters.achilles) {
     window.Manga.characters.achilles.draw(ctx, {
       x: player.x,
@@ -866,6 +871,68 @@ function drawPlayerRouted() {
   } else {
     drawPlayer();
   }
+}
+
+function achillesMangaAssetsReady() {
+  return !!(Engine.manga
+    && window.GodGames && GodGames.MangaArt
+    && window.Manga && Manga.assets
+    && typeof Manga.assets.ready === 'function'
+    && Manga.assets.ready(ACHILLES_MANGA_SHEET));
+}
+
+function currentAchillesMangaFrame() {
+  if (Engine.state === 'victory') return 'victory';
+  if (player.hp <= 0 || Engine.state === 'dead') return 'fallen';
+  if (heelT > 0) return 'strike';
+  if (bashT > 0) return 'bash';
+  if (bowT > 0) return 'bow';
+  if (player.hitFlash > 0) return 'hit';
+  if (Math.abs(player.vx) > 20) return player.vx < 0 ? 'runLeft' : 'runRight';
+  return 'idle';
+}
+
+function drawAchillesMangaScene(frameName, opts = {}) {
+  const art = window.GodGames && GodGames.MangaArt;
+  if (!Engine.manga || !art || typeof art.drawScene !== 'function') return false;
+  return art.drawScene(ctx, frameName, 0, 0, Engine.W, Engine.H, {
+    focusX: opts.focusX ?? 0.5,
+    focusY: opts.focusY ?? 0.5,
+    alpha: opts.alpha ?? 1,
+  });
+}
+
+function drawAchillesMangaSprite() {
+  if (!achillesMangaAssetsReady()) return false;
+  const frame = currentAchillesMangaFrame();
+  const compact = Math.min(Engine.W, Engine.H);
+  const scale = Math.max(0.32, Math.min(0.46, compact / 1600));
+  const y = PLAYER_Y + 2;
+  const jitter = player.hitFlash > 0 ? Math.sin(time * 80) * 2 : 0;
+
+  ctx.save();
+  if (player.iframes > 0 && Math.floor(player.iframes * 14) % 2 === 0) ctx.globalAlpha *= 0.35;
+  if (player.hitFlash > 0) {
+    ctx.shadowColor = '#ff3322';
+    ctx.shadowBlur = 18;
+  }
+  const drew = Manga.assets.drawFrame(ctx, ACHILLES_MANGA_SHEET, frame, player.x + jitter, y, {
+    scale,
+    flipX: frame === 'idle' && player.facing < 0,
+  });
+  ctx.restore();
+
+  if (drew && player.hitFlash > 0) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = Math.min(0.32, player.hitFlash);
+    ctx.fillStyle = '#ff3322';
+    ctx.beginPath();
+    ctx.ellipse(player.x, PLAYER_Y - 28, 54, 42, -0.12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+  return drew;
 }
 
 // Player's counter-shot arrow rising upward — bright gold + ink trail line.
@@ -1044,6 +1111,10 @@ function drawWorldFrame() {
   const W = Engine.W, H = Engine.H;
 
   drawGround();
+  if (Engine.manga && drawAchillesMangaScene('achilles', { alpha: 0.30, focusX: 0.54, focusY: 0.52 })) {
+    ctx.fillStyle = 'rgba(34,8,4,0.36)';
+    ctx.fillRect(0, 0, W, H);
+  }
   // Manga atmospheric halftone over the battlefield
   if (Engine.manga && window.Manga) {
     window.Manga.effects.halftone(ctx, 0, 0, W, H, { density: 8, dotSize: 1.6, alpha: 0.12, color: '#000' });
@@ -1161,8 +1232,19 @@ function drawAbilityIcon(cx, cy, key, glyph, cd, cdMax, active) {
 // ── Title screen ──────────────────────────────────────────────────────────
 function renderTitle() {
   const W = Engine.W, H = Engine.H;
-  drawGround();
-  drawArchers();
+  if (Engine.manga && drawAchillesMangaScene('achilles', { alpha: 1, focusX: 0.52, focusY: 0.48 })) {
+    const art = window.GodGames && GodGames.MangaArt;
+    if (art && typeof art.overlay === 'function') {
+      art.overlay(ctx, W, H, {
+        top: 'rgba(42,6,4,0.10)',
+        mid: 'rgba(0,0,0,0.12)',
+        bottom: 'rgba(0,0,0,0.66)',
+      });
+    }
+  } else {
+    drawGround();
+    drawArchers();
+  }
 
   const vig = ctx.createRadialGradient(W/2, H/2, H*0.25, W/2, H/2, H*0.85);
   vig.addColorStop(0, 'rgba(0,0,0,0)');

@@ -317,6 +317,9 @@ footer {
   </div>
 </div>
 
+<script src="vendor/@tns/game-engine/manga/manga.js"></script>
+<script src="assets/manga/shared/manifest.js"></script>
+<script src="assets/manga/shared/runtime.js"></script>
 <script>
 const NAME_KEY = 'godgames_playerName';
 const $ = (id) => document.getElementById(id);
@@ -481,8 +484,10 @@ const clouds = Array.from({length: 12}, () => ({
 }));
 let lightning = 0; // brightness flash
 let nextStrike = 4 + Math.random()*8;
+let mangaAtlasBackdrop = false;
 
 function drawMountains(t) {
+  mangaAtlasBackdrop = false;
   if (_mangaUnlocked) { drawMangaMountains(t); return; }
   // Far back range — soft purple, distant
   const skyTop = '#04071a', skyMid = '#0e1438', skyBot = '#1a2654';
@@ -627,6 +632,20 @@ function mangaInk(ctx, w) {
 }
 
 function drawMangaMountains(t) {
+  mangaAtlasBackdrop = false;
+  const art = window.GodGames && GodGames.MangaArt;
+  if (art && typeof art.drawScene === 'function'
+      && art.drawScene(bx, 'olympus', 0, 0, BW, BH, { focusX: 0.50, focusY: 0.50 })) {
+    mangaAtlasBackdrop = true;
+    if (art.overlay) art.overlay(bx, BW, BH, {
+      top: 'rgba(0,0,0,0.10)',
+      mid: 'rgba(0,0,0,0.06)',
+      bottom: 'rgba(0,0,0,0.58)',
+    });
+    if (art.mangaAtmosphere) art.mangaAtmosphere(bx, BW, BH, { halftoneAlpha: 0.10, scanAlpha: 0.07, vignette: 0.44 });
+    return;
+  }
+
   // Flat sky — single tone (no gradient), the manga aesthetic.
   bx.fillStyle = '#101428';
   bx.fillRect(0, 0, BW, BH);
@@ -786,6 +805,7 @@ function drawMangaCloud(c) {
 }
 
 function drawCloud(c) {
+  if (_mangaUnlocked && mangaAtlasBackdrop) return;
   if (_mangaUnlocked) { drawMangaCloud(c); return; }
   const x = c.x * BW, y = c.y * BH, s = c.scale;
   bx.save();

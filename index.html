@@ -107,6 +107,9 @@ canvas { display:block; cursor:default; }
 </div>
 <script src="vendor/@tns/game-engine/unlock/index.js"></script>
 <script src="vendor/@tns/game-engine/manga/manga.js"></script>
+<script src="assets/manga/shared/manifest.js"></script>
+<script src="assets/manga/shared/runtime.js"></script>
+<script src="assets/manga/achilles/manifest.js"></script>
 <script src="mysteries.js"></script>
 <script src="progress-sync.js"></script>
 <script>
@@ -517,8 +520,15 @@ function renderMangaAwakening() {
   const a = Math.min(1, t / 0.45, (3.8 - t) / 0.35);
   ctx.save();
   ctx.globalAlpha = Math.max(0, a);
-  ctx.fillStyle = 'rgba(4,4,5,0.64)';
-  ctx.fillRect(0, 0, W, H);
+  const art = window.GodGames && GodGames.MangaArt;
+  if (art && typeof art.drawScene === 'function'
+      && art.drawScene(ctx, 'zeus', 0, 0, W, H, { focusX: 0.52, focusY: 0.48, alpha: 0.78 })) {
+    ctx.fillStyle = 'rgba(4,4,5,0.38)';
+    ctx.fillRect(0, 0, W, H);
+  } else {
+    ctx.fillStyle = 'rgba(4,4,5,0.64)';
+    ctx.fillRect(0, 0, W, H);
+  }
 
   if (window.Manga && Manga.effects) {
     if (typeof Manga.effects.halftone === 'function') {
@@ -933,6 +943,20 @@ function drawPortal(p) {
 }
 
 function drawPlayer() {
+  if (localStorage.getItem(MANGA_KEY) === '1'
+      && !player.isToad
+      && window.Manga
+      && Manga.assets
+      && typeof Manga.assets.ready === 'function'
+      && Manga.assets.ready('godgames.achilles.actionSheet')
+      && typeof Manga.assets.drawFrame === 'function') {
+    const frame = Math.abs(player.vx) > 10 ? (player.vx < 0 ? 'runLeft' : 'runRight') : 'idle';
+    Manga.assets.drawFrame(ctx, 'godgames.achilles.actionSheet', frame, player.x, player.y + 3, {
+      scale: 0.27,
+      flipX: frame === 'idle' && player.facing < 0,
+    });
+    return;
+  }
   // Manga path uses the portable hub-walker character module.
   if (localStorage.getItem(MANGA_KEY) === '1'
       && window.Manga
@@ -947,6 +971,31 @@ function drawPlayer() {
     return;
   }
   if (player.isToad) drawToad(); else drawHuman();
+}
+
+function drawMangaScenePortalLabel(p) {
+  const isMtn = p.kind === 'mountain';
+  const y = isMtn ? GY - 250 : GY - 170;
+  const glow = player.nearPortal === p ? 18 : 8;
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.lineJoin = 'round';
+  ctx.shadowColor = p.hue || GOLD;
+  ctx.shadowBlur = glow;
+  ctx.font = isMtn ? '900 24px "Impact", "Arial Black", sans-serif' : '900 17px "Impact", "Arial Black", sans-serif';
+  ctx.lineWidth = isMtn ? 5 : 4;
+  ctx.strokeStyle = '#0a0a0a';
+  ctx.strokeText(p.name, p.x, y);
+  ctx.fillStyle = GOLD;
+  ctx.fillText(p.name, p.x, y);
+  ctx.shadowBlur = 0;
+  ctx.font = isMtn ? 'bold 12px monospace' : 'bold 11px monospace';
+  ctx.lineWidth = 3;
+  ctx.strokeText(p.sub, p.x, y + 17);
+  ctx.fillStyle = '#fff1b8';
+  ctx.fillText(p.sub, p.x, y + 17);
+  ctx.restore();
+  drawMangaPortalButton(p);
 }
 
 // Manga-styled action button: bold ink-outlined gold pill above the portal.
@@ -1160,6 +1209,7 @@ function drawToad() {
 
 // ── Render ────────────────────────────────────────────────────────────────
 function render() {
+  const mangaOn = localStorage.getItem(MANGA_KEY) === '1';
   // Sky
   const sky = ctx.createLinearGradient(0,0,0,GY);
   sky.addColorStop(0,'#04071a'); sky.addColorStop(0.55,'#091230'); sky.addColorStop(1,'#131d40');
@@ -1203,6 +1253,17 @@ function render() {
   ctx.strokeStyle='rgba(200,180,130,0.22)'; ctx.lineWidth=2;
   ctx.beginPath(); ctx.moveTo(0,GY); ctx.lineTo(W,GY); ctx.stroke();
 
+  const mangaArt = window.GodGames && GodGames.MangaArt;
+  let mangaSceneBackdrop = false;
+  if (mangaOn && mangaArt && typeof mangaArt.drawScene === 'function'
+      && mangaArt.drawScene(ctx, 'hub', 0, 0, W, H, { focusX: 0.50, focusY: 0.52, alpha: 0.62 })) {
+    mangaSceneBackdrop = true;
+    ctx.fillStyle = 'rgba(2,4,12,0.18)';
+    ctx.fillRect(0, 0, W, GY);
+    ctx.fillStyle = 'rgba(14,10,4,0.44)';
+    ctx.fillRect(0, GY, W, H - GY);
+  }
+
   // ambient motes
   for (const m of motes) {
     ctx.globalAlpha=Math.max(0,m.alpha)*0.5;
@@ -1226,16 +1287,20 @@ function render() {
     && typeof Manga.scenes?.column === 'function'
     && typeof Manga.scenes?.archPortal === 'function'
     && typeof Manga.scenes?.olympus === 'function';
-  for (const cx of colXs) {
-    if (_mangaActive) Manga.scenes.column(ctx, { x: cx, gy: GY });
-    else drawColumn(cx);
+  if (!mangaSceneBackdrop) {
+    for (const cx of colXs) {
+      if (_mangaActive) Manga.scenes.column(ctx, { x: cx, gy: GY });
+      else drawColumn(cx);
+    }
   }
 
   // Portals — manga path draws the arch/mountain art via Manga.scenes; the action
   // button (proximity prompt + p._btn hit region) is drawn by the helper below
   // since both paths need it.
   for (const p of portals) {
-    if (_mangaActive) {
+    if (mangaSceneBackdrop) {
+      drawMangaScenePortalLabel(p);
+    } else if (_mangaActive) {
       if (p.kind === 'mountain') {
         Manga.scenes.olympus(ctx, { x: p.x, gy: GY, name: p.name, sub: p.sub, near: player.nearPortal === p, time });
       } else {
@@ -1263,7 +1328,7 @@ function render() {
 
   // Manga atmosphere — bold overlay so the screen unmistakably reads "manga".
   // Drawn on top of the world but below the Zeus cinematic + title + toast.
-  const _mangaOn = localStorage.getItem(MANGA_KEY) === '1';
+  const _mangaOn = mangaOn;
   if (_mangaOn
       && window.Manga
       && typeof Manga.effects?.halftone  === 'function'

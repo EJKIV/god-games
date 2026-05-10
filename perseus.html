@@ -60,12 +60,16 @@ canvas { display:block; }
 <script src="vendor/@tns/game-engine/core/engine.js"></script>
 <script src="vendor/@tns/game-engine/unlock/index.js"></script>
 <script src="vendor/@tns/game-engine/manga/manga.js"></script>
+<script src="assets/manga/shared/manifest.js"></script>
+<script src="assets/manga/shared/runtime.js"></script>
+<script src="assets/manga/perseus/manifest.js"></script>
 <script src="mysteries.js"></script>
 <script src="progress-sync.js"></script>
 <script>
 const NAME_KEY = 'godgames_playerName';
 const HP_MAX = 4;
 const PERSEUS_ACCENT = '#3db0c6';
+const PERSEUS_MANGA_SHEET = 'godgames.perseus.gorgonSheet';
 const LEVELS = [
   {
     title: 'CHAMBER I',
@@ -675,6 +679,34 @@ function updateParticles(dt) {
 function drawBackground(t) {
   const W = Engine.W, H = Engine.H, gy = groundY();
   const cfg = levelCfg();
+
+  const art = window.GodGames && GodGames.MangaArt;
+  if (Engine.manga && art && typeof art.drawScene === 'function'
+      && art.drawScene(ctx, 'perseus', 0, 0, W, H, { focusX: 0.48, focusY: 0.48 })) {
+    const cave = ctx.createLinearGradient(0, 0, 0, H);
+    cave.addColorStop(0, 'rgba(0,0,0,0.06)');
+    cave.addColorStop(0.55, 'rgba(0,12,15,0.24)');
+    cave.addColorStop(1, 'rgba(0,0,0,0.72)');
+    ctx.fillStyle = cave;
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(2,14,18,0.66)';
+    ctx.fillRect(0, gy, W, H - gy);
+    ctx.strokeStyle = 'rgba(214,251,255,0.28)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, gy);
+    ctx.lineTo(W, gy);
+    ctx.stroke();
+    if (art.mangaAtmosphere) art.mangaAtmosphere(ctx, W, H, { halftoneAlpha: 0.12, scanAlpha: 0.09, vignette: 0.56 });
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 13px monospace';
+    ctx.fillStyle = 'rgba(214,251,255,0.42)';
+    ctx.fillText(cfg.title + ' · ' + cfg.name, W / 2, gy + 34);
+    ctx.restore();
+    return;
+  }
+
   const sky = ctx.createLinearGradient(0, 0, 0, H);
   sky.addColorStop(0, levelIndex === 2 ? '#09020a' : '#02070a');
   sky.addColorStop(0.5, levelIndex === 1 ? '#0d1628' : '#071923');
@@ -803,6 +835,7 @@ function drawMirrorBeam(t) {
 }
 
 function drawPerseus(t) {
+  if (Engine.manga && drawPerseusMangaSprite()) return;
   if (Engine.manga && window.Manga && Manga.effects && typeof Manga.effects.inkStroke === 'function') {
     drawMangaPerseus(t);
     return;
@@ -871,6 +904,43 @@ function drawPerseus(t) {
   }
 
   ctx.restore();
+}
+
+function perseusMangaAssetsReady() {
+  return !!(Engine.manga
+    && window.GodGames && GodGames.MangaArt
+    && window.Manga && Manga.assets
+    && typeof Manga.assets.ready === 'function'
+    && Manga.assets.ready(PERSEUS_MANGA_SHEET));
+}
+
+function currentPerseusMangaFrame() {
+  if (Engine.state === 'victory') return 'perseusVictory';
+  if (player.petrify > 0.55 || Engine.state === 'dead') return 'perseusStone';
+  if (player.slashT > 0) return 'perseusSlash';
+  if (player.shield > 0.45 || mirrorFocus > 0.02 || mirrorFlashT > 0) return 'perseusMirror';
+  if (Math.abs(player.vx) > 12) return 'perseusRun';
+  return 'perseusIdle';
+}
+
+function drawPerseusMangaSprite() {
+  if (!perseusMangaAssetsReady()) return false;
+  const compact = Math.min(Engine.W, Engine.H);
+  const scale = Math.max(0.27, Math.min(0.36, compact / 2100));
+  const frame = currentPerseusMangaFrame();
+
+  ctx.save();
+  if (player.hitFlash > 0) {
+    ctx.filter = 'brightness(2.5)';
+    ctx.shadowColor = '#d6fbff';
+    ctx.shadowBlur = 16;
+  }
+  const drew = Manga.assets.drawFrame(ctx, PERSEUS_MANGA_SHEET, frame, player.x, player.y + 5, {
+    scale,
+    flipX: player.facing < 0,
+  });
+  ctx.restore();
+  return drew;
 }
 
 function drawMangaPerseus(t) {
@@ -1063,6 +1133,7 @@ function drawMangaMedusa(t) {
 }
 
 function drawMedusa(t) {
+  if (Engine.manga && drawMedusaMangaSprite()) return;
   if (Engine.manga && window.Manga && Manga.effects && typeof Manga.effects.inkStroke === 'function') {
     drawMangaMedusa(t);
     return;
@@ -1111,8 +1182,44 @@ function drawMedusa(t) {
   ctx.restore();
 }
 
+function currentMedusaMangaFrame() {
+  if (medusa.hurtFlash > 0 || sealFlashT > 0) return 'medusaHurt';
+  if (medusa.phase === 'gaze' || medusa.phase === 'windup') return 'medusaGaze';
+  return 'medusaIdle';
+}
+
+function drawMedusaMangaSprite() {
+  if (!perseusMangaAssetsReady()) return false;
+  const compact = Math.min(Engine.W, Engine.H);
+  const scale = Math.max(0.34, Math.min(0.46, compact / 1650));
+  const frame = currentMedusaMangaFrame();
+
+  ctx.save();
+  if (medusa.phase === 'gaze') {
+    ctx.shadowColor = '#dcff9b';
+    ctx.shadowBlur = 22;
+  }
+  if (medusa.hurtFlash > 0) ctx.filter = 'brightness(2.8) saturate(0.2)';
+  const drew = Manga.assets.drawFrame(ctx, PERSEUS_MANGA_SHEET, frame, medusa.x, medusa.y + 8, {
+    scale,
+    flipX: true,
+  });
+  ctx.restore();
+  return drew;
+}
+
 function drawSnakes(t) {
   for (const s of snakes) {
+    if (Engine.manga && perseusMangaAssetsReady()) {
+      const compact = Math.min(Engine.W, Engine.H);
+      const scale = Math.max(0.13, Math.min(0.19, compact / 3900));
+      const frame = s.returning ? 'snakeReflect' : 'snake';
+      if (Manga.assets.drawFrame(ctx, PERSEUS_MANGA_SHEET, frame, s.x, s.y + Math.sin(s.wobble) * 5, {
+        scale,
+        flipX: s.returning,
+        rotate: Math.sin(s.wobble) * 0.08,
+      })) continue;
+    }
     ctx.save();
     ctx.translate(s.x, s.y + Math.sin(s.wobble) * 5);
     if (s.returning) ctx.scale(-1, 1);
@@ -1136,6 +1243,14 @@ function drawHazards(t) {
   for (const h of hazards) {
     const x = h.drawX || h.x;
     const y = h.drawY || h.baseY;
+    if (Engine.manga && perseusMangaAssetsReady()) {
+      const compact = Math.min(Engine.W, Engine.H);
+      const scale = Math.max(0.16, Math.min(0.22, compact / 3500));
+      if (Manga.assets.drawFrame(ctx, PERSEUS_MANGA_SHEET, 'hazard', x, y + 2, {
+        scale,
+        rotate: Math.sin(h.phase + t) * 0.12,
+      })) continue;
+    }
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(Math.sin(h.phase + t) * 0.18);
@@ -1375,6 +1490,105 @@ function beginRun() {
   Engine.setState('playing');
 }
 
+function renderPerseusTitle(ctx2, eng) {
+  const W = eng.W, H = eng.H;
+  const art = window.GodGames && GodGames.MangaArt;
+  if (!eng.manga || !art || typeof art.drawScene !== 'function'
+      || !art.drawScene(ctx2, 'perseus', 0, 0, W, H, { focusX: 0.50, focusY: 0.48 })) {
+    eng._defaultTitle();
+    return;
+  }
+
+  if (art.overlay) art.overlay(ctx2, W, H, {
+    top: 'rgba(0,0,0,0.16)',
+    mid: 'rgba(0,20,24,0.10)',
+    bottom: 'rgba(0,0,0,0.72)',
+  });
+  if (art.mangaAtmosphere) art.mangaAtmosphere(ctx2, W, H, { halftoneAlpha: 0.12, scanAlpha: 0.08, vignette: 0.52 });
+
+  ctx2.save();
+  ctx2.textAlign = 'center';
+  ctx2.lineJoin = 'round';
+  ctx2.font = 'bold 72px serif';
+  ctx2.strokeStyle = '#0a0a0a';
+  ctx2.lineWidth = 8;
+  ctx2.strokeText('PERSEUS', W / 2, H * 0.25);
+  ctx2.fillStyle = PERSEUS_ACCENT;
+  ctx2.shadowColor = PERSEUS_ACCENT;
+  ctx2.shadowBlur = 24;
+  ctx2.fillText('PERSEUS', W / 2, H * 0.25);
+  ctx2.shadowBlur = 0;
+  ctx2.font = 'italic 22px serif';
+  ctx2.fillStyle = 'rgba(240,250,255,0.86)';
+  ctx2.fillText('The Gorgon\'s Mirror', W / 2, H * 0.25 + 42);
+  ctx2.font = 'bold 17px monospace';
+  ctx2.fillStyle = '#d6fbff';
+  ctx2.fillText('FACE THE GAZE  ·  RAISE THE MIRROR  ·  CUT THE SERPENTS', W / 2, H * 0.57);
+  if (Math.sin(eng.time * 3.4) > 0) {
+    ctx2.font = 'bold 20px monospace';
+    ctx2.fillStyle = '#D4AF37';
+    ctx2.shadowColor = '#D4AF37';
+    ctx2.shadowBlur = 10;
+    ctx2.fillText('PRESS SPACE / ENTER', W / 2, H * 0.69);
+  }
+  ctx2.shadowBlur = 0;
+  ctx2.font = '12px monospace';
+  ctx2.fillStyle = 'rgba(220,240,244,0.58)';
+  ctx2.fillText('ESC — Return to World    ·    H — Mount Olympus', W / 2, H * 0.83);
+  ctx2.restore();
+}
+
+function renderPerseusGameOver(ctx2, eng) {
+  const W = eng.W, H = eng.H;
+  const isVictory = eng.state === 'victory';
+  const art = window.GodGames && GodGames.MangaArt;
+  if (!eng.manga || !art || typeof art.drawScene !== 'function'
+      || !art.drawScene(ctx2, isVictory ? 'olympus' : 'perseus', 0, 0, W, H, { focusX: 0.50, focusY: 0.50 })) {
+    eng._defaultGameOver();
+    return;
+  }
+
+  if (art.overlay) art.overlay(ctx2, W, H, {
+    top: 'rgba(0,0,0,0.22)',
+    mid: isVictory ? 'rgba(16,10,0,0.18)' : 'rgba(0,14,18,0.22)',
+    bottom: 'rgba(0,0,0,0.78)',
+  });
+  if (window.Manga && Manga.effects && Manga.effects.panelSplit) {
+    if (this._perseusOverState !== eng.state) {
+      this._perseusOverState = eng.state;
+      this._perseusOverT0 = eng.time;
+    }
+    Manga.effects.panelSplit(ctx2, W, H, Math.min(1, (eng.time - this._perseusOverT0) / 0.85));
+  }
+  if (art.mangaAtmosphere) art.mangaAtmosphere(ctx2, W, H, { halftoneAlpha: 0.10, scanAlpha: 0.08, vignette: 0.58 });
+
+  ctx2.save();
+  ctx2.textAlign = 'center';
+  const title = isVictory ? 'THE GAZE IS BROKEN' : 'PERSEUS IS STONE';
+  const sub = isVictory ? 'Medusa falls. The cave still keeps one quiet mark.' : 'The cave keeps another statue.';
+  const color = isVictory ? '#D4AF37' : PERSEUS_ACCENT;
+  ctx2.font = 'bold 52px serif';
+  ctx2.lineJoin = 'round';
+  ctx2.strokeStyle = '#0a0a0a';
+  ctx2.lineWidth = 7;
+  ctx2.strokeText(title, W / 2, H * 0.32);
+  ctx2.fillStyle = color;
+  ctx2.shadowColor = color;
+  ctx2.shadowBlur = 20;
+  ctx2.fillText(title, W / 2, H * 0.32);
+  ctx2.shadowBlur = 0;
+  ctx2.font = 'italic 16px serif';
+  ctx2.fillStyle = 'rgba(230,245,246,0.78)';
+  ctx2.fillText(sub, W / 2, H * 0.40);
+  ctx2.font = 'bold 18px monospace';
+  ctx2.fillStyle = isVictory ? '#D4AF37' : '#d6fbff';
+  if (Math.sin(eng.time * 3.2) > 0) ctx2.fillText(`PRESS SPACE / ENTER TO ${isVictory ? 'PLAY AGAIN' : 'TRY AGAIN'}`, W / 2, H * 0.70);
+  ctx2.font = '12px monospace';
+  ctx2.fillStyle = 'rgba(220,240,244,0.52)';
+  ctx2.fillText('ESC — Return to World    ·    H — Mount Olympus', W / 2, H * 0.81);
+  ctx2.restore();
+}
+
 Engine.boot({
   title: 'PERSEUS',
   subtitle: 'The Gorgon\'s Mirror',
@@ -1403,6 +1617,8 @@ Engine.boot({
       { label: 'SWORD', key: 'x' },
     ],
   },
+  onTitleRender: renderPerseusTitle,
+  onGameOverRender: renderPerseusGameOver,
   onInit(e) {
     canvas = e.canvas;
     ctx = e.ctx;
