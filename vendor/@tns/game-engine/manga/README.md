@@ -76,6 +76,8 @@ manga/
 | Function | Purpose |
 |---|---|
 | `halftone(ctx, x, y, w, h, opts)`         | Manga screen-tone overlay. Cached per-pattern. |
+| `animeEye(ctx, x, y, opts)`               | Tall anime eye with iris, catchlights, lash, and expression brow. |
+| `animeCheek(ctx, x, y, opts)`             | Small cheek hatch marks for anime face reads. |
 | `speedLines(ctx, cx, cy, opts)`           | Radial impact lines. |
 | `sfxText(ctx, x, y, text, opts)`          | Tilted comic-style SFX text. |
 | `panelSplit(ctx, W, H, progress, opts)`   | Slabs slide off-screen for death/transition. |

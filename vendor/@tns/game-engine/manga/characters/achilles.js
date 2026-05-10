@@ -205,10 +205,23 @@
       ctx.beginPath(); ctx.arc(0, -8, 14, 0, Math.PI * 2); ctx.fill();
       M.effects.inkStroke(ctx, 4);
       ctx.stroke();
-      // Visor T-line (manga visor suggestion)
+      // Visor T-line plus bright anime eye slashes under the helmet.
       M.effects.inkStroke(ctx, 1.6);
       ctx.beginPath(); ctx.moveTo(-8, -7); ctx.lineTo(8, -7); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(0, -7); ctx.lineTo(0, -2); ctx.stroke();
+      ctx.fillStyle = '#fff8c8';
+      ctx.shadowColor = bashing || drawingBow ? '#fff5c0' : 'transparent';
+      ctx.shadowBlur = bashing || drawingBow ? 9 : 0;
+      ctx.beginPath();
+      ctx.moveTo(-9, -10); ctx.lineTo(-2, -8); ctx.lineTo(-3, -5.5); ctx.lineTo(-10, -7.8);
+      ctx.closePath(); ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(9, -10); ctx.lineTo(2, -8); ctx.lineTo(3, -5.5); ctx.lineTo(10, -7.8);
+      ctx.closePath(); ctx.fill();
+      ctx.shadowBlur = 0;
+      M.effects.inkStroke(ctx, 1);
+      ctx.beginPath(); ctx.moveTo(-11, -11.8); ctx.lineTo(-1.2, -8.8); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo( 11, -11.8); ctx.lineTo( 1.2, -8.8); ctx.stroke();
       // Halftone on helmet far side
       ctx.save();
       ctx.beginPath(); ctx.arc(0, -8, 14, 0, Math.PI * 2); ctx.clip();

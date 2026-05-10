@@ -123,16 +123,14 @@
         density: 3, dotSize: 1.1, alpha: 0.4, color: '#0a0a0a',
       });
       ctx.restore();
-      // Yellow eye — fierce
-      ctx.fillStyle = '#ffd54a';
-      ctx.beginPath(); ctx.arc(-11 * s, -3.5 * s, 2.4 * s, 0, Math.PI * 2); ctx.fill();
-      M.effects.inkStroke(ctx, 1.4);
-      ctx.stroke();
-      ctx.fillStyle = M.INK;
-      ctx.beginPath(); ctx.arc(-11 * s, -3.5 * s, 1.2 * s, 0, Math.PI * 2); ctx.fill();
-      // Brow line — angry
-      M.effects.inkStroke(ctx, 1.5);
-      ctx.beginPath(); ctx.moveTo(-13 * s, -7 * s); ctx.lineTo(-9 * s, -6 * s); ctx.stroke();
+      // Oversized anime predator eye with a hard brow.
+      M.effects.animeEye(ctx, -11 * s, -3.8 * s, {
+        sx: 0.46 * s, sy: 0.42 * s,
+        white: '#ffd54a', iris: state.diving ? '#ff2218' : '#6a2a10',
+        mood: 'focus', outline: 1.0 * s,
+      });
+      M.effects.inkStroke(ctx, 1.5 * s);
+      ctx.beginPath(); ctx.moveTo(-15 * s, -8 * s); ctx.lineTo(-8 * s, -6.2 * s); ctx.stroke();
 
       // ── Hooked yellow beak (points LEFT) ────────────────────────────
       ctx.fillStyle = '#e8a020';

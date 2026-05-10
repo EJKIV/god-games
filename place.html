@@ -253,13 +253,19 @@ function drawPerseusTraveler(ctx, state) {
   // Head, hair, and winged cap.
   ctx.fillStyle = '#c99a68';
   ctx.fillRect(-5, -77, 10, 9);
-  ctx.beginPath(); ctx.arc(0, -88, 13, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(1, -89, 13.5, 15, 0, 0, Math.PI * 2); ctx.fill();
   stroke(2.4);
   ctx.stroke();
   ctx.fillStyle = '#1a1008';
-  ctx.beginPath(); ctx.arc(0, -92, 13, Math.PI, 0); ctx.fill();
+  ctx.beginPath(); ctx.arc(0, -93, 14, Math.PI * 0.88, Math.PI * 2.02); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(-10, -92); ctx.lineTo(-3, -79); ctx.lineTo(-11, -83);
+  ctx.closePath(); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(8, -93); ctx.lineTo(15, -83); ctx.lineTo(8, -82);
+  ctx.closePath(); ctx.fill();
   ctx.fillStyle = '#d4af37';
-  ctx.beginPath(); ctx.arc(0, -95, 12, Math.PI, 0); ctx.fill();
+  ctx.beginPath(); ctx.arc(0, -97, 12, Math.PI, 0); ctx.fill();
   stroke(2);
   ctx.stroke();
 
@@ -279,8 +285,13 @@ function drawPerseusTraveler(ctx, state) {
     ctx.restore();
   }
 
-  ctx.fillStyle = ink;
-  ctx.beginPath(); ctx.ellipse(5, -89, 1.8, 2.8, 0, 0, Math.PI * 2); ctx.fill();
+  if (window.Manga && Manga.effects && typeof Manga.effects.animeEye === 'function') {
+    Manga.effects.animeEye(ctx, 6, -89.5, { sx: 0.86, sy: 0.86, iris: '#37606a', outline: 1.25 });
+    Manga.effects.animeCheek(ctx, 1, -82.8, { scale: 0.44, rot: -0.1 });
+  } else {
+    ctx.fillStyle = ink;
+    ctx.beginPath(); ctx.ellipse(5, -89, 1.8, 2.8, 0, 0, Math.PI * 2); ctx.fill();
+  }
 
   ctx.restore();
 }

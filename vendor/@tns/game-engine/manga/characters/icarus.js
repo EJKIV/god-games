@@ -160,24 +160,23 @@
       ctx.fillRect(9, -24, 8, 12);
       M.effects.inkStroke(ctx, 1.8);
       ctx.strokeRect(9, -24, 8, 12);
-      // Head — manga proportions
+      // Head - larger oval and readable anime face at flight scale.
       ctx.fillStyle = skin;
-      ctx.beginPath(); ctx.arc(16, -32, 12, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(16, -33, 12.5, 14, 0.06, 0, Math.PI * 2); ctx.fill();
       M.effects.inkStroke(ctx, 3);
       ctx.stroke();
       // Halftone shadow on jaw
       ctx.save();
-      ctx.beginPath(); ctx.arc(16, -32, 12, 0, Math.PI * 2); ctx.clip();
-      M.effects.halftone(ctx, 18, -28, 12, 14, { density: 3, dotSize: 1.3, alpha: 0.55, color: '#0a0a0a' });
+      ctx.beginPath(); ctx.ellipse(16, -33, 12.5, 14, 0.06, 0, Math.PI * 2); ctx.clip();
+      M.effects.halftone(ctx, 18, -30, 12, 17, { density: 3, dotSize: 1.3, alpha: 0.55, color: '#0a0a0a' });
       ctx.restore();
-      // Eye — manga-style: large white + black pupil + brow
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath(); ctx.ellipse(21, -33, 2.6, 1.8, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = M.INK;
-      ctx.beginPath(); ctx.arc(21.5, -33, 1.4, 0, Math.PI * 2); ctx.fill();
-      // Brow — bold ink
-      M.effects.inkStroke(ctx, 2);
-      ctx.beginPath(); ctx.moveTo(18, -36.5); ctx.lineTo(25, -36); ctx.stroke();
+      M.effects.animeEye(ctx, 22.0, -33.4, {
+        sx: 0.68, sy: 0.58, rot: -0.12,
+        iris: state.diving ? '#ff8800' : '#5a3418',
+        mood: state.diving ? 'wide' : 'focus',
+        outline: 1.35,
+      });
+      M.effects.animeCheek(ctx, 16.3, -27.5, { scale: 0.48, rot: 0.05 });
       // Nose tip
       M.effects.inkStroke(ctx, 1.4);
       ctx.beginPath(); ctx.moveTo(26, -31); ctx.lineTo(28, -28); ctx.stroke();
@@ -185,13 +184,16 @@
       M.effects.inkStroke(ctx, 1.4);
       ctx.beginPath(); ctx.moveTo(25, -26); ctx.lineTo(21, -25.5); ctx.stroke();
 
-      // Hair — bold flat black silhouette streaming back
+      // Hair - bold, spiky black silhouette streaming back like anime motion.
       ctx.fillStyle = M.INK;
       ctx.beginPath();
-      ctx.arc(14, -37, 12, Math.PI * 0.78, Math.PI * 2.05);
+      ctx.arc(14, -38, 13, Math.PI * 0.78, Math.PI * 2.05);
       ctx.fill();
       ctx.beginPath();
-      ctx.moveTo(2, -34); ctx.lineTo(-12, -32); ctx.lineTo(-8, -28); ctx.lineTo(0, -30);
+      ctx.moveTo(4, -36); ctx.lineTo(-17, -37); ctx.lineTo(-9, -31); ctx.lineTo(-23, -29); ctx.lineTo(-5, -27); ctx.lineTo(2, -30);
+      ctx.closePath(); ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(21, -44); ctx.lineTo(31, -41); ctx.lineTo(23, -38);
       ctx.closePath(); ctx.fill();
       // Hair streak highlight
       ctx.strokeStyle = '#3a2818'; ctx.lineWidth = 1.2;

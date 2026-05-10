@@ -23,6 +23,7 @@
 
 <script src="vendor/@tns/game-engine/core/engine.js"></script>
 <script src="vendor/@tns/game-engine/unlock/index.js"></script>
+<script src="vendor/@tns/game-engine/manga/manga.js"></script>
 <script src="mysteries.js"></script>
 <script src="progress-sync.js"></script>
 <script>
@@ -40,6 +41,7 @@ window.addEventListener('resize', () => {
 });
 
 const GOLD = '#D4AF37';
+const MANGA_ON = localStorage.getItem('godgames_manga') === '1';
 
 document.getElementById('backBtn').addEventListener('click', () => { location.href = 'index.html'; });
 window.addEventListener('keydown', (e) => {
@@ -146,6 +148,19 @@ function render() {
   ctx.fillStyle = 'rgba(220,200,150,0.7)';
   ctx.fillText('the toad sees what the human cannot', W / 2, ty + titleSize + 34);
   ctx.restore();
+
+  if (MANGA_ON && window.Manga && typeof Manga.characters?.hubWalker?.draw === 'function') {
+    ctx.save();
+    ctx.globalAlpha = 0.92;
+    ctx.translate(tx + tabW - 74, ty + 82);
+    ctx.scale(0.78, 0.78);
+    Manga.characters.hubWalker.draw(ctx, {
+      x: 0, y: 0, facing: -1,
+      walkPhase: t * 4.2, vx: 40,
+      form: 'toad',
+    });
+    ctx.restore();
+  }
 
   // Clues earned — list them
   const M = window.GodGames && window.GodGames.Mysteries;

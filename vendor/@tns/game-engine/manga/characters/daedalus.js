@@ -227,17 +227,12 @@
       ctx.beginPath(); ctx.moveTo(i, -26); ctx.lineTo(i * 0.8, -12); ctx.stroke();
     }
 
-    // Eyes — manga-style bold + brow
-    ctx.fillStyle = '#fff';
-    ctx.beginPath(); ctx.ellipse(-3.6, -37, 2.2, 1.6, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse( 3.6, -37, 2.2, 1.6, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = M.INK;
-    ctx.beginPath(); ctx.arc(-3.6, -37, 1.2, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc( 3.6, -37, 1.2, 0, Math.PI * 2); ctx.fill();
-    // Bushy brows — bold ink
+    M.effects.animeEye(ctx, -3.7, -37.1, { sx: 0.50, sy: 0.48, iris: '#585048', mood: 'soft', outline: 1.05 });
+    M.effects.animeEye(ctx,  3.7, -37.1, { sx: 0.50, sy: 0.48, iris: '#585048', mood: 'soft', outline: 1.05 });
+    // Bushy brows stay heavy so Daedalus remains old and anxious.
     M.effects.inkStroke(ctx, 2.4);
-    ctx.beginPath(); ctx.moveTo(-6, -41); ctx.lineTo(-1, -39.5); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo( 6, -41); ctx.lineTo( 1, -39.5); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-7, -42); ctx.lineTo(-1, -40.2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo( 7, -42); ctx.lineTo( 1, -40.2); ctx.stroke();
     // Nose
     M.effects.inkStroke(ctx, 1.2);
     ctx.beginPath(); ctx.moveTo(0, -35); ctx.lineTo(-2, -31); ctx.lineTo(2, -31); ctx.stroke();
@@ -401,11 +396,7 @@
   }
 
   function drawHeadDetail(ctx) {
-    // Worried eye + brow facing right
-    ctx.fillStyle = '#fff';
-    ctx.beginPath(); ctx.ellipse(20, -32, 2, 1.5, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = M.INK;
-    ctx.beginPath(); ctx.arc(20, -32, 1.1, 0, Math.PI * 2); ctx.fill();
+    M.effects.animeEye(ctx, 20, -32.3, { sx: 0.55, sy: 0.48, iris: '#585048', mood: 'soft', outline: 1.05 });
     // Bushy worried brow
     M.effects.inkStroke(ctx, 2.4);
     ctx.beginPath(); ctx.moveTo(17.5, -35.5); ctx.quadraticCurveTo(20, -36.5, 23, -35); ctx.stroke();

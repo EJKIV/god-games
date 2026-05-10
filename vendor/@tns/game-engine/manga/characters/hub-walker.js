@@ -80,47 +80,45 @@
     M.effects.inkStroke(ctx, 2);
     ctx.strokeRect(-4, -56, 8, 8);
 
-    // Head — flat skin tone, thick outline
+    // Head - slightly oversized and oval so the silhouette reads anime.
     ctx.fillStyle = '#c0995a';
-    ctx.beginPath(); ctx.arc(0, -62, 13, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(1, -63, 13, 15, 0, 0, Math.PI * 2); ctx.fill();
     M.effects.inkStroke(ctx, 3.5);
     ctx.stroke();
 
     // Halftone shading on back-half of face
     ctx.save();
-    ctx.beginPath(); ctx.arc(0, -62, 13, 0, Math.PI * 2); ctx.clip();
-    M.effects.halftone(ctx, -14, -75, 12, 26, { density: 3, dotSize: 1.3, alpha: 0.6, color: '#0a0a0a' });
+    ctx.beginPath(); ctx.ellipse(1, -63, 13, 15, 0, 0, Math.PI * 2); ctx.clip();
+    M.effects.halftone(ctx, -14, -78, 13, 30, { density: 3, dotSize: 1.3, alpha: 0.6, color: '#0a0a0a' });
     ctx.restore();
 
-    // Hair — solid black, sharp angular silhouette
+    // Hair - solid black, sharp angular anime silhouette with a heavy bang.
     ctx.fillStyle = M.INK;
     ctx.beginPath();
-    ctx.moveTo(-12, -67);
-    ctx.lineTo(-11, -75);
-    ctx.lineTo( -6, -73);
-    ctx.lineTo( -2, -78);
-    ctx.lineTo(  3, -74);
-    ctx.lineTo(  9, -76);
-    ctx.lineTo( 12, -68);
-    ctx.lineTo( 12, -60);
-    ctx.lineTo(-12, -60);
+    ctx.moveTo(-13, -68);
+    ctx.lineTo(-12, -78);
+    ctx.lineTo( -7, -74);
+    ctx.lineTo( -3, -82);
+    ctx.lineTo(  2, -75);
+    ctx.lineTo(  8, -80);
+    ctx.lineTo( 13, -70);
+    ctx.lineTo( 12, -58);
+    ctx.lineTo(-12, -58);
     ctx.closePath();
     ctx.fill();
-    // Sharp side-bang
     ctx.beginPath();
-    ctx.moveTo(-7, -62); ctx.lineTo(-3, -56); ctx.lineTo(-7, -56);
+    ctx.moveTo(-8, -65); ctx.lineTo(-1, -54); ctx.lineTo(-9, -57);
+    ctx.closePath(); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(5, -66); ctx.lineTo(11, -58); ctx.lineTo(6, -57);
     ctx.closePath(); ctx.fill();
 
-    // Eye — pure black with white catchlight (manga style)
-    ctx.fillStyle = M.INK;
-    ctx.beginPath(); ctx.ellipse(5, -62, 1.8, 2.6, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath(); ctx.arc(5.4, -63, 0.8, 0, Math.PI * 2); ctx.fill();
-    // Brow — single thick ink line
-    M.effects.inkStroke(ctx, 2);
-    ctx.beginPath(); ctx.moveTo(2, -67); ctx.lineTo(8, -67); ctx.stroke();
-    // Mouth — small line
-    ctx.beginPath(); ctx.moveTo(4, -57); ctx.lineTo(7, -57); ctx.stroke();
+    M.effects.animeEye(ctx, 5.3, -63.2, { sx: 0.72, sy: 0.70, iris: '#5a3518', outline: 1.35 });
+    M.effects.animeCheek(ctx, 1.5, -56.8, { scale: 0.55, rot: -0.12 });
+    // Nose and mouth - tiny marks under the eye.
+    M.effects.inkStroke(ctx, 1.2);
+    ctx.beginPath(); ctx.moveTo(9, -60); ctx.lineTo(10.5, -58.2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(5, -54.8); ctx.lineTo(9, -54.4); ctx.stroke();
 
     ctx.restore();
   }
@@ -221,6 +219,8 @@
     // Pupil — solid black slit
     ctx.fillStyle = M.INK;
     ctx.beginPath(); ctx.ellipse(-1, -34, 1.2, 3.4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(0.5, -36.4, 1.1, 0, Math.PI * 2); ctx.fill();
 
     // Front eye bump (large, manga-prominent)
     ctx.fillStyle = '#4d8c46';
@@ -235,9 +235,12 @@
     // Pupil — solid black vertical slit
     ctx.fillStyle = M.INK;
     ctx.beginPath(); ctx.ellipse(15, -36, 1.6, 5, 0, 0, Math.PI * 2); ctx.fill();
-    // Catchlight — pure white dot
+    // Anime catchlights and upper lash make the toad feel intentionally styled.
     ctx.fillStyle = '#ffffff';
     ctx.beginPath(); ctx.arc(17, -38, 1.2, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(13.2, -32.8, 0.8, 0, Math.PI * 2); ctx.fill();
+    M.effects.inkStroke(ctx, 1.8);
+    ctx.beginPath(); ctx.moveTo(6, -43); ctx.quadraticCurveTo(15, -49, 25, -42); ctx.stroke();
 
     // Nostril — solid black
     ctx.fillStyle = M.INK;

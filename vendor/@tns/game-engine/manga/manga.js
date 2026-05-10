@@ -26,6 +26,7 @@
   const MANGA_FILES = [
     // Effects (stateless render helpers)
     'effects/inkstroke.js',
+    'effects/animeface.js',
     'effects/halftone.js',
     'effects/speedlines.js',
     'effects/sfxtext.js',

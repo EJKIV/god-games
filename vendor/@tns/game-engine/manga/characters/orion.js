@@ -218,15 +218,15 @@
       ctx.fillRect(-4, -58, 8, 8);
       M.effects.inkStroke(ctx, 1.8);
       ctx.strokeRect(-4, -58, 8, 8);
-      // Head
+      // Head - narrow anime profile with a larger expressive eye.
       ctx.fillStyle = '#c89058';
-      ctx.beginPath(); ctx.arc(0, -66, 13, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(1, -66, 12.5, 14.5, 0.04, 0, Math.PI * 2); ctx.fill();
       M.effects.inkStroke(ctx, 3);
       ctx.stroke();
       // Halftone on back of head
       ctx.save();
-      ctx.beginPath(); ctx.arc(0, -66, 13, 0, Math.PI * 2); ctx.clip();
-      M.effects.halftone(ctx, -14, -78, 12, 26, { density: 3, dotSize: 1.3, alpha: 0.6, color: '#0a0a0a' });
+      ctx.beginPath(); ctx.ellipse(1, -66, 12.5, 14.5, 0.04, 0, Math.PI * 2); ctx.clip();
+      M.effects.halftone(ctx, -14, -81, 12, 30, { density: 3, dotSize: 1.3, alpha: 0.6, color: '#0a0a0a' });
       ctx.restore();
       // Helmet
       ctx.fillStyle = '#8a6028';
@@ -236,24 +236,28 @@
       // Helmet cheek piece
       ctx.fillStyle = '#6a5018';
       ctx.beginPath(); ctx.arc(0, -66, 5, Math.PI, 0); ctx.fill();
+      // Sharp side guard and plume give the helmet a stronger anime silhouette.
+      ctx.fillStyle = '#4a3515';
+      ctx.beginPath();
+      ctx.moveTo(-8, -67); ctx.lineTo(-15, -58); ctx.lineTo(-7, -60);
+      ctx.closePath(); ctx.fill();
       // Crest (red plume — vertical, manga-bold)
       ctx.fillStyle = '#cc1418';
       ctx.beginPath();
-      ctx.moveTo(-3, -78); ctx.lineTo(0, -98); ctx.lineTo(3, -78); ctx.closePath();
+      ctx.moveTo(-4, -78); ctx.lineTo(0, -101); ctx.lineTo(5, -79); ctx.lineTo(1, -84); ctx.closePath();
       ctx.fill();
       M.effects.inkStroke(ctx, 2);
       ctx.stroke();
       // Plume highlight
       ctx.strokeStyle = '#ff7a3a'; ctx.lineWidth = 1.4;
       ctx.beginPath(); ctx.moveTo(0, -95); ctx.lineTo(0, -82); ctx.stroke();
-      // Eye — manga-style
-      ctx.fillStyle = M.INK;
-      ctx.beginPath(); ctx.ellipse(6, -66, 1.7, 2.6, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath(); ctx.arc(6.6, -67, 0.8, 0, Math.PI * 2); ctx.fill();
-      // Brow
-      M.effects.inkStroke(ctx, 2);
-      ctx.beginPath(); ctx.moveTo(2, -71); ctx.lineTo(10, -71); ctx.stroke();
+      M.effects.animeEye(ctx, 6.4, -66.5, {
+        sx: 0.62, sy: 0.68,
+        iris: state.constellationCharging ? '#88ddff' : '#553018',
+        mood: state.constellationCharging ? 'wide' : 'focus',
+        outline: 1.25,
+      });
+      M.effects.animeCheek(ctx, 1.2, -60.5, { scale: 0.42, rot: -0.12 });
 
       ctx.restore();
 

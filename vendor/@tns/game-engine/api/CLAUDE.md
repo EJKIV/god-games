@@ -1,5 +1,8 @@
 # api/ — Subtree Router
 
+Single source of truth: `CLAUDE.md`. `AGENTS.md` should be a symlink to this
+file.
+
 Read root `CLAUDE.md` first. This file covers only `api/` and descendants.
 
 ## Context

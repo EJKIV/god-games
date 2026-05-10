@@ -1,5 +1,8 @@
 # manga/ — Subtree Router
 
+Single source of truth: `CLAUDE.md`. `AGENTS.md` should be a symlink to this
+file.
+
 Read root `CLAUDE.md` first. This file covers only `manga/` and descendants.
 
 ## Context
@@ -46,6 +49,7 @@ manga/
 ├── CLAUDE.md (this file)   Agent contract for the manga subtree.
 ├── effects/                Stateless render: pure (ctx, …) → void
 │   ├── inkstroke.js        Configures ctx for bold black ink. Used by all character outlines.
+│   ├── animeface.js        Reusable anime eye + cheek hatching helpers.
 │   ├── halftone.js         Cached pattern; clip to a shape for screen-tone shadows.
 │   ├── speedlines.js       Radial impact lines.
 │   ├── sfxtext.js          Tilted outlined comic text (BAM!, FALLEN!, …).
@@ -131,5 +135,6 @@ None — this folder has no build step or tests of its own. To smoke-test a char
 
 | Date       | Change                                                                | Author |
 |------------|-----------------------------------------------------------------------|--------|
+| 2026-05-10 | Added reusable anime facial-detail helpers for stronger character reads across manga mode. | codex  |
 | 2026-05-07 | Added `daedalus.js` (3 poses incl. divine-rescue hand) + `orca.js` (breach). New `polish.onRescue` / `polish.onBreach` profiles. | jim    |
 | 2026-05-07 | Split monolithic `manga.js` into per-piece files. Added `Manga.fx`. Added Achilles `polish` profile. | jim    |

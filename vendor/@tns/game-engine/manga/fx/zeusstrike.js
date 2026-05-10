@@ -125,16 +125,23 @@
     ctx.stroke();
     ctx.restore();
 
-    // Head + beard
+    // Head + beard. Zeus is a transition-screen character, so he uses the
+    // same anime-eye language as the playable manga sprites.
     ctx.fillStyle = '#e8c89a';
-    ctx.beginPath(); ctx.arc(0, -28, 14, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(0, -29, 14.5, 16, 0, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = M.INK; ctx.lineWidth = 2.5; ctx.stroke();
-    // Hair (white windblown)
+    // Hair (white windblown, sharper anime silhouette)
     ctx.fillStyle = '#f4f4f4';
     ctx.beginPath();
-    ctx.moveTo(-14, -32); ctx.quadraticCurveTo(-22, -42, -16, -22);
-    ctx.quadraticCurveTo(-12, -36, -2, -42); ctx.quadraticCurveTo(8, -44, 14, -36);
-    ctx.quadraticCurveTo(20, -28, 14, -22); ctx.lineTo(-14, -22); ctx.closePath();
+    ctx.moveTo(-15, -33);
+    ctx.lineTo(-26, -46);
+    ctx.lineTo(-16, -39);
+    ctx.quadraticCurveTo(-10, -48, -2, -43);
+    ctx.quadraticCurveTo(8, -49, 16, -39);
+    ctx.lineTo(25, -45);
+    ctx.lineTo(15, -25);
+    ctx.lineTo(-15, -24);
+    ctx.closePath();
     ctx.fill();
     ctx.strokeStyle = M.INK; ctx.lineWidth = 1.5; ctx.stroke();
     // Beard
@@ -145,14 +152,24 @@
     ctx.quadraticCurveTo(0, -14, -8, -18); ctx.closePath();
     ctx.fill();
     ctx.strokeStyle = M.INK; ctx.lineWidth = 1.5; ctx.stroke();
-    // Eyes (intense)
-    ctx.fillStyle = M.INK;
-    ctx.beginPath(); ctx.ellipse(-5, -28, 1.5, 2.5, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse( 5, -28, 1.5, 2.5, 0, 0, Math.PI * 2); ctx.fill();
-    // Brow (angry)
-    ctx.strokeStyle = M.INK; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(-9, -33); ctx.lineTo(-2, -31); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo( 9, -33); ctx.lineTo( 2, -31); ctx.stroke();
+    if (M.effects && typeof M.effects.animeEye === 'function') {
+      M.effects.animeEye(ctx, -5.2, -29.4, {
+        sx: 0.62, sy: 0.58, iris: blink > 0.5 ? '#aaddff' : '#5f6f86',
+        mood: 'focus', outline: 1.15,
+      });
+      M.effects.animeEye(ctx, 5.2, -29.4, {
+        sx: 0.62, sy: 0.58, iris: blink > 0.5 ? '#aaddff' : '#5f6f86',
+        mood: 'focus', outline: 1.15,
+      });
+    } else {
+      ctx.fillStyle = M.INK;
+      ctx.beginPath(); ctx.ellipse(-5, -28, 1.5, 2.5, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse( 5, -28, 1.5, 2.5, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    // Brow (angry, heavy enough to survive the glow)
+    ctx.strokeStyle = M.INK; ctx.lineWidth = 2.4; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-11, -36); ctx.lineTo(-1.5, -33); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo( 11, -36); ctx.lineTo( 1.5, -33); ctx.stroke();
 
     ctx.restore();
   }

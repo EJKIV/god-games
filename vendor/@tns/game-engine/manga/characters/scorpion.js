@@ -116,14 +116,19 @@
       ctx.strokeStyle = M.INK; ctx.lineWidth = 5; ctx.lineCap = 'round';
       ctx.beginPath(); ctx.moveTo(88, -18); ctx.lineTo(100, -25); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(88, -22); ctx.lineTo(100, -13); ctx.stroke();
-      // Eyes — bold black ovals with yellow glow
-      ctx.fillStyle = M.INK;
-      ctx.beginPath(); ctx.arc(78, -14, 5, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(70, -11, 3.5, 0, Math.PI * 2); ctx.fill();
-      // Yellow iris flecks
-      ctx.fillStyle = frenzied ? '#ff2200' : '#ffd54a';
-      ctx.beginPath(); ctx.arc(79, -15, 2, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(71, -12, 1.4, 0, Math.PI * 2); ctx.fill();
+      // Anime monster eyes: large bright irises, black lash shapes, catchlights.
+      M.effects.animeEye(ctx, 78, -15, {
+        sx: 0.95, sy: 0.72, rot: -0.45,
+        white: frenzied ? '#ff7a38' : '#ffe15a',
+        iris: frenzied ? '#ff2200' : '#5c2408',
+        outline: 1.5,
+      });
+      M.effects.animeEye(ctx, 70, -12, {
+        sx: 0.62, sy: 0.52, rot: -0.42,
+        white: frenzied ? '#ff7a38' : '#ffe15a',
+        iris: frenzied ? '#ff2200' : '#5c2408',
+        outline: 1.1,
+      });
       // Brow lines
       M.effects.inkStroke(ctx, 2);
       ctx.beginPath(); ctx.moveTo(64, -28); ctx.lineTo(74, -22); ctx.stroke();

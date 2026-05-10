@@ -70,9 +70,12 @@
       ctx.beginPath(); ctx.ellipse(13, -22, 10, 7, 0.3, 0, Math.PI * 2); ctx.fill();
       M.effects.inkStroke(ctx, 2);
       ctx.stroke();
-      // Eye dot inside the patch
-      ctx.fillStyle = M.INK;
-      ctx.beginPath(); ctx.arc(13, -22, 1.6, 0, Math.PI * 2); ctx.fill();
+      // Anime eye inside the patch so the whale reads as a character, not icon art.
+      M.effects.animeEye(ctx, 13, -22, {
+        sx: 0.46, sy: 0.44, rot: 0.2,
+        white: BELLY, iris: '#68c9ff',
+        mood: 'wide', outline: 0.9,
+      });
 
       // Dorsal fin — sharp triangular silhouette
       ctx.fillStyle = BLACK;
