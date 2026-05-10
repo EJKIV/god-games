@@ -173,6 +173,7 @@ god-games/
 
 | Date       | Change                                                                                     | Author |
 |------------|--------------------------------------------------------------------------------------------|--------|
+| 2026-05-10 | Rebuilt Perseus manga gameplay around a generated three-chamber cave atlas, shared stage projection, anchored actor/effect origins, Sigma floor continuity, manga HUD, and cave-continuous title/death/victory screens. | codex  |
 | 2026-05-10 | Unified non-game manga surfaces around shared panels, place-scene mappings, traveler scale rules, hub stage depth, and manga-styled hub/Olympus/clue/place chrome. | codex  |
 | 2026-05-10 | Rebuilt Icarus manga gameplay around a coherent asset-backed flight stage, manga actor/FX atlas, stage depth model, and sun/sea zone lighting. | codex  |
 | 2026-05-10 | Replaced the crowded Achilles manga backdrop with a clean arena and tied falling arrows to their firing archers through origin-to-target trajectories. | codex  |

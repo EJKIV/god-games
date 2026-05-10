@@ -70,6 +70,8 @@ const NAME_KEY = 'godgames_playerName';
 const HP_MAX = 4;
 const PERSEUS_ACCENT = '#3db0c6';
 const PERSEUS_MANGA_SHEET = 'godgames.perseus.gorgonSheet';
+const PERSEUS_CHAMBER_ATLAS = 'godgames.perseus.chambers';
+const PERSEUS_FXHUD_SHEET = 'godgames.perseus.fxHudSheet';
 const LEVELS = [
   {
     title: 'CHAMBER I',
@@ -145,6 +147,77 @@ function caveLeft() { return Math.max(44, Engine.W * 0.06); }
 function caveRight() { return Math.min(Engine.W - 44, Engine.W * 0.94); }
 function levelCfg() { return LEVELS[levelIndex] || LEVELS[LEVELS.length - 1]; }
 function sealX() { return Engine.W * 0.33; }
+function clamp01(v) { return Math.max(0, Math.min(1, v)); }
+
+function perseusMangaArt() {
+  return window.GodGames && GodGames.MangaArt ? GodGames.MangaArt : null;
+}
+
+function perseusMangaAssetReady(id) {
+  const art = perseusMangaArt();
+  return !!(Engine.manga && art && typeof art.ready === 'function' && art.ready(id));
+}
+
+function perseusMangaStage(opts = {}) {
+  const W = opts.W || Engine.W;
+  const H = opts.H || Engine.H;
+  const gy = H * 0.78;
+  return {
+    W,
+    H,
+    groundY: gy,
+    caveLeft: Math.max(44, W * 0.06),
+    caveRight: Math.min(W - 44, W * 0.94),
+    vanishX: W * (0.50 + (opts.level || levelIndex) * 0.015),
+    horizonY: H * 0.47,
+    wallY: H * 0.55,
+    nearY: H,
+  };
+}
+
+function mangaDepth(y, opts = {}) {
+  const s = perseusMangaStage(opts);
+  return clamp01((y - s.wallY) / Math.max(1, s.groundY - s.wallY));
+}
+
+function mangaProjectX(x, y, opts = {}) {
+  const s = perseusMangaStage(opts);
+  const d = Math.pow(mangaDepth(y, opts), opts.curve ?? 0.82);
+  const backPull = opts.backPull ?? 0.58;
+  const pull = backPull + (1 - backPull) * d;
+  return s.vanishX + (x - s.vanishX) * pull;
+}
+
+function mangaScaleForY(y, farScale, nearScale, opts = {}) {
+  const d = Math.pow(mangaDepth(y, opts), opts.curve ?? 0.72);
+  return farScale + (nearScale - farScale) * d;
+}
+
+function mangaActorX(actor, opts = {}) {
+  return mangaProjectX(actor.x, actor.y || groundY(), opts);
+}
+
+function mangaPlayerShieldPoint(opts = {}) {
+  if (!player) return { x: 0, y: 0 };
+  const x = mangaActorX(player, opts) + player.facing * (25 + player.shield * 18);
+  return { x, y: player.y - 58 - player.shield * 6 };
+}
+
+function mangaPlayerHeadPoint(opts = {}) {
+  return player
+    ? { x: mangaActorX(player, opts) + player.facing * 4, y: player.y - 88 }
+    : { x: 0, y: 0 };
+}
+
+function mangaMedusaEyePoint(opts = {}) {
+  if (!medusa) return { x: 0, y: 0 };
+  return { x: mangaActorX(medusa, opts) - 34, y: medusa.y - 100 };
+}
+
+function mangaMedusaHairPoint(opts = {}) {
+  if (!medusa) return { x: 0, y: 0 };
+  return { x: mangaActorX(medusa, opts) - 28, y: medusa.y - 78 };
+}
 
 function beep(freq, dur, type, vol, slide) {
   const ac = Engine.audio._ctx;
@@ -347,6 +420,7 @@ function spawnSnake() {
     y,
     vx: -cfg.snakeSpeed - Math.random() * 70 - levelIndex * 18,
     wobble: Math.random() * Math.PI * 2,
+    age: 0,
     returning: false,
     alive: true,
   });
@@ -580,6 +654,7 @@ function update(dt) {
 
   for (const s of snakes) {
     if (!s.alive) continue;
+    s.age = (s.age || 0) + dt;
     s.x += s.vx * dt;
     s.wobble += dt * 11;
     if (s.returning) {
@@ -676,28 +751,210 @@ function updateParticles(dt) {
   }
 }
 
+function drawMangaContactShadow(x, y, opts = {}) {
+  const s = perseusMangaStage();
+  const d = mangaDepth(y);
+  const w = opts.w ?? (24 + d * 58);
+  const h = opts.h ?? (5 + d * 12);
+  const alpha = opts.alpha ?? (0.18 + d * 0.30);
+  const rot = ((x - s.vanishX) / Math.max(1, s.W)) * 0.18;
+
+  ctx.save();
+  ctx.globalAlpha *= alpha;
+  ctx.fillStyle = opts.color || 'rgba(0,0,0,0.82)';
+  ctx.beginPath();
+  ctx.ellipse(x, y + (opts.offsetY ?? 8), w, h, rot, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha *= 0.34;
+  ctx.strokeStyle = opts.rim || 'rgba(214,251,255,0.42)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.ellipse(x, y + (opts.offsetY ?? 8), w * 0.70, h * 0.52, rot, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawMangaStageFloorUnderlay(t, opts = {}) {
+  const level = opts.level ?? levelIndex;
+  const s = perseusMangaStage({ level });
+  ctx.save();
+
+  const wall = ctx.createLinearGradient(0, s.horizonY, 0, s.groundY + 26);
+  wall.addColorStop(0, level === 2 ? 'rgba(4,0,8,0.16)' : 'rgba(0,16,22,0.10)');
+  wall.addColorStop(0.60, 'rgba(0,0,0,0.02)');
+  wall.addColorStop(1, 'rgba(0,0,0,0.30)');
+  ctx.fillStyle = wall;
+  ctx.fillRect(0, s.horizonY, s.W, s.groundY - s.horizonY + 28);
+
+  const light = ctx.createRadialGradient(
+    s.vanishX,
+    s.wallY + 20,
+    s.W * 0.04,
+    s.vanishX,
+    s.groundY + 18,
+    s.W * (level === 2 ? 0.50 : 0.42),
+  );
+  light.addColorStop(0, level === 2 ? 'rgba(255,136,204,0.11)' : 'rgba(214,251,255,0.14)');
+  light.addColorStop(0.48, 'rgba(61,176,198,0.07)');
+  light.addColorStop(1, 'rgba(61,176,198,0.00)');
+  ctx.fillStyle = light;
+  ctx.fillRect(0, s.horizonY, s.W, s.H - s.horizonY);
+
+  ctx.strokeStyle = 'rgba(214,251,255,0.15)';
+  ctx.lineWidth = 1.1;
+  for (let i = 0; i <= 8; i++) {
+    const tLine = i / 8;
+    const x = s.caveLeft + (s.caveRight - s.caveLeft) * tLine;
+    const hx = s.vanishX + (x - s.vanishX) * 0.12;
+    ctx.beginPath();
+    ctx.moveTo(hx, s.wallY + 4);
+    ctx.lineTo(x, s.H);
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = level === 2 ? 'rgba(255,136,204,0.15)' : 'rgba(212,175,55,0.12)';
+  ctx.lineWidth = 1.4;
+  for (let i = 0; i < 5; i++) {
+    const y = s.wallY + 26 + i * ((s.groundY - s.wallY) / 4);
+    const inset = (1 - mangaDepth(y, { level })) * s.W * 0.22;
+    ctx.beginPath();
+    ctx.moveTo(inset, y);
+    ctx.lineTo(s.W - inset, y);
+    ctx.stroke();
+  }
+
+  if (level === 0) {
+    ctx.strokeStyle = 'rgba(214,251,255,0.18)';
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.ellipse(s.vanishX, s.groundY + 20, s.W * 0.23, 22, 0, Math.PI, 0);
+    ctx.stroke();
+  } else if (level === 1) {
+    ctx.strokeStyle = 'rgba(120,255,180,0.13)';
+    ctx.lineWidth = 2.0;
+    for (let i = 0; i < 4; i++) {
+      const x = s.W * (0.24 + i * 0.17);
+      ctx.beginPath();
+      ctx.arc(x, s.wallY + 30, 42 + i * 5, Math.PI * 0.15, Math.PI * 0.92);
+      ctx.stroke();
+    }
+  } else {
+    ctx.strokeStyle = 'rgba(212,175,55,0.17)';
+    ctx.lineWidth = 2;
+    for (let i = -1; i <= 1; i++) {
+      const x = s.vanishX + i * s.W * 0.11;
+      ctx.beginPath();
+      ctx.moveTo(x, s.wallY + 20);
+      ctx.lineTo(x + i * 32, s.H);
+      ctx.stroke();
+    }
+  }
+
+  ctx.restore();
+}
+
+function drawMangaCaveStage(t, opts = {}) {
+  const art = perseusMangaArt();
+  const W = opts.W || Engine.W;
+  const H = opts.H || Engine.H;
+  const level = opts.level ?? levelIndex;
+  const frame = opts.frame || `chamber${level + 1}`;
+  if (!Engine.manga || !art || typeof art.drawFrameCover !== 'function') return false;
+  if (!art.drawFrameCover(ctx, PERSEUS_CHAMBER_ATLAS, frame, 0, 0, W, H, {
+    focusX: opts.focusX ?? (level === 2 ? 0.54 : 0.50),
+    focusY: opts.focusY ?? 0.54,
+    alpha: opts.alpha ?? 1,
+  })) return false;
+
+  ctx.save();
+  const tint = ctx.createLinearGradient(0, 0, 0, H);
+  tint.addColorStop(0, level === 2 ? 'rgba(8,0,14,0.24)' : 'rgba(0,18,24,0.08)');
+  tint.addColorStop(0.52, 'rgba(0,0,0,0.00)');
+  tint.addColorStop(1, 'rgba(0,0,0,0.38)');
+  ctx.fillStyle = tint;
+  ctx.fillRect(0, 0, W, H);
+  drawMangaStageFloorUnderlay(t, { level });
+  if (art.mangaAtmosphere) {
+    art.mangaAtmosphere(ctx, W, H, {
+      density: 9,
+      dotSize: 1.16,
+      halftoneAlpha: opts.title ? 0.10 : 0.13,
+      scanAlpha: opts.title ? 0.05 : 0.08,
+      vignette: opts.title ? 0.45 : 0.55,
+    });
+  }
+  ctx.restore();
+  return true;
+}
+
+function drawMangaFloorSeal(t, opts = {}) {
+  if (levelIndex < LEVELS.length - 1 && sealProgress <= 0 && sealFlashT <= 0 && !opts.force) return;
+  const art = perseusMangaArt();
+  const x = opts.x ?? sealX();
+  const y = opts.y ?? (groundY() + 34);
+  const pulse = 0.5 + Math.sin(t * 4.4) * 0.5;
+  const nearSeal = Engine.state === 'playing' && player && Math.abs(player.x - x) < 58;
+  const charge = Math.min(1, sealProgress);
+  const flash = Math.min(1, sealFlashT);
+  const alpha = Math.max(opts.alpha ?? 0, charge * 0.92, flash * 0.92, nearSeal ? 0.24 + pulse * 0.08 : 0.08);
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(1.42, 0.46);
+  if (art && perseusMangaAssetReady(PERSEUS_FXHUD_SHEET)) {
+    ctx.shadowColor = charge > 0 ? '#ff88cc' : '#d6fbff';
+    ctx.shadowBlur = 12 + charge * 34 + flash * 28;
+    art.drawFrame(ctx, PERSEUS_FXHUD_SHEET, 'sigmaSeal', 0, 0, {
+      scale: 0.34 + charge * 0.08 + flash * 0.07,
+      alpha,
+    });
+  } else {
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = charge > 0 ? '#ff88cc' : '#d6fbff';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 58, 18, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.font = 'bold 44px serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Σ', 0, 0);
+  }
+  ctx.restore();
+}
+
+function drawMangaForegroundOcclusion() {
+  const s = perseusMangaStage();
+  ctx.save();
+  const bottom = ctx.createLinearGradient(0, s.H * 0.76, 0, s.H);
+  bottom.addColorStop(0, 'rgba(0,0,0,0.00)');
+  bottom.addColorStop(0.60, 'rgba(0,10,12,0.16)');
+  bottom.addColorStop(1, 'rgba(0,0,0,0.56)');
+  ctx.fillStyle = bottom;
+  ctx.fillRect(0, s.H * 0.76, s.W, s.H * 0.24);
+
+  ctx.fillStyle = 'rgba(0,0,0,0.34)';
+  ctx.beginPath();
+  ctx.moveTo(0, s.H);
+  ctx.lineTo(0, s.H * 0.68);
+  ctx.quadraticCurveTo(s.W * 0.08, s.H * 0.84, s.W * 0.19, s.H);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(s.W, s.H);
+  ctx.lineTo(s.W, s.H * 0.69);
+  ctx.quadraticCurveTo(s.W * 0.92, s.H * 0.85, s.W * 0.80, s.H);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
 function drawBackground(t) {
   const W = Engine.W, H = Engine.H, gy = groundY();
   const cfg = levelCfg();
 
-  const art = window.GodGames && GodGames.MangaArt;
-  if (Engine.manga && art && typeof art.drawScene === 'function'
-      && art.drawScene(ctx, 'perseus', 0, 0, W, H, { focusX: 0.48, focusY: 0.48 })) {
-    const cave = ctx.createLinearGradient(0, 0, 0, H);
-    cave.addColorStop(0, 'rgba(0,0,0,0.06)');
-    cave.addColorStop(0.55, 'rgba(0,12,15,0.24)');
-    cave.addColorStop(1, 'rgba(0,0,0,0.72)');
-    ctx.fillStyle = cave;
-    ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = 'rgba(2,14,18,0.66)';
-    ctx.fillRect(0, gy, W, H - gy);
-    ctx.strokeStyle = 'rgba(214,251,255,0.28)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(0, gy);
-    ctx.lineTo(W, gy);
-    ctx.stroke();
-    if (art.mangaAtmosphere) art.mangaAtmosphere(ctx, W, H, { halftoneAlpha: 0.12, scanAlpha: 0.09, vignette: 0.56 });
+  if (Engine.manga && drawMangaCaveStage(t)) {
     ctx.save();
     ctx.textAlign = 'center';
     ctx.font = 'bold 13px monospace';
@@ -834,6 +1091,106 @@ function drawMirrorBeam(t) {
   }
 }
 
+function drawMangaGazeCone(t) {
+  if (!player || !medusa || (medusa.phase !== 'windup' && medusa.phase !== 'gaze')) return;
+  const eye = mangaMedusaEyePoint();
+  const shieldPoint = mangaPlayerShieldPoint();
+  const headPoint = mangaPlayerHeadPoint();
+  const playerFacingMedusa = player.facing > 0 && player.x < medusa.x;
+  const shielded = playerFacingMedusa && player.shield > 0.45 && mirrorDullT <= 0;
+  const target = shielded ? shieldPoint : headPoint;
+  const active = medusa.phase === 'gaze';
+  const strength = active ? 0.26 + 0.05 * Math.sin(t * 24) : 0.11;
+  const endX = player && player.x < medusa.x ? target.x : caveLeft() - 30;
+  const endY = player && player.x < medusa.x ? target.y : eye.y + 24;
+  const spread = active ? 82 : 46;
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+  const g = ctx.createLinearGradient(eye.x, eye.y, endX, endY);
+  g.addColorStop(0, `rgba(188,255,124,${strength * 1.25})`);
+  g.addColorStop(0.45, `rgba(132,255,168,${strength * 0.74})`);
+  g.addColorStop(1, 'rgba(132,255,168,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.moveTo(eye.x, eye.y);
+  ctx.quadraticCurveTo((eye.x + endX) * 0.55, eye.y - 32, endX, endY - spread);
+  ctx.lineTo(endX, endY + spread);
+  ctx.quadraticCurveTo((eye.x + endX) * 0.55, eye.y + 24, eye.x, eye.y);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = `rgba(220,255,170,${active ? 0.42 : 0.20})`;
+  ctx.lineWidth = active ? 3.5 : 2;
+  ctx.shadowColor = '#dcff9b';
+  ctx.shadowBlur = active ? 18 : 8;
+  for (let i = -1; i <= 1; i++) {
+    ctx.beginPath();
+    ctx.moveTo(eye.x, eye.y);
+    ctx.quadraticCurveTo((eye.x + endX) * 0.52, eye.y + i * 22, endX, endY + i * spread * 0.55);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  const art = perseusMangaArt();
+  if (art && perseusMangaAssetReady(PERSEUS_FXHUD_SHEET)) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.shadowColor = '#dcff9b';
+    ctx.shadowBlur = active ? 18 : 9;
+    art.drawFrame(ctx, PERSEUS_FXHUD_SHEET, 'gazeFlare', eye.x + 3, eye.y + 1, {
+      scale: active ? 0.13 : 0.09,
+      alpha: active ? 0.78 : 0.42,
+      flipX: true,
+    });
+    ctx.restore();
+  }
+}
+
+function drawMangaMirrorBeam(t) {
+  const active = mirrorFocus > 0.02 || mirrorFlashT > 0 || sealProgress > 0.02;
+  if (!active || !player || !medusa) return;
+  const shield = mangaPlayerShieldPoint();
+  const eye = mangaMedusaEyePoint();
+  const flash = mirrorFlashT > 0 ? Math.min(1, mirrorFlashT / 0.18) : 0;
+  const beamAlpha = Math.min(0.90, 0.16 + mirrorFocus * 0.46 + flash * 0.42);
+
+  if (mirrorFocus > 0.02 || mirrorFlashT > 0) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.lineCap = 'round';
+    ctx.shadowColor = '#d6fbff';
+    ctx.shadowBlur = 14 + flash * 24;
+    for (let i = 0; i < 3; i++) {
+      ctx.globalAlpha = beamAlpha * (i === 0 ? 0.36 : i === 1 ? 0.58 : 0.96);
+      ctx.strokeStyle = i === 2 ? '#ffffff' : '#d6fbff';
+      ctx.lineWidth = (9 - i * 3) + flash * 4;
+      ctx.beginPath();
+      ctx.moveTo(shield.x, shield.y);
+      ctx.quadraticCurveTo((shield.x + eye.x) * 0.50, shield.y - 26 - Math.sin(t * 12) * 7, eye.x, eye.y);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  if (sealProgress > 0.02) {
+    const sx = sealX();
+    const sy = groundY() + 28;
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = 0.20 + sealProgress * 0.62;
+    ctx.strokeStyle = '#ff88cc';
+    ctx.shadowColor = '#ff88cc';
+    ctx.shadowBlur = 16 + sealProgress * 20;
+    ctx.lineWidth = 3 + sealProgress * 4;
+    ctx.beginPath();
+    ctx.moveTo(shield.x, shield.y);
+    ctx.quadraticCurveTo((shield.x + sx) * 0.5, shield.y + 54, sx, sy);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
 function drawPerseus(t) {
   if (Engine.manga && drawPerseusMangaSprite()) return;
   if (Engine.manga && window.Manga && Manga.effects && typeof Manga.effects.inkStroke === 'function') {
@@ -907,39 +1264,80 @@ function drawPerseus(t) {
 }
 
 function perseusMangaAssetsReady() {
-  return !!(Engine.manga
-    && window.GodGames && GodGames.MangaArt
-    && window.Manga && Manga.assets
-    && typeof Manga.assets.ready === 'function'
-    && Manga.assets.ready(PERSEUS_MANGA_SHEET));
+  return perseusMangaAssetReady(PERSEUS_MANGA_SHEET);
 }
 
-function currentPerseusMangaFrame() {
-  if (Engine.state === 'victory') return 'perseusVictory';
-  if (player.petrify > 0.55 || Engine.state === 'dead') return 'perseusStone';
-  if (player.slashT > 0) return 'perseusSlash';
-  if (player.shield > 0.45 || mirrorFocus > 0.02 || mirrorFlashT > 0) return 'perseusMirror';
-  if (Math.abs(player.vx) > 12) return 'perseusRun';
-  return 'perseusIdle';
+function currentPerseusMangaMotion() {
+  if (Engine.state === 'victory') return { anim: 'perseusVictory', t: Engine.time, flipX: false };
+  if (player.petrify > 0.55 || Engine.state === 'dead') return { anim: 'perseusStone', t: Engine.time, flipX: player.facing < 0 };
+  if (player.hitFlash > 0) return { anim: 'perseusHit', t: 0.35 - player.hitFlash, flipX: player.facing < 0 };
+  if (player.slashT > 0) return { anim: 'perseusSlash', t: 0.22 - player.slashT, flipX: player.facing < 0 };
+  if (player.shield > 0.45 || mirrorFocus > 0.02 || mirrorFlashT > 0) return { anim: 'perseusMirror', t: Engine.time, flipX: player.facing < 0 };
+  if (Math.abs(player.vx) > 12) return { anim: 'perseusRun', t: player.walkPhase / 9.5, flipX: player.facing < 0 };
+  return { anim: 'perseusIdle', t: Engine.time, flipX: player.facing < 0 };
 }
 
 function drawPerseusMangaSprite() {
   if (!perseusMangaAssetsReady()) return false;
   const compact = Math.min(Engine.W, Engine.H);
-  const scale = Math.max(0.27, Math.min(0.36, compact / 2100));
-  const frame = currentPerseusMangaFrame();
+  const nearScale = Math.max(0.29, Math.min(0.39, compact / 1900));
+  const scale = mangaScaleForY(player.y, nearScale * 0.82, nearScale);
+  const x = mangaActorX(player);
+  const y = player.y + 8;
+  const motion = currentPerseusMangaMotion();
+  const art = perseusMangaArt();
+  const fxReady = art && perseusMangaAssetReady(PERSEUS_FXHUD_SHEET);
+  const shield = mangaPlayerShieldPoint();
+
+  ctx.save();
+  if (fxReady && Math.abs(player.vx) > 18) {
+    art.drawFrame(ctx, PERSEUS_FXHUD_SHEET, 'dustPuff', x - player.facing * 30, player.y + 14, {
+      scale: 0.13 + scale * 0.16,
+      alpha: 0.26 + Math.abs(Math.sin(player.walkPhase)) * 0.18,
+      flipX: player.facing < 0,
+    });
+  }
+  if (fxReady && mirrorDullT > 0) {
+    art.drawFrame(ctx, PERSEUS_FXHUD_SHEET, 'mirrorDull', shield.x, shield.y + 3, {
+      scale: 0.105 + scale * 0.08,
+      alpha: Math.min(0.72, mirrorDullT),
+      flipX: player.facing < 0,
+    });
+  } else if (player.shield > 0.48) {
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = 0.18 + player.shield * 0.20 + mirrorFocus * 0.25;
+    ctx.fillStyle = '#d6fbff';
+    ctx.shadowColor = '#d6fbff';
+    ctx.shadowBlur = 18;
+    ctx.beginPath();
+    ctx.ellipse(shield.x, shield.y, 34, 46, -0.10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
 
   ctx.save();
   if (player.hitFlash > 0) {
     ctx.filter = 'brightness(2.5)';
     ctx.shadowColor = '#d6fbff';
     ctx.shadowBlur = 16;
+  } else if (player.shield > 0.55 || mirrorFocus > 0.02) {
+    ctx.shadowColor = '#d6fbff';
+    ctx.shadowBlur = 12 + mirrorFocus * 12;
   }
-  const drew = Manga.assets.drawFrame(ctx, PERSEUS_MANGA_SHEET, frame, player.x, player.y + 5, {
+  const drew = art.drawAnimation(ctx, PERSEUS_MANGA_SHEET, motion.anim, motion.t, x, y, {
     scale,
-    flipX: player.facing < 0,
+    flipX: motion.flipX,
   });
   ctx.restore();
+
+  if (drew && fxReady && player.hitFlash > 0) {
+    art.drawFrame(ctx, PERSEUS_FXHUD_SHEET, player.petrify > 0.45 ? 'stoneShard' : 'hitBurst', x, player.y - 54, {
+      scale: 0.13 + scale * 0.20,
+      alpha: Math.min(0.78, player.hitFlash * 1.9),
+    });
+  }
   return drew;
 }
 
@@ -1133,7 +1531,7 @@ function drawMangaMedusa(t) {
 }
 
 function drawMedusa(t) {
-  if (Engine.manga && drawMedusaMangaSprite()) return;
+  if (Engine.manga && drawMedusaMangaSprite(t)) return;
   if (Engine.manga && window.Manga && Manga.effects && typeof Manga.effects.inkStroke === 'function') {
     drawMangaMedusa(t);
     return;
@@ -1188,11 +1586,51 @@ function currentMedusaMangaFrame() {
   return 'medusaIdle';
 }
 
-function drawMedusaMangaSprite() {
+function currentMedusaMangaMotion() {
+  if (medusa.hurtFlash > 0 || sealFlashT > 0) return { anim: 'medusaHurt', t: Math.max(0, 0.35 - medusa.hurtFlash), flipX: true };
+  if (medusa.phase === 'gaze') return { anim: 'medusaGaze', t: Engine.time, flipX: true };
+  if (medusa.phase === 'windup') return { anim: 'medusaWatch', t: Engine.time, flipX: true };
+  return { anim: 'medusaIdle', t: Engine.time, flipX: true };
+}
+
+function drawMangaVeil(t) {
+  if (!medusa || medusa.veil <= 0) return;
+  const art = perseusMangaArt();
+  const eye = mangaMedusaEyePoint();
+  const centerX = eye.x + 22;
+  const centerY = medusa.y - 68;
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+  ctx.strokeStyle = '#d6fbff';
+  ctx.lineWidth = 2.2;
+  ctx.shadowColor = '#d6fbff';
+  ctx.shadowBlur = 10;
+  ctx.globalAlpha = 0.34 + medusa.veil * 0.13;
+  for (let i = 0; i < medusa.veil; i++) {
+    const r = 58 + i * 17 + Math.sin(t * 3.2 + i) * 3;
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, r, -0.82, Math.PI + 0.64);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  if (art && perseusMangaAssetReady(PERSEUS_FXHUD_SHEET) && medusa.hurtFlash > 0) {
+    art.drawFrame(ctx, PERSEUS_FXHUD_SHEET, 'veilCrack', centerX - 12, centerY + 2, {
+      scale: 0.20,
+      alpha: Math.min(0.85, medusa.hurtFlash * 2.5),
+    });
+  }
+}
+
+function drawMedusaMangaSprite(t) {
   if (!perseusMangaAssetsReady()) return false;
   const compact = Math.min(Engine.W, Engine.H);
-  const scale = Math.max(0.34, Math.min(0.46, compact / 1650));
-  const frame = currentMedusaMangaFrame();
+  const nearScale = Math.max(0.35, Math.min(0.48, compact / 1550));
+  const scale = mangaScaleForY(medusa.y, nearScale * 0.86, nearScale);
+  const motion = currentMedusaMangaMotion();
+  const x = mangaActorX(medusa);
+  const y = medusa.y + 8;
+  const art = perseusMangaArt();
 
   ctx.save();
   if (medusa.phase === 'gaze') {
@@ -1200,25 +1638,67 @@ function drawMedusaMangaSprite() {
     ctx.shadowBlur = 22;
   }
   if (medusa.hurtFlash > 0) ctx.filter = 'brightness(2.8) saturate(0.2)';
-  const drew = Manga.assets.drawFrame(ctx, PERSEUS_MANGA_SHEET, frame, medusa.x, medusa.y + 8, {
+  const drew = art.drawAnimation(ctx, PERSEUS_MANGA_SHEET, motion.anim, motion.t, x, y, {
     scale,
-    flipX: true,
+    flipX: motion.flipX,
   });
   ctx.restore();
+
+  if (drew && medusa.veil > 0) {
+    drawMangaVeil(t);
+  }
   return drew;
 }
 
 function drawSnakes(t) {
   for (const s of snakes) {
     if (Engine.manga && perseusMangaAssetsReady()) {
+      const art = perseusMangaArt();
       const compact = Math.min(Engine.W, Engine.H);
-      const scale = Math.max(0.13, Math.min(0.19, compact / 3900));
-      const frame = s.returning ? 'snakeReflect' : 'snake';
-      if (Manga.assets.drawFrame(ctx, PERSEUS_MANGA_SHEET, frame, s.x, s.y + Math.sin(s.wobble) * 5, {
-        scale,
-        flipX: s.returning,
-        rotate: Math.sin(s.wobble) * 0.08,
-      })) continue;
+      const sx = mangaProjectX(s.x, s.y);
+      const sy = s.y + Math.sin(s.wobble) * 5;
+      const scale = mangaScaleForY(s.y, Math.max(0.10, compact / 5200), Math.max(0.14, Math.min(0.20, compact / 3600)));
+      const hair = mangaMedusaHairPoint();
+      const fxReady = art && perseusMangaAssetReady(PERSEUS_FXHUD_SHEET);
+
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      if (s.returning || (s.age || 0) < 0.42) {
+        const trailAlpha = s.returning ? 0.44 : Math.max(0, 0.38 * (1 - (s.age || 0) / 0.42));
+        ctx.globalAlpha = trailAlpha;
+        ctx.strokeStyle = s.returning ? '#d6fbff' : '#b8f28f';
+        ctx.shadowColor = ctx.strokeStyle;
+        ctx.shadowBlur = s.returning ? 14 : 8;
+        ctx.lineWidth = s.returning ? 3 : 2;
+        ctx.beginPath();
+        ctx.moveTo(hair.x, hair.y);
+        ctx.quadraticCurveTo((hair.x + sx) * 0.50, Math.min(hair.y, sy) - 34, sx, sy);
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      let drew = false;
+      ctx.save();
+      if (s.returning) {
+        ctx.shadowColor = '#d6fbff';
+        ctx.shadowBlur = 16;
+      }
+      if (fxReady) {
+        drew = art.drawFrame(ctx, PERSEUS_FXHUD_SHEET, s.returning ? 'serpentReflect' : 'serpentFly', sx, sy, {
+          scale: scale * 1.34,
+          flipX: s.returning,
+          rotate: Math.sin(s.wobble) * 0.08,
+        });
+      }
+      if (!drew && art && typeof art.drawAnimation === 'function') {
+        drew = art.drawAnimation(ctx, PERSEUS_MANGA_SHEET, s.returning ? 'snakeReflect' : 'snakeFly', t + s.wobble, sx, sy, {
+          scale,
+          flipX: s.returning,
+          rotate: Math.sin(s.wobble) * 0.08,
+        });
+      }
+      ctx.restore();
+      if (drew) continue;
     }
     ctx.save();
     ctx.translate(s.x, s.y + Math.sin(s.wobble) * 5);
@@ -1244,12 +1724,50 @@ function drawHazards(t) {
     const x = h.drawX || h.x;
     const y = h.drawY || h.baseY;
     if (Engine.manga && perseusMangaAssetsReady()) {
+      const art = perseusMangaArt();
       const compact = Math.min(Engine.W, Engine.H);
-      const scale = Math.max(0.16, Math.min(0.22, compact / 3500));
-      if (Manga.assets.drawFrame(ctx, PERSEUS_MANGA_SHEET, 'hazard', x, y + 2, {
-        scale,
-        rotate: Math.sin(h.phase + t) * 0.12,
-      })) continue;
+      const baseX = mangaProjectX(h.x, h.baseY);
+      const sx = mangaProjectX(x, y);
+      const sy = y + 2;
+      const scale = mangaScaleForY(h.baseY, Math.max(0.13, compact / 4600), Math.max(0.17, Math.min(0.24, compact / 3200)));
+      const fxReady = art && perseusMangaAssetReady(PERSEUS_FXHUD_SHEET);
+      ctx.save();
+      ctx.globalAlpha = 0.52;
+      ctx.strokeStyle = 'rgba(212,175,55,0.45)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.ellipse(baseX, h.baseY + 9, 42, 11, ((baseX - Engine.W * 0.5) / Engine.W) * 0.2, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(0,0,0,0.36)';
+      ctx.beginPath();
+      ctx.ellipse(baseX, h.baseY + 11, 32, 7, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 0.26;
+      ctx.strokeStyle = '#d6fbff';
+      ctx.beginPath();
+      ctx.moveTo(baseX, h.baseY - 2);
+      ctx.lineTo(sx, sy + 30);
+      ctx.stroke();
+      ctx.restore();
+
+      let drew = false;
+      ctx.save();
+      ctx.shadowColor = '#d6fbff';
+      ctx.shadowBlur = 10;
+      if (fxReady) {
+        drew = art.drawFrame(ctx, PERSEUS_FXHUD_SHEET, 'floorHazard', sx, sy, {
+          scale: scale * 1.25,
+          rotate: Math.sin(h.phase + t) * 0.12,
+        });
+      }
+      if (!drew && art && typeof art.drawAnimation === 'function') {
+        drew = art.drawAnimation(ctx, PERSEUS_MANGA_SHEET, 'caveHazard', t + h.phase, sx, sy, {
+          scale,
+          rotate: Math.sin(h.phase + t) * 0.12,
+        });
+      }
+      ctx.restore();
+      if (drew) continue;
     }
     ctx.save();
     ctx.translate(x, y);
@@ -1273,6 +1791,10 @@ function drawHazards(t) {
 }
 
 function drawSerpentSeal(t) {
+  if (Engine.manga) {
+    drawMangaFloorSeal(t);
+    return;
+  }
   if (levelIndex < LEVELS.length - 1 && sealProgress <= 0 && sealFlashT <= 0) return;
   const x = sealX();
   const y = groundY() + 35;
@@ -1344,21 +1866,387 @@ function drawParticles() {
   for (const p of sparks) {
     ctx.globalAlpha = Math.max(0, p.t);
     ctx.fillStyle = p.color;
+    if (Engine.manga) {
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur = 8;
+    }
     ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
   }
+  ctx.shadowBlur = 0;
   ctx.globalAlpha = 1;
   ctx.textAlign = 'center';
   ctx.font = 'bold 13px monospace';
   for (const f of floaters) {
     ctx.globalAlpha = Math.max(0, f.t);
+    if (Engine.manga && window.Manga && Manga.effects && Manga.effects.sfxText) {
+      Manga.effects.sfxText(ctx, f.x, f.y, f.text, {
+        size: f.text.length > 12 ? 24 : 34,
+        color: f.color || '#d6fbff',
+        outline: '#0a0a0a',
+        tilt: -7,
+        alpha: Math.max(0, f.t),
+      });
+      continue;
+    }
     ctx.fillStyle = f.color;
     ctx.fillText(f.text, f.x, f.y);
   }
   ctx.globalAlpha = 1;
 }
 
+function drawMangaActorShadows() {
+  for (const h of hazards) {
+    drawMangaContactShadow(mangaProjectX(h.x, h.baseY), h.baseY, {
+      w: 34,
+      h: 8,
+      alpha: 0.30,
+      color: 'rgba(0,0,0,0.78)',
+      offsetY: 10,
+    });
+  }
+  for (const s of snakes) {
+    drawMangaContactShadow(mangaProjectX(s.x, s.y), s.y + 8, {
+      w: s.returning ? 26 : 22,
+      h: 5,
+      alpha: s.returning ? 0.22 : 0.26,
+      color: s.returning ? 'rgba(0,30,34,0.70)' : 'rgba(0,0,0,0.70)',
+      offsetY: 7,
+    });
+  }
+  if (medusa) {
+    drawMangaContactShadow(mangaActorX(medusa), medusa.y, {
+      w: 62,
+      h: 13,
+      alpha: 0.40,
+      color: 'rgba(0,0,0,0.84)',
+      offsetY: 12,
+    });
+  }
+  if (player) {
+    drawMangaContactShadow(mangaActorX(player), player.y, {
+      w: player.petrify > 0.55 ? 42 : 52,
+      h: player.petrify > 0.55 ? 11 : 13,
+      alpha: Engine.state === 'dead' ? 0.30 : 0.44,
+      color: 'rgba(0,0,0,0.86)',
+      offsetY: 12,
+    });
+  }
+}
+
+function drawMangaImpactEffects(t) {
+  const art = perseusMangaArt();
+  if (!art || !perseusMangaAssetReady(PERSEUS_FXHUD_SHEET)) return;
+  if (medusa && (mirrorFlashT > 0 || medusa.hurtFlash > 0 || sealFlashT > 0)) {
+    const eye = mangaMedusaEyePoint();
+    const alpha = Math.min(0.90, mirrorFlashT * 2.8 + medusa.hurtFlash * 2.2 + sealFlashT * 1.4);
+    art.drawFrame(ctx, PERSEUS_FXHUD_SHEET, mirrorFlashT > 0 ? 'mirrorImpact' : 'veilCrack', eye.x - 6, eye.y + 10, {
+      scale: 0.18 + alpha * 0.08,
+      alpha,
+      rotate: Math.sin(t * 8) * 0.06,
+    });
+  }
+  if (player && mirrorDullT > 0) {
+    const shield = mangaPlayerShieldPoint();
+    art.drawFrame(ctx, PERSEUS_FXHUD_SHEET, 'mirrorDull', shield.x, shield.y, {
+      scale: 0.17,
+      alpha: Math.min(0.62, mirrorDullT * 0.75),
+      flipX: player.facing < 0,
+    });
+  }
+  if (player && player.hitFlash > 0) {
+    const head = mangaPlayerHeadPoint();
+    art.drawFrame(ctx, PERSEUS_FXHUD_SHEET, 'hitBurst', head.x, head.y + 28, {
+      scale: 0.18,
+      alpha: Math.min(0.72, player.hitFlash * 2.0),
+    });
+  }
+  if (sealFlashT > 0 || sealProgress > 0.02) {
+    drawMangaFloorSeal(t, { alpha: Math.min(1, sealProgress + sealFlashT) });
+  }
+}
+
+function drawMangaChamberCuts(t) {
+  const cfg = levelCfg();
+  const W = Engine.W;
+  const H = Engine.H;
+  const art = perseusMangaArt();
+
+  if (levelTransitionT > 0) {
+    const p = clamp01(1 - levelTransitionT / 1.9);
+    ctx.save();
+    if (pendingLevel != null && art && typeof art.drawFrameCover === 'function') {
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(W * (0.66 - 0.30 * p), 0);
+      ctx.lineTo(W, 0);
+      ctx.lineTo(W, H);
+      ctx.lineTo(W * (0.38 + 0.18 * p), H);
+      ctx.closePath();
+      ctx.clip();
+      art.drawFrameCover(ctx, PERSEUS_CHAMBER_ATLAS, `chamber${pendingLevel + 1}`, 0, 0, W, H, {
+        focusY: 0.54,
+        alpha: 0.86,
+      });
+      ctx.fillStyle = 'rgba(0,0,0,0.28)';
+      ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+    }
+    ctx.fillStyle = `rgba(0,0,0,${0.42 + p * 0.18})`;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(W * (0.62 - 0.22 * p), 0);
+    ctx.lineTo(W * (0.34 + 0.10 * p), H);
+    ctx.lineTo(0, H);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#d6fbff';
+    ctx.lineWidth = 4;
+    ctx.globalAlpha = 0.62;
+    ctx.beginPath();
+    ctx.moveTo(W * (0.60 - 0.22 * p), 0);
+    ctx.lineTo(W * (0.33 + 0.10 * p), H);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    if (window.Manga && Manga.effects && Manga.effects.sfxText) {
+      Manga.effects.sfxText(ctx, W * 0.50, H * 0.28, 'PANEL CUT', {
+        size: Math.max(28, Math.min(56, W / 16)),
+        color: '#d6fbff',
+        outline: '#0a0a0a',
+        tilt: -8,
+        alpha: 0.70 + 0.30 * Math.sin(t * 10) ** 2,
+      });
+    }
+    ctx.restore();
+  }
+
+  if (levelBannerT > 0) {
+    const a = Math.min(1, levelBannerT / 0.5);
+    const compactHud = H < 520;
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.textAlign = 'center';
+    ctx.lineJoin = 'round';
+    ctx.font = `900 ${compactHud ? 24 : 34}px serif`;
+    ctx.strokeStyle = '#0a0a0a';
+    ctx.lineWidth = 6;
+    ctx.strokeText(cfg.name, W / 2, compactHud ? H * 0.20 : H * 0.24);
+    ctx.fillStyle = '#d6fbff';
+    ctx.shadowColor = '#3db0c6';
+    ctx.shadowBlur = 20;
+    ctx.fillText(cfg.name, W / 2, compactHud ? H * 0.20 : H * 0.24);
+    ctx.shadowBlur = 0;
+    if (!compactHud) {
+      ctx.font = 'bold 13px monospace';
+      ctx.lineWidth = 4;
+      ctx.strokeText(cfg.prompt, W / 2, H * 0.24 + 30);
+      ctx.fillStyle = 'rgba(240,250,255,0.90)';
+      ctx.fillText(cfg.prompt, W / 2, H * 0.24 + 30);
+    }
+    ctx.restore();
+  }
+}
+
+function drawMangaWorld(t) {
+  if (!drawMangaCaveStage(t)) return false;
+  drawMangaFloorSeal(t);
+  drawMangaGazeCone(t);
+  drawMangaMirrorBeam(t);
+  drawMangaActorShadows();
+  drawSnakes(t);
+  drawHazards(t);
+  drawMedusa(t);
+  drawPerseus(t);
+  drawMangaForegroundOcclusion();
+  drawMangaImpactEffects(t);
+  drawParticles();
+
+  if (window.Manga && Manga.effects) {
+    Manga.effects.vignette(ctx, Engine.W, Engine.H, { strength: 0.52 });
+    Manga.effects.scanlines(ctx, Engine.W, Engine.H, { spacing: 4, alpha: 0.08 });
+    if (medusa && medusa.phase === 'gaze' && Manga.effects.speedLines) {
+      const eye = mangaMedusaEyePoint();
+      Manga.effects.speedLines(ctx, eye.x, eye.y, {
+        count: 16,
+        innerR: 42,
+        outerR: 210,
+        color: '#dcff9b',
+        width: 2,
+        jitter: 0.35,
+      });
+    }
+  }
+  drawMangaChamberCuts(t);
+  return true;
+}
+
+function drawMangaHudBar(x, y, w, h, pct, color, back = 'rgba(8,14,16,0.72)') {
+  ctx.fillStyle = back;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, h / 2);
+  ctx.fill();
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w * clamp01(pct), h, h / 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(10,10,10,0.82)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, h / 2);
+  ctx.stroke();
+}
+
+function drawMangaAbilityIcon(cx, cy, key, frame, active, alpha = 1) {
+  const art = perseusMangaArt();
+  const r = 22;
+  ctx.save();
+  ctx.fillStyle = active ? 'rgba(214,251,255,0.32)' : 'rgba(0,0,0,0.50)';
+  ctx.strokeStyle = active ? '#d6fbff' : 'rgba(212,175,55,0.54)';
+  ctx.lineWidth = 2.5;
+  if (active) {
+    ctx.shadowColor = '#d6fbff';
+    ctx.shadowBlur = 12;
+  }
+  ctx.globalAlpha = alpha;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  if (art && perseusMangaAssetReady(PERSEUS_FXHUD_SHEET)) {
+    art.drawFrame(ctx, PERSEUS_FXHUD_SHEET, frame, cx, cy, {
+      scale: 0.082,
+      alpha: active ? 0.96 : 0.58,
+    });
+  }
+  ctx.font = '900 11px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#0a0a0a';
+  ctx.strokeText(key, cx, cy + r + 13);
+  ctx.fillStyle = active ? '#d6fbff' : 'rgba(230,240,240,0.62)';
+  ctx.fillText(key, cx, cy + r + 13);
+  ctx.textBaseline = 'alphabetic';
+  ctx.restore();
+}
+
+function drawMangaHud() {
+  const art = perseusMangaArt();
+  const W = Engine.W;
+  const H = Engine.H;
+  const cfg = levelCfg();
+  const compact = H < 520 || W < 720;
+  const panelAlpha = compact ? 0.40 : 0.48;
+
+  ctx.save();
+  ctx.fillStyle = `rgba(0,0,0,${panelAlpha})`;
+  ctx.strokeStyle = 'rgba(212,175,55,0.46)';
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.roundRect(14, 14, compact ? 148 : 176, compact ? 42 : 54, 6);
+  ctx.fill();
+  ctx.stroke();
+
+  if (art && perseusMangaAssetReady(PERSEUS_FXHUD_SHEET)) {
+    const step = compact ? 28 : 33;
+    for (let i = 0; i < HP_MAX; i++) {
+      art.drawFrame(ctx, PERSEUS_FXHUD_SHEET, i < player.hp ? 'heartFull' : 'heartEmpty', 36 + i * step, compact ? 36 : 42, {
+        scale: compact ? 0.060 : 0.073,
+        alpha: i < player.hp ? 0.98 : 0.56,
+      });
+    }
+  } else {
+    Engine.hud.drawHearts(20, 28, player.hp, HP_MAX);
+  }
+
+  ctx.textAlign = 'center';
+  ctx.lineJoin = 'round';
+  ctx.font = `900 ${compact ? 13 : 16}px monospace`;
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = '#0a0a0a';
+  ctx.strokeText(cfg.title + ' / III', W / 2, compact ? 25 : 29);
+  ctx.fillStyle = '#d6fbff';
+  ctx.shadowColor = '#3db0c6';
+  ctx.shadowBlur = 8;
+  ctx.fillText(cfg.title + ' / III', W / 2, compact ? 25 : 29);
+  ctx.shadowBlur = 0;
+  if (!compact && levelBannerT <= 0.2) {
+    ctx.font = 'bold 11px monospace';
+    ctx.fillStyle = 'rgba(214,251,255,0.72)';
+    ctx.fillText(cfg.prompt, W / 2, 49);
+  }
+
+  const boxW = compact ? 184 : 226;
+  const boxH = player.petrify > 0.01 ? (compact ? 68 : 82) : (compact ? 56 : 70);
+  const boxX = W - boxW - 14;
+  ctx.fillStyle = `rgba(0,0,0,${panelAlpha})`;
+  ctx.strokeStyle = 'rgba(212,175,55,0.46)';
+  ctx.beginPath();
+  ctx.roundRect(boxX, 14, boxW, boxH, 6);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.textAlign = 'right';
+  ctx.font = `900 ${compact ? 11 : 13}px monospace`;
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#0a0a0a';
+  ctx.fillStyle = '#d6fbff';
+  ctx.strokeText('STRIKES ' + levelHits + '/' + cfg.hitsNeeded, W - 24, compact ? 29 : 31);
+  ctx.fillText('STRIKES ' + levelHits + '/' + cfg.hitsNeeded, W - 24, compact ? 29 : 31);
+  const barX = boxX + 12;
+  const barW = boxW - 24;
+  const y0 = compact ? 38 : 42;
+  drawMangaHudBar(barX, y0, barW, 7, mirrorFocus, '#d6fbff');
+  drawMangaHudBar(barX, y0 + 11, barW, 6, mirrorHeat, mirrorHeat > 0.78 ? '#ff9b5f' : '#D4AF37');
+  drawMangaHudBar(barX, y0 + 21, barW, 6, player.shield, mirrorDullT > 0 ? '#788b90' : '#bdf7ff');
+  if (player.petrify > 0.01) {
+    drawMangaHudBar(barX, y0 + 32, barW, 7, player.petrify, '#c7d0cd', 'rgba(170,178,176,0.22)');
+  }
+
+  ctx.textAlign = 'left';
+  ctx.font = `900 ${compact ? 10 : 12}px monospace`;
+  ctx.lineWidth = 3;
+  const phaseText = medusa.phase === 'gaze' ? 'GAZE' : medusa.phase.toUpperCase();
+  const phaseColor = medusa.phase === 'gaze' ? '#dcff9b' : '#8bc88d';
+  ctx.strokeStyle = '#0a0a0a';
+  ctx.strokeText(phaseText, 22, compact ? 84 : 92);
+  ctx.fillStyle = phaseColor;
+  ctx.fillText(phaseText, 22, compact ? 84 : 92);
+  if (!compact) {
+    const status = medusa.veil > 0
+      ? 'VEIL ' + medusa.veil
+      : mirrorDullT > 0
+        ? 'MIRROR DULLED'
+        : medusa.phase === 'gaze'
+          ? 'ALIGN ' + Math.round(mirrorAlignment() * 100) + '%'
+          : reflectedSerpents > 0
+            ? 'SERPENTS ' + reflectedSerpents
+            : '';
+    if (status) {
+      ctx.strokeText(status, 22, 110);
+      ctx.fillStyle = mirrorDullT > 0 ? '#ff9b5f' : '#d6fbff';
+      ctx.fillText(status, 22, 110);
+    }
+  }
+
+  if (sealProgress > 0.02) {
+    const sw = compact ? 112 : 150;
+    const sx = W / 2 - sw / 2;
+    const sy = H - (compact ? 30 : 42);
+    drawMangaHudBar(sx, sy, sw, 8, sealProgress, '#ff88cc', 'rgba(255,136,204,0.18)');
+  }
+
+  if (!compact) {
+    drawMangaAbilityIcon(W - 92, H - 76, 'Z', 'mirrorIcon', player.shield > 0.45 || mirrorFocus > 0.02, 0.96);
+    drawMangaAbilityIcon(W - 36, H - 76, 'X', 'swordIcon', player.slashT > 0, 0.96);
+  }
+  ctx.restore();
+  return true;
+}
+
 function drawWorld() {
   const t = Engine.time;
+  if (Engine.manga && drawMangaWorld(t)) return;
   drawBackground(t);
   drawSerpentSeal(t);
   drawGazeCone(t);
@@ -1381,6 +2269,7 @@ function drawWorld() {
 }
 
 function drawHud() {
+  if (Engine.manga && drawMangaHud()) return;
   Engine.hud.drawHearts(20, 28, player.hp, HP_MAX);
   const W = Engine.W;
   const cfg = levelCfg();
@@ -1493,8 +2382,8 @@ function beginRun() {
 function renderPerseusTitle(ctx2, eng) {
   const W = eng.W, H = eng.H;
   const art = window.GodGames && GodGames.MangaArt;
-  if (!eng.manga || !art || typeof art.drawScene !== 'function'
-      || !art.drawScene(ctx2, 'perseus', 0, 0, W, H, { focusX: 0.50, focusY: 0.48 })) {
+  if (!eng.manga || !art || typeof art.drawFrameCover !== 'function'
+      || !art.drawFrameCover(ctx2, PERSEUS_CHAMBER_ATLAS, 'title', 0, 0, W, H, { focusX: 0.50, focusY: 0.54 })) {
     eng._defaultTitle();
     return;
   }
@@ -1507,6 +2396,23 @@ function renderPerseusTitle(ctx2, eng) {
   if (art.mangaAtmosphere) art.mangaAtmosphere(ctx2, W, H, { halftoneAlpha: 0.12, scanAlpha: 0.08, vignette: 0.52 });
 
   ctx2.save();
+  if (typeof art.drawAnimation === 'function' && art.ready && art.ready(PERSEUS_MANGA_SHEET)) {
+    const actorScale = Math.max(0.34, Math.min(0.54, Math.min(W, H) / 1320));
+    ctx2.globalAlpha = 0.88;
+    ctx2.shadowColor = '#d6fbff';
+    ctx2.shadowBlur = 12;
+    art.drawAnimation(ctx2, PERSEUS_MANGA_SHEET, 'perseusMirror', eng.time, W * 0.20, H * 0.88, {
+      scale: actorScale,
+    });
+    ctx2.shadowColor = '#dcff9b';
+    ctx2.shadowBlur = 18;
+    art.drawAnimation(ctx2, PERSEUS_MANGA_SHEET, 'medusaWatch', eng.time, W * 0.78, H * 0.88, {
+      scale: actorScale * 1.10,
+      flipX: true,
+      alpha: 0.82,
+    });
+    ctx2.shadowBlur = 0;
+  }
   ctx2.textAlign = 'center';
   ctx2.lineJoin = 'round';
   ctx2.font = 'bold 72px serif';
@@ -1542,27 +2448,66 @@ function renderPerseusGameOver(ctx2, eng) {
   const W = eng.W, H = eng.H;
   const isVictory = eng.state === 'victory';
   const art = window.GodGames && GodGames.MangaArt;
-  if (!eng.manga || !art || typeof art.drawScene !== 'function'
-      || !art.drawScene(ctx2, isVictory ? 'olympus' : 'perseus', 0, 0, W, H, { focusX: 0.50, focusY: 0.50 })) {
+  if (!eng.manga || !art || typeof art.drawFrameCover !== 'function'
+      || !art.drawFrameCover(ctx2, PERSEUS_CHAMBER_ATLAS, isVictory ? 'victory' : 'death', 0, 0, W, H, { focusX: isVictory ? 0.54 : 0.50, focusY: 0.54 })) {
     eng._defaultGameOver();
     return;
   }
 
   if (art.overlay) art.overlay(ctx2, W, H, {
     top: 'rgba(0,0,0,0.22)',
-    mid: isVictory ? 'rgba(16,10,0,0.18)' : 'rgba(0,14,18,0.22)',
+    mid: isVictory ? 'rgba(22,18,0,0.14)' : 'rgba(0,14,18,0.28)',
     bottom: 'rgba(0,0,0,0.78)',
   });
-  if (window.Manga && Manga.effects && Manga.effects.panelSplit) {
-    if (this._perseusOverState !== eng.state) {
-      this._perseusOverState = eng.state;
-      this._perseusOverT0 = eng.time;
-    }
-    Manga.effects.panelSplit(ctx2, W, H, Math.min(1, (eng.time - this._perseusOverT0) / 0.85));
-  }
   if (art.mangaAtmosphere) art.mangaAtmosphere(ctx2, W, H, { halftoneAlpha: 0.10, scanAlpha: 0.08, vignette: 0.58 });
 
   ctx2.save();
+  if (typeof art.drawAnimation === 'function' && art.ready && art.ready(PERSEUS_MANGA_SHEET)) {
+    const actorScale = Math.max(0.34, Math.min(0.54, Math.min(W, H) / 1320));
+    if (isVictory) {
+      const glow = ctx2.createRadialGradient(W * 0.52, H * 0.38, 20, W * 0.52, H * 0.38, W * 0.42);
+      glow.addColorStop(0, 'rgba(214,251,255,0.30)');
+      glow.addColorStop(1, 'rgba(214,251,255,0)');
+      ctx2.fillStyle = glow;
+      ctx2.fillRect(0, 0, W, H);
+      art.drawAnimation(ctx2, PERSEUS_MANGA_SHEET, 'medusaHurt', eng.time, W * 0.72, H * 0.90, {
+        scale: actorScale,
+        flipX: true,
+        alpha: 0.58,
+      });
+      ctx2.shadowColor = '#D4AF37';
+      ctx2.shadowBlur = 14;
+      art.drawAnimation(ctx2, PERSEUS_MANGA_SHEET, 'perseusVictory', eng.time, W * 0.27, H * 0.88, {
+        scale: actorScale,
+      });
+      ctx2.shadowBlur = 0;
+    } else {
+      ctx2.globalCompositeOperation = 'screen';
+      const gaze = ctx2.createLinearGradient(W * 0.72, H * 0.38, W * 0.28, H * 0.56);
+      gaze.addColorStop(0, 'rgba(188,255,124,0.28)');
+      gaze.addColorStop(1, 'rgba(188,255,124,0)');
+      ctx2.fillStyle = gaze;
+      ctx2.beginPath();
+      ctx2.moveTo(W * 0.72, H * 0.36);
+      ctx2.lineTo(W * 0.18, H * 0.42);
+      ctx2.lineTo(W * 0.24, H * 0.72);
+      ctx2.closePath();
+      ctx2.fill();
+      ctx2.globalCompositeOperation = 'source-over';
+      ctx2.shadowColor = '#dcff9b';
+      ctx2.shadowBlur = 20;
+      art.drawAnimation(ctx2, PERSEUS_MANGA_SHEET, 'medusaGaze', eng.time, W * 0.75, H * 0.90, {
+        scale: actorScale * 1.08,
+        flipX: true,
+      });
+      ctx2.shadowColor = '#c7d0cd';
+      ctx2.shadowBlur = 10;
+      art.drawAnimation(ctx2, PERSEUS_MANGA_SHEET, 'perseusStone', eng.time, W * 0.27, H * 0.90, {
+        scale: actorScale,
+      });
+      ctx2.shadowBlur = 0;
+    }
+  }
   ctx2.textAlign = 'center';
   const title = isVictory ? 'THE GAZE IS BROKEN' : 'PERSEUS IS STONE';
   const sub = isVictory ? 'Medusa falls. The cave still keeps one quiet mark.' : 'The cave keeps another statue.';
