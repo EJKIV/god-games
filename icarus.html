@@ -1714,7 +1714,7 @@ function render() {
 
 function drawIcarusDebugOverlay(W, H) {
   const debug = window.GodGames && GodGames.Debug;
-  if (!debug || typeof debug.draw !== 'function') return;
+  if (!debug || typeof debug.draw !== 'function' || (typeof debug.enabled === 'function' && !debug.enabled())) return;
   const items = [];
   const drifts = [];
   if (player) {
@@ -1889,11 +1889,12 @@ function renderMangaSkyTreatment(W, H) {
 
   const heat = dangerHeat();
   const dive = diveT > 0 ? Math.max(0, Math.min(1, diveT / DIVE_DUR)) : 0;
+  const art = icarusMangaArt();
+  const tier = art && typeof art.performanceTier === 'function' ? art.performanceTier() : 'balanced';
 
   if (tier === 'high' && window.Manga && Manga.effects && Manga.effects.halftone) {
     ctx.save();
     ctx.globalCompositeOperation = 'multiply';
-    const art = icarusMangaArt();
     const opts = {
       density: 7,
       dotSize: 1.15,

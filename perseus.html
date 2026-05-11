@@ -2657,6 +2657,90 @@ function drawWorld() {
   }
 }
 
+function drawPerseusDebugOverlay() {
+  const debug = window.GodGames && GodGames.Debug;
+  if (!debug || typeof debug.draw !== 'function' || (typeof debug.enabled === 'function' && !debug.enabled())) return;
+  const items = [];
+  const drifts = [];
+  if (player) {
+    const px = player.x;
+    const py = player.y - 30;
+    const vx = Engine.manga ? mangaActorX(player) : (typeof player.visualX === 'number' ? player.visualX : player.x);
+    const vy = (typeof player.visualY === 'number' ? player.visualY : player.y) - 52;
+    items.push({ role: 'player', x: px, y: py, r: 28, label: 'perseus hurt' });
+    items.push({ role: 'visual', x: vx, y: vy, w: 78, h: 112, label: 'perseus sprite' });
+    if (player.shield > 0.45) {
+      items.push({
+        role: 'hotspot',
+        x: player.x + 20,
+        y: player.y - 30,
+        w: 76,
+        h: 124,
+        label: 'mirror block',
+        alpha: 0.48,
+      });
+    }
+    if (player.slashT > 0) {
+      items.push({
+        role: 'hotspot',
+        x: player.x + player.slashFacing * 42,
+        y: player.y - 28,
+        w: 96,
+        h: 108,
+        label: 'sword reach',
+        alpha: 0.42,
+      });
+    }
+  }
+  if (medusa) {
+    const mx = Engine.manga ? mangaActorX(medusa) : (typeof medusa.visualX === 'number' ? medusa.visualX : medusa.x);
+    const my = (typeof medusa.visualY === 'number' ? medusa.visualY : medusa.y) - 74;
+    items.push({ role: 'visual', x: mx, y: my, w: 118, h: 148, label: 'medusa sprite' });
+    if (medusa.phase === 'gaze' && player) {
+      const eye = Engine.manga ? mangaMedusaEyePoint() : { x: medusa.x - 32, y: medusa.y - 84 };
+      items.push({ role: 'hotspot', x1: eye.x, y1: eye.y, x2: player.x, y2: player.y - 54, label: 'gaze line' });
+    }
+  }
+  for (const s of snakes) {
+    if (!s.alive) continue;
+    const vx = typeof s.visualX === 'number' ? s.visualX : s.x;
+    const vy = typeof s.visualY === 'number' ? s.visualY : s.y;
+    const sx = Engine.manga ? mangaProjectX(vx, vy) : vx;
+    const sy = vy + Math.sin(s.wobble || 0) * 5;
+    items.push({ role: 'danger', x: s.x, y: s.y, r: 28, label: s.returning ? 'serpent return' : 'serpent hit' });
+    items.push({ role: 'visual', x: sx, y: sy, w: 58, h: 34, label: 'serpent sprite' });
+    drifts.push({
+      label: 'serpent',
+      x: s.x,
+      y: s.y,
+      visualX: vx,
+      visualY: vy,
+      radius: 28,
+      maxDrift: 9,
+    });
+  }
+  for (const h of hazards) {
+    const hx = h.drawX ?? h.x;
+    const hy = h.drawY ?? h.baseY;
+    const vx = typeof h.visualX === 'number' ? h.visualX : hx;
+    const vy = typeof h.visualY === 'number' ? h.visualY : hy;
+    const sx = Engine.manga ? mangaProjectX(vx, vy) : vx;
+    const hitR = h.r + 18;
+    items.push({ role: 'danger', x: hx, y: hy, r: hitR, label: 'floor hazard' });
+    items.push({ role: 'visual', x: sx, y: vy, w: 64, h: 74, label: 'hazard sprite' });
+    drifts.push({
+      label: 'hazard',
+      x: hx,
+      y: hy,
+      visualX: vx,
+      visualY: vy,
+      radius: hitR,
+      maxDrift: hitR * 0.32,
+    });
+  }
+  debug.draw(ctx, { game: 'perseus', items, drifts });
+}
+
 function drawHud() {
   if (Engine.manga && drawMangaHud()) return;
   Engine.hud.drawHearts(20, 28, player.hp, HP_MAX);
@@ -3006,6 +3090,7 @@ Engine.boot({
   },
   onHud() {
     drawHud();
+    drawPerseusDebugOverlay();
   },
   onTryStart() {
     if (modalOpen()) return false;

@@ -1859,6 +1859,75 @@ function drawToad() {
   ctx.restore();
 }
 
+function drawHubDebugOverlay() {
+  const debug = window.GodGames && GodGames.Debug;
+  if (!debug || typeof debug.draw !== 'function' || (typeof debug.enabled === 'function' && !debug.enabled())) return;
+  const items = [];
+  const drifts = [];
+  const groundY = hubGroundY();
+  const mangaActive = mangaOn();
+  if (player) {
+    const px = player.x;
+    const py = player.y || groundY;
+    const vx = typeof player.visualX === 'number' ? player.visualX : px;
+    const vy = typeof player.visualY === 'number' ? player.visualY : py;
+    items.push({ role: 'player', x: px, y: py, r: player.isToad ? 18 : 24, label: 'hub player' });
+    items.push({
+      role: 'visual',
+      x: vx,
+      y: vy - (player.isToad ? 20 : 44),
+      w: player.isToad ? 54 : 62,
+      h: player.isToad ? 42 : 92,
+      label: player.isToad ? 'toad sprite' : 'walker sprite',
+    });
+    drifts.push({
+      label: 'hub player',
+      x: px,
+      y: py,
+      visualX: vx,
+      visualY: vy,
+      radius: 48,
+      maxDrift: 16,
+    });
+  }
+  for (const p of portals) {
+    const hit = hubPortalHitRegion(p);
+    items.push({
+      role: 'hotspot',
+      x: hit.x,
+      y: hit.y,
+      w: hit.w,
+      h: hit.h,
+      center: false,
+      label: `${p.name.toLowerCase()} hotspot`,
+      alpha: player.nearPortal === p ? 0.70 : 0.34,
+    });
+    if (mangaActive) {
+      const box = hubStationBox(p);
+      items.push({
+        role: 'visual',
+        x: box.x,
+        y: box.y,
+        w: box.w,
+        h: box.h,
+        center: false,
+        label: `${p.name.toLowerCase()} station`,
+      });
+    } else {
+      const isMtn = p.kind === 'mountain';
+      items.push({
+        role: 'visual',
+        x: hubPortalX(p),
+        y: groundY - (isMtn ? 116 : 94),
+        w: isMtn ? 220 : 150,
+        h: isMtn ? 230 : 188,
+        label: `${p.name.toLowerCase()} visual`,
+      });
+    }
+  }
+  debug.draw(ctx, { game: 'hub', items, drifts });
+}
+
 // ── Render ────────────────────────────────────────────────────────────────
 function render() {
   const mangaOn = localStorage.getItem(MANGA_KEY) === '1';
@@ -2048,6 +2117,7 @@ function render() {
     ctx.restore();
   }
 
+  drawHubDebugOverlay();
 }
 
 // ── Loop ──────────────────────────────────────────────────────────────────
