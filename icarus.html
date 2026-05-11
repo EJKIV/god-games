@@ -1820,7 +1820,7 @@ function renderMangaSkyTreatment(W, H) {
   const heat = dangerHeat();
   const dive = diveT > 0 ? Math.max(0, Math.min(1, diveT / DIVE_DUR)) : 0;
 
-  if (window.Manga && Manga.effects && Manga.effects.halftone) {
+  if (tier === 'high' && window.Manga && Manga.effects && Manga.effects.halftone) {
     ctx.save();
     ctx.globalCompositeOperation = 'multiply';
     const art = icarusMangaArt();
@@ -3289,7 +3289,7 @@ function renderMangaSunZone(W, H) {
   const s = icarusMangaStage();
   const art = icarusMangaArt();
   const tier = art && typeof art.performanceTier === 'function' ? art.performanceTier() : 'balanced';
-  const rayCount = tier === 'high' ? 34 : (tier === 'low' ? 10 : 18);
+  const rayCount = tier === 'high' ? 34 : 10;
   const heat = player ? dangerHeat() : 0.22;
   const pulse = 0.5 + Math.sin(time * 2.1) * 0.5;
   const r = H * (0.18 + pulse * 0.015);
@@ -3335,7 +3335,7 @@ function renderMangaSeaLayer(W, H) {
   const s = icarusMangaStage();
   const art = icarusMangaArt();
   const tier = art && typeof art.performanceTier === 'function' ? art.performanceTier() : 'balanced';
-  const waveStep = tier === 'high' ? 10 : (tier === 'low' ? 24 : 16);
+  const waveStep = tier === 'high' ? 10 : 24;
   const oY = s.seaY;
   const wet = player ? clamp01(player.wetDmg / 100) : 0;
   const nearWater = player ? clamp01((player.y + 14 - (oY - 76)) / 76) : 0;
