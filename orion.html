@@ -1666,7 +1666,10 @@ function renderHUD() {
     ctx.save();
     ctx.beginPath(); ctx.roundRect(W/2-155 + 310*bfrac, 14, 310 - 310*bfrac, 26, 4);
     ctx.clip();
-    Manga.effects.halftone(ctx, W/2-155, 14, 310, 26, { density: 4, dotSize: 1.4, alpha: 0.55, color: '#0a0a0a' });
+    const art = orionMangaArt();
+    const opts = { density: 4, dotSize: 1.4, alpha: 0.55, color: '#0a0a0a' };
+    if (art && typeof art.halftone === 'function') art.halftone(ctx, W/2-155, 14, 310, 26, opts);
+    else Manga.effects.halftone(ctx, W/2-155, 14, 310, 26, opts);
     ctx.restore();
   }
   ctx.strokeStyle = bossMangaOn ? '#0a0a0a' : 'rgba(255,255,255,0.3)';
@@ -1761,7 +1764,9 @@ function renderMangaHUD() {
   ctx.fillStyle = hpG;
   ctx.fillRect(bx, by, barW, barH);
   if (window.Manga && Manga.effects && Manga.effects.halftone) {
-    Manga.effects.halftone(ctx, bx, by, barW, barH, { density: 5, dotSize: 1.1, alpha: 0.18, color: '#0a0a0a' });
+    const opts = { density: 5, dotSize: 1.1, alpha: 0.18, color: '#0a0a0a' };
+    if (art && typeof art.halftone === 'function') art.halftone(ctx, bx, by, barW, barH, opts);
+    else Manga.effects.halftone(ctx, bx, by, barW, barH, opts);
   }
   ctx.restore();
   ctx.strokeStyle = '#0a0a0a';

@@ -1802,12 +1802,15 @@ function renderMangaSkyTreatment(W, H) {
   if (window.Manga && Manga.effects && Manga.effects.halftone) {
     ctx.save();
     ctx.globalCompositeOperation = 'multiply';
-    Manga.effects.halftone(ctx, 0, 0, W, H * 0.72, {
+    const art = icarusMangaArt();
+    const opts = {
       density: 7,
       dotSize: 1.15,
       alpha: 0.07 + heat * 0.07,
       color: '#0a0a0a',
-    });
+    };
+    if (art && typeof art.halftone === 'function') art.halftone(ctx, 0, 0, W, H * 0.72, opts);
+    else Manga.effects.halftone(ctx, 0, 0, W, H * 0.72, opts);
     ctx.restore();
   }
 
@@ -1982,12 +1985,15 @@ function renderOcean(W, H) {
       ctx.beginPath();
       ctx.rect(0, oY, W, H - oY);
       ctx.clip();
-      Manga.effects.halftone(ctx, 0, oY, W, H - oY, {
+      const art = icarusMangaArt();
+      const opts = {
         density: 9,
         dotSize: 1.2,
         alpha: 0.10,
         color: '#0a0a0a',
-      });
+      };
+      if (art && typeof art.halftone === 'function') art.halftone(ctx, 0, oY, W, H - oY, opts);
+      else Manga.effects.halftone(ctx, 0, oY, W, H - oY, opts);
       ctx.restore();
     }
   }
@@ -3330,12 +3336,15 @@ function renderMangaSeaLayer(W, H) {
     ctx.beginPath();
     ctx.rect(0, oY - 10, W, H - oY + 10);
     ctx.clip();
-    Manga.effects.halftone(ctx, 0, oY, W, H - oY, {
+    const art = icarusMangaArt();
+    const opts = {
       density: 8,
       dotSize: 1.25,
       alpha: 0.10 + wet * 0.08,
       color: '#0a0a0a',
-    });
+    };
+    if (art && typeof art.halftone === 'function') art.halftone(ctx, 0, oY, W, H - oY, opts);
+    else Manga.effects.halftone(ctx, 0, oY, W, H - oY, opts);
     ctx.restore();
   }
 
@@ -3482,12 +3491,15 @@ function renderMangaWaveHazard(wv, W, H) {
   }
 
   if (window.Manga && Manga.effects && Manga.effects.halftone) {
-    Manga.effects.halftone(ctx, cx - hw * 1.2, top, hw * 2.4, h, {
+    const art = icarusMangaArt();
+    const opts = {
       density: 5,
       dotSize: 1.1,
       alpha: 0.18,
       color: '#0a0a0a',
-    });
+    };
+    if (art && typeof art.halftone === 'function') art.halftone(ctx, cx - hw * 1.2, top, hw * 2.4, h, opts);
+    else Manga.effects.halftone(ctx, cx - hw * 1.2, top, hw * 2.4, h, opts);
   }
   ctx.restore();
   return true;

@@ -4,8 +4,10 @@
   const SCENE_ATLAS = 'godgames.shared.sceneAtlas';
   const atmosphereCache = new Map();
   const effectLayerCache = new Map();
+  const frameLayerCache = new Map();
   const MAX_ATMOSPHERE_CACHE = 10;
   const MAX_EFFECT_LAYER_CACHE = 48;
+  const MAX_FRAME_LAYER_CACHE = 96;
 
   function storageValue(key) {
     try { return localStorage.getItem(key); } catch (_) { return null; }
@@ -37,7 +39,7 @@
   function frameBlendEnabled(opts = {}) {
     if (opts.frameBlend === false || opts.tween === false) return false;
     if (opts.frameBlend === true || opts.tween === true) return true;
-    return performanceTier() === 'high';
+    return heavyEffects(opts);
   }
 
   function smearEnabled(opts = {}, amount = 0) {
@@ -49,6 +51,7 @@
   function clearPerformanceCaches() {
     atmosphereCache.clear();
     effectLayerCache.clear();
+    frameLayerCache.clear();
   }
 
   function assets() {
@@ -69,7 +72,43 @@
   function drawFrame(ctx, id, frame, x, y, opts = {}) {
     const A = assets();
     if (!A || typeof A.drawFrame !== 'function') return false;
-    return A.drawFrame(ctx, id, frame, x, y, opts);
+    if (!window.document || typeof A.image !== 'function' || typeof A.frame !== 'function') {
+      return A.drawFrame(ctx, id, frame, x, y, opts);
+    }
+
+    const img = A.image(id);
+    const fr = A.frame(id, frame);
+    if (!img || !fr || !ready(id)) return false;
+    if (fr.w * fr.h > 700000) return A.drawFrame(ctx, id, frame, x, y, opts);
+
+    const key = `${id}|${frame}`;
+    let layer = frameLayerCache.get(key);
+    if (!layer) {
+      const cw = Math.max(1, Math.ceil(fr.w));
+      const ch = Math.max(1, Math.ceil(fr.h));
+      layer = document.createElement('canvas');
+      layer.width = cw;
+      layer.height = ch;
+      const layerCtx = layer.getContext('2d');
+      if (!layerCtx) return A.drawFrame(ctx, id, frame, x, y, opts);
+      layerCtx.drawImage(img, fr.x, fr.y, fr.w, fr.h, 0, 0, cw, ch);
+      frameLayerCache.set(key, layer);
+      trimCache(frameLayerCache, MAX_FRAME_LAYER_CACHE);
+    }
+
+    const scale = typeof opts.scale === 'number' ? opts.scale : 1;
+    const alpha = typeof opts.alpha === 'number' ? opts.alpha : 1;
+    const ax = typeof opts.anchorX === 'number' ? opts.anchorX : (typeof fr.anchorX === 'number' ? fr.anchorX : fr.w / 2);
+    const ay = typeof opts.anchorY === 'number' ? opts.anchorY : (typeof fr.anchorY === 'number' ? fr.anchorY : fr.h / 2);
+
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    ctx.translate(x, y);
+    if (opts.rotate) ctx.rotate(opts.rotate);
+    ctx.scale((opts.flipX ? -1 : 1) * scale, (opts.flipY ? -1 : 1) * scale);
+    ctx.drawImage(layer, -ax, -ay, fr.w, fr.h);
+    ctx.restore();
+    return true;
   }
 
   function cycle01(v) {

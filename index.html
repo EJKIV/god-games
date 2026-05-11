@@ -753,7 +753,9 @@ function renderMangaAwakening() {
   }
 
   if (window.Manga && Manga.effects) {
-    if (typeof Manga.effects.halftone === 'function') {
+    if (art && typeof art.halftone === 'function') {
+      art.halftone(ctx, 0, 0, W, H, { density: 8, dotSize: 2.1, alpha: 0.22, color: '#fff' });
+    } else if (typeof Manga.effects.halftone === 'function') {
       Manga.effects.halftone(ctx, 0, 0, W, H, { density: 8, dotSize: 2.1, alpha: 0.22, color: '#fff' });
     }
     if (typeof Manga.effects.speedLines === 'function') {
@@ -1972,17 +1974,16 @@ function render() {
   // Manga atmosphere — bold overlay so the screen unmistakably reads "manga".
   // Drawn on top of the world but below the Zeus cinematic + title + toast.
   const _mangaOn = mangaOn;
-  if (_mangaOn
-      && window.Manga
-      && typeof Manga.effects?.halftone  === 'function'
-      && typeof Manga.effects?.scanlines === 'function'
-      && typeof Manga.effects?.vignette  === 'function') {
+  const art = window.GodGames && GodGames.MangaArt;
+  if (_mangaOn && window.Manga && art) {
     // The manga *art* (scenes + characters) carries most of the look now;
     // these overlays only add atmosphere, not replace it.
-    Manga.effects.halftone(ctx, 0, 0,  W, GY,    { density: 7, dotSize: 1.7, alpha: 0.10, color: '#000' });
-    Manga.effects.halftone(ctx, 0, GY, W, H - GY, { density: 6, dotSize: 1.7, alpha: 0.18, color: '#000' });
-    Manga.effects.scanlines(ctx, 0, 0, W, H, { spacing: 3, alpha: 0.09 });
-    Manga.effects.vignette(ctx, W, H, { strength: 0.6 });
+    if (typeof art.halftone === 'function') {
+      art.halftone(ctx, 0, 0,  W, GY,    { density: 7, dotSize: 1.7, alpha: 0.10, color: '#000' });
+      art.halftone(ctx, 0, GY, W, H - GY, { density: 6, dotSize: 1.7, alpha: 0.18, color: '#000' });
+    }
+    if (typeof art.scanlines === 'function') art.scanlines(ctx, 0, 0, W, H, { spacing: 3, alpha: 0.09 });
+    if (typeof art.vignette === 'function') art.vignette(ctx, 0, 0, W, H, { strength: 0.6 });
   }
   // Apply a CSS filter to the canvas itself so the whole frame reads desaturated +
   // high-contrast — the difference is immediate and obvious.
