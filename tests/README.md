@@ -78,6 +78,7 @@ Useful env overrides: `QA_SETTLE_MS`, `QA_FRAME_WARMUP_MS`,
   `hint.v2.s`.
 - Hub mysteries panel reflects earned-hint state.
 - `shankle` dev bypass unlocks manga mode.
+- Partially earned codeword fragments only advance through uncovered letters.
 - Typing `zeus` after Z+E+U+S are earned summons the lightning bolt.
 - Earning all four letter fragments does not reveal a separate ZEUS hint.
 

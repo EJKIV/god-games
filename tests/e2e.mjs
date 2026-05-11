@@ -397,6 +397,32 @@ async function testZeusInvocation() {
   await close();
 }
 
+// ── 6a. Hub: codeword typing stops at locked letters ─────────────────────
+async function testZeusLockedLettersBlockProgress() {
+  const { page, close } = await freshPage();
+  await page.evaluateOnNewDocument(() => {
+    localStorage.setItem('tns.unlocks', JSON.stringify({ 'hint.v2.z': Date.now() }));
+    localStorage.setItem('godgames_mystery_chain_version', 'v2');
+    localStorage.setItem('godgames_playerName', 'TEST');
+  });
+  await page.goto(`${BASE}/index.html?testHooks=1`, { waitUntil: 'load' });
+  await new Promise(r => setTimeout(r, 800));
+  await page.keyboard.press('z');
+  const afterZ = await page.evaluate(() => window.GodGames?.HubTest?.codewordProgress?.());
+  await page.keyboard.press('e');
+  const afterLockedE = await page.evaluate(() => ({
+    progress: window.GodGames?.HubTest?.codewordProgress?.(),
+    manga: localStorage.getItem('godgames_manga'),
+    eUnlocked: window.GodGames?.HubTest?.codewordLetterUnlocked?.(1),
+  }));
+  if (afterZ === 1 && afterLockedE.progress === 0 && !afterLockedE.manga && afterLockedE.eUnlocked === false) {
+    pass('Hub: locked codeword letters block progress');
+  } else {
+    fail('Hub: locked codeword letters', JSON.stringify({ afterZ, afterLockedE }));
+  }
+  await close();
+}
+
 // ── 6b. Hub: earned letters do not reveal the whole invocation ───────────
 async function testNoZeusHintReveal() {
   const { page, close } = await freshPage();
@@ -472,7 +498,7 @@ async function testPanel() {
 }
 
 // ── Run all ──────────────────────────────────────────────────────────────
-const tests = [testEngineUnlock, testProgressSyncAfterLateName, testIcarus, testIcarusRetrigger, testOrion, testAchilles, testPerseus, testPlacePage, testPerseusPlaceCharacter, testOlympusClues, testPanel, testShankleBypass, testZeusInvocation, testNoZeusHintReveal, testHeelMystery];
+const tests = [testEngineUnlock, testProgressSyncAfterLateName, testIcarus, testIcarusRetrigger, testOrion, testAchilles, testPerseus, testPlacePage, testPerseusPlaceCharacter, testOlympusClues, testPanel, testShankleBypass, testZeusInvocation, testZeusLockedLettersBlockProgress, testNoZeusHintReveal, testHeelMystery];
 for (const t of tests) {
   try { await t(); }
   catch (e) { fail(t.name, 'threw: ' + e.message); }
