@@ -203,6 +203,14 @@ const HUB_CONCOURSE_ASSET = 'godgames.shared.hubConcourseV2';
 const HUB_DESTINATION_PANELS_ASSET = 'godgames.shared.hubDestinationPanelsV2';
 const HUB_AVATAR_ASSET = 'godgames.shared.hubAvatarV2';
 const HUB_MANGA_STATION_X = [0.145, 0.322, 0.500, 0.678, 0.855];
+const HUB_CONCOURSE_SOURCE = { w: 1672, h: 941, focusX: 0.50, focusY: 0.54 };
+const HUB_MANGA_STATION_RECTS = [
+  { x: 166, y: 358, w: 150, h: 218, labelY: 604 },
+  { x: 464, y: 360, w: 148, h: 216, labelY: 604 },
+  { x: 762, y: 360, w: 148, h: 216, labelY: 604 },
+  { x: 1060, y: 360, w: 148, h: 216, labelY: 604 },
+  { x: 1356, y: 360, w: 146, h: 216, labelY: 604 },
+];
 const GY   = H * 0.73;   // ground y
 
 function mangaOn() { return localStorage.getItem(MANGA_KEY) === '1'; }
@@ -229,6 +237,7 @@ const portals = [
 portals.forEach((p, i) => {
   p.x = W * (i + 1) / (portals.length + 1);
   p.mangaX = W * (HUB_MANGA_STATION_X[i] ?? ((i + 1) / (portals.length + 1)));
+  p.mangaSourceRect = HUB_MANGA_STATION_RECTS[i] || null;
   p.slot = i;
   p._btn = null;
 });
@@ -252,7 +261,34 @@ function hubStage() {
   };
 }
 function hubPortalX(p) {
+  if (mangaOn() && p.mangaSourceRect) {
+    const r = hubSourceRectToScreen(p.mangaSourceRect);
+    return r.cx;
+  }
   return mangaOn() ? (p.mangaX ?? p.x) : p.x;
+}
+function hubConcourseCover() {
+  const sw = HUB_CONCOURSE_SOURCE.w;
+  const sh = HUB_CONCOURSE_SOURCE.h;
+  const scale = Math.max(W / sw, H / sh);
+  const cropW = Math.min(sw, W / scale);
+  const cropH = Math.min(sh, H / scale);
+  return {
+    scale,
+    sx: (sw - cropW) * HUB_CONCOURSE_SOURCE.focusX,
+    sy: (sh - cropH) * HUB_CONCOURSE_SOURCE.focusY,
+    cropW,
+    cropH,
+  };
+}
+function hubSourceRectToScreen(rect) {
+  const c = hubConcourseCover();
+  const x = (rect.x - c.sx) * c.scale;
+  const y = (rect.y - c.sy) * c.scale;
+  const w = rect.w * c.scale;
+  const h = rect.h * c.scale;
+  const labelY = rect.labelY == null ? y + h + 20 : (rect.labelY - c.sy) * c.scale;
+  return { x, y, w, h, cx: x + w / 2, cy: y + h / 2, labelY };
 }
 function hubGroundY() { return mangaOn() ? hubStage().groundY : GY; }
 function hubStageDepth(y) {
@@ -271,9 +307,11 @@ function hubPortalHitRegion(p) {
   const ss = hubSceneScale();
   const x = hubPortalX(p);
   if (mangaOn()) {
-    const w = Math.max(112, Math.min(210, W * 0.118)) * ss;
-    const h = Math.max(118, Math.min(224, H * 0.275)) * ss;
-    return { x: x - w / 2, y: s.stationBaseY - h, w, h: h + 58 * ss };
+    const box = hubStationBox(p);
+    const w = Math.max(112 * ss, box.w + 28);
+    const top = Math.min(box.y, box.labelY - box.h * 0.18);
+    const bottom = s.groundY + 80 * ss;
+    return { x: x - w / 2, y: top, w, h: bottom - top };
   }
   const isMtn = p.kind === 'mountain';
   const w = (isMtn ? 230 : Math.max(132, s.portalRadius * 1.15)) * ss;
@@ -292,16 +330,27 @@ const motes = Array.from({length:28}, () => ({
 // ── Player ────────────────────────────────────────────────────────────────
 const player = {
   x: W*0.32, y: GY,
+  visualX: W*0.32,
+  visualY: GY,
+  visualVx: 0,
+  visualLean: 0,
   vx: 0,
   vy: 0,                  // toad-mode jump physics
   onGround: true,
   facing: 1,
+  drawFacing: 1,
+  prevFacing: 1,
+  turnT: 0,
+  readyT: 0,
+  landingT: 0,
   walkPhase: 0,
   nearPortal: null,
   isToad: false, // easter egg: press 't' to toggle
 };
 const TOAD_JUMP_V = -640; // toad jump initial velocity (negative = up)
 const TOAD_GRAVITY = 1400;
+const HUB_TURN_DUR = 0.18;
+const HUB_LAND_DUR = 0.18;
 
 let keys = {}, time = 0, mouse = {x:0, y:0};
 let lastHopCycle = 0; // tracks toad's hop cycle to fire one ribbit per hop
@@ -348,6 +397,7 @@ function update(dt) {
   time += dt;
   const groundY = hubGroundY();
   const lane = mangaOn() ? hubStage().playerLane : { minX: 50, maxX: W - 50 };
+  const wasOnGround = player.onGround;
 
   // movement — toad is twice as fast
   const left  = keys['ArrowLeft']  || keys['a'];
@@ -355,7 +405,15 @@ function update(dt) {
   const up    = keys['ArrowUp']    || keys['w'];
   const speed = player.isToad ? 440 : 220;
   player.vx = right ? speed : left ? -speed : 0;
-  if (player.vx !== 0) { player.facing = player.vx > 0 ? 1 : -1; player.walkPhase += dt*7; }
+  if (player.vx !== 0) {
+    const nextFacing = player.vx > 0 ? 1 : -1;
+    if (nextFacing !== player.facing) {
+      player.prevFacing = player.facing;
+      player.turnT = HUB_TURN_DUR;
+    }
+    player.facing = nextFacing;
+    player.walkPhase += dt * (player.isToad ? 8.4 : 7.2);
+  }
   player.x = Math.max(lane.minX, Math.min(lane.maxX, player.x + player.vx*dt));
 
   // Toad jump physics — Up or Space launches when on ground; gravity pulls
@@ -371,12 +429,24 @@ function update(dt) {
       player.y  += player.vy * dt;
       if (player.y >= groundY) {
         player.y = groundY; player.vy = 0; player.onGround = true;
+        if (!wasOnGround) player.landingT = HUB_LAND_DUR;
       }
     }
   } else {
     // Human form snaps to ground.
     player.y = groundY; player.vy = 0; player.onGround = true;
   }
+  if (typeof player.visualX !== 'number') player.visualX = player.x;
+  if (typeof player.visualY !== 'number') player.visualY = player.y;
+  player.turnT = Math.max(0, player.turnT - dt);
+  player.landingT = Math.max(0, player.landingT - dt);
+  player.drawFacing = player.turnT > HUB_TURN_DUR * 0.5 ? (player.prevFacing || player.facing) : player.facing;
+  player.visualX += (player.x - player.visualX) * Math.min(1, dt * 14);
+  player.visualY += (player.y - player.visualY) * Math.min(1, dt * 14);
+  player.visualVx += (player.vx - player.visualVx) * Math.min(1, dt * 10);
+  const targetLean = Math.max(-0.075, Math.min(0.075, player.visualVx / (player.isToad ? 5600 : 3600)))
+    + (player.turnT > 0 ? -(player.drawFacing || player.facing) * 0.035 : 0);
+  player.visualLean += (targetLean - (player.visualLean || 0)) * Math.min(1, dt * 9);
 
   // ribbit once per hop while moving as toad
   if (player.isToad && (player.vx !== 0 || !player.onGround)) {
@@ -392,6 +462,8 @@ function update(dt) {
     const radius = mangaOn() ? hubStage().portalRadius : PORTAL_RADIUS;
     if (Math.abs(player.x - hubPortalX(p)) < radius) { player.nearPortal = p; break; }
   }
+  const readyTarget = player.nearPortal && Math.abs(player.visualVx || player.vx) < 14 && player.onGround ? 1 : 0;
+  player.readyT += (readyTarget - (player.readyT || 0)) * Math.min(1, dt * 8);
 
   // Toad-only mushroom on Mt. Olympus — when the toad lands on it (or
   // overlaps mid-air during a descent), cut to the olympus-clues page.
@@ -1098,8 +1170,8 @@ function drawMangaHubBackdrop() {
   if (art && typeof art.drawImage === 'function') {
     drewAsset = art.drawImage(ctx, HUB_CONCOURSE_ASSET, 0, 0, W, H, {
       fit: 'cover',
-      focusX: 0.50,
-      focusY: 0.54,
+      focusX: HUB_CONCOURSE_SOURCE.focusX,
+      focusY: HUB_CONCOURSE_SOURCE.focusY,
     });
   }
 
@@ -1201,19 +1273,12 @@ function drawMangaHubStageUnderlay(assetReady = false) {
 }
 
 function hubStationBox(p) {
+  if (p.mangaSourceRect) return hubSourceRectToScreen(p.mangaSourceRect);
   const s = hubStage();
   const x = hubPortalX(p);
   const w = Math.max(78, Math.min(152, W * 0.096));
   const h = Math.max(80, Math.min(166, H * 0.226));
-  return {
-    x: x - w / 2,
-    y: s.stationTopY + H * 0.064,
-    w,
-    h,
-    cx: x,
-    cy: s.stationTopY + H * 0.064 + h / 2,
-    labelY: s.stationBaseY - Math.max(11, H * 0.016),
-  };
+  return { x: x - w / 2, y: s.stationTopY + H * 0.064, w, h, cx: x, cy: s.stationTopY + H * 0.064 + h / 2, labelY: s.stationBaseY - Math.max(11, H * 0.016) };
 }
 
 function drawMangaDestinationStation(p) {
@@ -1223,18 +1288,16 @@ function drawMangaDestinationStation(p) {
   const pulse = near ? 0.74 + Math.sin(time * 5) * 0.18 : 0.28 + Math.sin(time * 1.7 + p.slot) * 0.05;
   ctx.save();
 
-  ctx.fillStyle = `rgba(255,235,182,${near ? 0.13 + pulse * 0.08 : 0.055})`;
-  ctx.beginPath(); ctx.roundRect(box.x - 4, box.y - 5, box.w + 8, box.h + 10, 3); ctx.fill();
-  ctx.fillStyle = 'rgba(30,24,18,0.18)';
-  ctx.beginPath(); ctx.roundRect(box.x - 3, box.y - 3, box.w + 6, box.h + 7, 3); ctx.fill();
+  ctx.fillStyle = `rgba(90,62,30,${near ? 0.11 + pulse * 0.05 : 0.07})`;
+  ctx.beginPath(); ctx.roundRect(box.x - 2, box.y - 2, box.w + 4, box.h + 4, 2); ctx.fill();
   drawMangaStationPreview(p, box, near);
 
-  ctx.strokeStyle = near ? 'rgba(255,241,184,0.72)' : 'rgba(80,58,28,0.54)';
-  ctx.lineWidth = near ? 2.4 : 1.3;
-  ctx.beginPath(); ctx.roundRect(box.x - 1, box.y - 1, box.w + 2, box.h + 2, 3); ctx.stroke();
-  ctx.strokeStyle = 'rgba(255,244,202,0.30)';
+  ctx.strokeStyle = near ? 'rgba(255,241,184,0.50)' : 'rgba(55,39,20,0.42)';
+  ctx.lineWidth = near ? 1.8 : 1;
+  ctx.beginPath(); ctx.roundRect(box.x - 0.5, box.y - 0.5, box.w + 1, box.h + 1, 2); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,244,202,0.20)';
   ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.roundRect(box.x + 4, box.y + 4, box.w - 8, box.h - 8, 2); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(box.x + 5, box.y + 5, box.w - 10, box.h - 10, 2); ctx.stroke();
   ctx.restore();
 
   drawEtchedHubLabel(p, box, near);
@@ -1283,32 +1346,32 @@ function drawMangaDestinationStation(p) {
 function drawMangaStationPreview(p, box, near) {
   const art = window.GodGames && GodGames.MangaArt;
   const frameName = String(p.name || '').toLowerCase();
-  const skew = (2 - (p.slot ?? 2)) * 0.035;
+  const skew = (2 - (p.slot ?? 2)) * 0.012;
   ctx.save();
-  ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 3); ctx.clip();
+  ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 2); ctx.clip();
   ctx.transform(1, 0, skew, 1, -skew * (box.y + box.h * 0.5), 0);
   if (art && typeof art.drawFrameCover === 'function'
       && art.drawFrameCover(ctx, HUB_DESTINATION_PANELS_ASSET, frameName, box.x - Math.abs(skew) * box.h, box.y, box.w + Math.abs(skew) * box.h * 2, box.h, {
         focusX: 0.5,
         focusY: 0.48,
-        alpha: near ? 0.92 : 0.82,
+        alpha: near ? 0.76 : 0.62,
       })) {
     ctx.filter = 'none';
     ctx.globalCompositeOperation = 'multiply';
-    ctx.fillStyle = 'rgba(198,174,126,0.18)';
+    ctx.fillStyle = 'rgba(190,165,122,0.28)';
     ctx.fillRect(box.x - 20, box.y - 2, box.w + 40, box.h + 4);
     ctx.globalCompositeOperation = 'source-over';
     const shade = ctx.createLinearGradient(box.x, box.y, box.x, box.y + box.h);
-    shade.addColorStop(0, 'rgba(255,238,186,0.10)');
-    shade.addColorStop(0.58, 'rgba(0,0,0,0.00)');
-    shade.addColorStop(1, 'rgba(0,0,0,0.26)');
+    shade.addColorStop(0, 'rgba(255,238,186,0.08)');
+    shade.addColorStop(0.52, 'rgba(90,68,42,0.07)');
+    shade.addColorStop(1, 'rgba(0,0,0,0.22)');
     ctx.fillStyle = shade;
     ctx.fillRect(box.x - 20, box.y, box.w + 40, box.h);
     ctx.globalAlpha = 0.18;
     ctx.strokeStyle = 'rgba(35,26,16,0.75)';
     ctx.lineWidth = 1;
-    for (let i = 0; i < 5; i++) {
-      const yy = box.y + box.h * (0.18 + i * 0.16);
+    for (let i = 0; i < 6; i++) {
+      const yy = box.y + box.h * (0.12 + i * 0.15);
       ctx.beginPath();
       ctx.moveTo(box.x - 8, yy + Math.sin(i + p.slot) * 3);
       ctx.bezierCurveTo(box.cx - 18, yy + 7, box.cx + 24, yy - 6, box.x + box.w + 8, yy + Math.cos(i) * 3);
@@ -1316,7 +1379,7 @@ function drawMangaStationPreview(p, box, near) {
     }
     ctx.globalAlpha = 1;
     if (near) {
-      ctx.fillStyle = `${p.hue}20`;
+      ctx.fillStyle = `${p.hue}18`;
       ctx.fillRect(box.x - 20, box.y, box.w + 40, box.h);
     }
     ctx.restore();
@@ -1517,29 +1580,58 @@ function drawMangaHubAvatar(scale) {
       || !Manga.assets.ready(HUB_AVATAR_ASSET)
       || typeof Manga.assets.drawFrame !== 'function') return false;
 
-  const moving = Math.abs(player.vx) > 8;
+  const drawVx = typeof player.visualVx === 'number' ? player.visualVx : player.vx;
+  const moving = Math.abs(drawVx) > 8;
+  const ready = Math.max(0, Math.min(1, player.readyT || 0));
+  const turn = Math.max(0, Math.min(1, (player.turnT || 0) / HUB_TURN_DUR));
+  const turnPhase = 1 - turn;
+  const turnSqueeze = turn > 0 ? 0.52 + Math.abs(turnPhase - 0.5) * 0.96 : 1;
+  const facing = player.drawFacing || player.facing;
   let frame = 'idle';
-  if (player.nearPortal && !moving) frame = 'ready';
-  else if (moving) frame = Math.sin(player.walkPhase) > 0 ? 'walkA' : 'walkB';
+  if (ready > 0.45 && !moving) frame = 'ready';
+  else if (moving) {
+    const walkCycle = ((player.walkPhase / (Math.PI * 2)) % 1 + 1) % 1;
+    frame = walkCycle < 0.5 ? 'walkA' : 'walkB';
+  }
 
   const avatarScale = Math.max(0.082, Math.min(0.152, 0.138 * scale));
-  const bob = moving ? Math.max(0, Math.sin(player.walkPhase)) * 2.4 * scale : 0;
+  const drawX = typeof player.visualX === 'number' ? player.visualX : player.x;
+  const drawY = typeof player.visualY === 'number' ? player.visualY : player.y;
+  const walkPhase = ((player.walkPhase / (Math.PI * 2)) % 1 + 1) % 1;
+  const landing = Math.max(0, Math.min(1, (player.landingT || 0) / HUB_LAND_DUR));
+  const bob = moving ? Math.max(0, Math.sin(player.walkPhase)) * 2.4 * scale : ready * 0.9 * scale;
   const art = window.GodGames && GodGames.MangaArt;
   if (art && art.contactShadow) {
-    art.contactShadow(ctx, player.x, player.y + 2, {
-      w: 24 * scale,
-      h: 5.5 * scale,
-      alpha: 0.42,
+    art.contactShadow(ctx, drawX, drawY + 2, {
+      w: (24 + Math.abs(drawVx) * 0.018 + landing * 7) * scale,
+      h: (5.5 + landing * 2.4) * scale,
+      alpha: 0.38 + ready * 0.06 + landing * 0.08,
       rim: 'rgba(255,220,120,0.45)',
     });
   }
 
   ctx.save();
   ctx.filter = 'drop-shadow(0 5px 3px rgba(0,0,0,0.45)) saturate(0.96) contrast(1.04)';
-  const drew = Manga.assets.drawFrame(ctx, HUB_AVATAR_ASSET, frame, player.x, player.y - bob, {
-    scale: avatarScale,
-    flipX: player.facing < 0,
-  });
+  const drew = art && typeof art.drawFilmFrame === 'function'
+    ? art.drawFilmFrame(ctx, HUB_AVATAR_ASSET, frame, drawX, drawY, {
+        scale: avatarScale,
+        flipX: facing < 0,
+        phase: walkPhase,
+        amount: moving ? Math.min(1, Math.abs(drawVx) / 220) : 0.12 + ready * 0.12,
+        bob: moving ? 3.0 * scale : 0.7 * scale,
+        sway: 0.022,
+        squash: 0.026 + landing * 0.06,
+        filmScaleX: turnSqueeze,
+        filmScaleY: 1 + landing * 0.05,
+        lean: (player.visualLean || 0) + ready * facing * -0.012,
+        smear: moving ? 5 : false,
+        animName: moving ? 'walk' : frame,
+      })
+    : Manga.assets.drawFrame(ctx, HUB_AVATAR_ASSET, frame, drawX, drawY - bob, {
+        scale: avatarScale,
+        flipX: facing < 0,
+        rotate: (player.visualLean || 0) + ready * facing * -0.012,
+      });
   ctx.restore();
   return drew;
 }
@@ -1551,17 +1643,30 @@ function drawPlayer() {
     const scale = (player.isToad ? hubStageScale(player.y, 0.92, 1.06) : hubStageScale(player.y, 0.92, 1.10)) * shortScale;
     if (!player.isToad && drawMangaHubAvatar(scale)) return;
     if (art && art.drawSharedWalker && art.drawSharedWalker(ctx, {
-      x: player.x, y: player.y, facing: player.facing,
-      walkPhase: player.walkPhase, vx: player.vx,
+      x: typeof player.visualX === 'number' ? player.visualX : player.x,
+      y: typeof player.visualY === 'number' ? player.visualY : player.y,
+      facing: player.drawFacing || player.facing,
+      walkPhase: player.walkPhase,
+      vx: typeof player.visualVx === 'number' ? player.visualVx : player.vx,
       form: player.isToad ? 'toad' : 'human',
+      lean: player.visualLean || 0,
+      turnT: player.turnT || 0,
+      readyT: player.readyT || 0,
+      landingT: player.landingT || 0,
+      t: time,
     }, { scale })) return;
     if (window.Manga && Manga.characters && Manga.characters.hubWalker) {
       ctx.save();
-      ctx.translate(player.x, player.y);
+      ctx.translate(
+        typeof player.visualX === 'number' ? player.visualX : player.x,
+        typeof player.visualY === 'number' ? player.visualY : player.y
+      );
+      ctx.rotate(player.visualLean || 0);
       ctx.scale(scale, scale);
       Manga.characters.hubWalker.draw(ctx, {
-        x: 0, y: 0, facing: player.facing,
-        walkPhase: player.walkPhase, vx: player.vx,
+        x: 0, y: 0, facing: player.drawFacing || player.facing,
+        walkPhase: player.walkPhase,
+        vx: typeof player.visualVx === 'number' ? player.visualVx : player.vx,
         form: player.isToad ? 'toad' : 'human',
       });
       ctx.restore();

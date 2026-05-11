@@ -185,10 +185,12 @@ function drawAssetTraveler(char, x, y, scale, facing, walkPhase, t) {
   if (!char || !window.Manga || !Manga.assets || typeof Manga.assets.ready !== 'function') return false;
   const A = Manga.assets;
   const vx = characterVx(t);
+  const phase = ((walkPhase / (Math.PI * 2)) % 1 + 1) % 1;
   let id = null, frame = null, spriteScale = scale;
   if (char === 'icarus') {
     id = 'godgames.icarus.flightSheet';
-    frame = Math.sin(t * 2.2) > 0 ? 'flapUp' : 'glide';
+    const wing = ((t * 0.76) % 1 + 1) % 1;
+    frame = wing < 0.24 ? 'flapUp' : (wing < 0.50 ? 'glide' : (wing < 0.74 ? 'flapDown' : 'glide'));
     spriteScale *= 0.34;
     y -= 22;
   } else if (char === 'achilles') {
@@ -212,10 +214,23 @@ function drawAssetTraveler(char, x, y, scale, facing, walkPhase, t) {
   ctx.save();
   ctx.shadowColor = P.palette.accent || '#D4AF37';
   ctx.shadowBlur = 12;
-  const drew = A.drawFrame(ctx, id, frame, x, y, {
-    scale: spriteScale,
-    flipX: char === 'achilles' ? false : facing < 0,
-  });
+  const art = window.GodGames && GodGames.MangaArt;
+  const drew = art && typeof art.drawFilmFrame === 'function'
+    ? art.drawFilmFrame(ctx, id, frame, x, y, {
+        scale: spriteScale,
+        flipX: char === 'achilles' ? false : facing < 0,
+        phase: char === 'icarus' ? ((t * 0.76) % 1 + 1) % 1 : phase,
+        amount: char === 'icarus' ? 0.44 : Math.min(1, Math.abs(vx) / 80),
+        bob: char === 'icarus' ? 5.5 * scale : 5 * scale,
+        floatBob: char === 'icarus' ? 3.6 * scale : 0,
+        sway: char === 'icarus' ? 0.040 : 0.028,
+        squash: char === 'icarus' ? 0.018 : 0.032,
+        animName: char === 'icarus' ? 'flap' : frame,
+      })
+    : A.drawFrame(ctx, id, frame, x, y, {
+        scale: spriteScale,
+        flipX: char === 'achilles' ? false : facing < 0,
+      });
   ctx.restore();
   return drew;
 }

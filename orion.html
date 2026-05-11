@@ -272,6 +272,7 @@ function initGame() {
   const W = Engine.W, GY = groundY();
   orion = {
     x:W*0.18, y:GY, vx:0, vy:0,
+    visualX:W*0.18, visualY:GY,
     hp:ORION_HP, facing:1,
     walkPhase:0, visualVx:0, visualLean:0, attackCD:0, invincible:0,
     hurtFlash:0, onGround:true,
@@ -284,6 +285,7 @@ function initGame() {
   };
   boss = {
     x:W*0.74, y:GY, hp:BOSS_HP,
+    visualX:W*0.74, visualY:GY, visualLean:0, lastX:W*0.74,
     facing:-1,
     state:'idle',
     stateTimer:0, attackTimer:2.8,
@@ -339,6 +341,7 @@ function updateOrion(dt) {
     orion.invincible = Math.max(orion.invincible, orion.proneT);
     orion.hurtFlash = Math.max(0, orion.hurtFlash-dt);
     orion.spearQueued = false; orion.stabQueued = false;
+    updateOrionVisual(dt);
     if(wasPositive && orion.proneT===0 && boss.state!=='dead'){
       boss.state='backup'; boss.stateTimer=0;
     }
@@ -417,12 +420,45 @@ function updateOrion(dt) {
   }
   orion.invincible = Math.max(0, orion.invincible-dt);
   orion.hurtFlash  = Math.max(0, orion.hurtFlash -dt);
+  updateOrionVisual(dt);
+}
+
+function updateOrionVisual(dt) {
+  if (!orion) return;
+  if (typeof orion.visualX !== 'number') orion.visualX = orion.x;
+  if (typeof orion.visualY !== 'number') orion.visualY = orion.y;
+  const moving = Math.abs(orion.vx) > 18 || Math.abs(orion.visualVx || 0) > 18;
+  const xEase = orion.dodgeT > 0 ? 22 : (moving ? 16 : 12);
+  const yEase = orion.onGround ? 16 : 12;
+  orion.visualX += (orion.x - orion.visualX) * Math.min(1, dt * xEase);
+  orion.visualY += (orion.y - orion.visualY) * Math.min(1, dt * yEase);
+}
+
+function updateBossVisual(dt) {
+  if (!boss) return;
+  if (typeof boss.visualX !== 'number') boss.visualX = boss.x;
+  if (typeof boss.visualY !== 'number') boss.visualY = boss.y;
+  if (typeof boss.visualLean !== 'number') boss.visualLean = 0;
+  const prevX = typeof boss.lastX === 'number' ? boss.lastX : boss.x;
+  const vx = (boss.x - prevX) / Math.max(dt, 1 / 60);
+  boss.lastX = boss.x;
+  const targetLean = boss.state === 'charge'
+    ? Math.max(-0.11, Math.min(0.11, vx / 4200))
+    : boss.state === 'claw'
+      ? -boss.facing * 0.045
+      : boss.state === 'sting'
+        ? boss.facing * 0.035
+        : Math.max(-0.055, Math.min(0.055, vx / 5200));
+  boss.visualX += (boss.x - boss.visualX) * Math.min(1, dt * (boss.state === 'charge' ? 16 : 9));
+  boss.visualY += (boss.y - boss.visualY) * Math.min(1, dt * 10);
+  boss.visualLean += (targetLean - boss.visualLean) * Math.min(1, dt * 9);
 }
 
 function updateBoss(dt) {
   const W = Engine.W;
   if(boss.state==='dead'){
     boss.deadTimer += dt;
+    updateBossVisual(dt);
     if(boss.deadTimer>3.2) Engine.setState('victory');
     return;
   }
@@ -432,7 +468,9 @@ function updateBoss(dt) {
     Engine.shake(18);
     burst(boss.x, boss.y-55, '#ff7700', 28, 220);
     burst(boss.x, boss.y-55, '#ffcc00', 18, 160);
-    sfx.victory(); return;
+    sfx.victory();
+    updateBossVisual(dt);
+    return;
   }
 
   boss.hurtFlash = Math.max(0, boss.hurtFlash-dt);
@@ -581,6 +619,7 @@ function updateBoss(dt) {
       break;
   }
   boss.x = Math.max(100, Math.min(W-100, boss.x));
+  updateBossVisual(dt);
 }
 
 function hurtOrion(){
@@ -1118,12 +1157,15 @@ function drawOrionMangaSprite() {
   if (!orionMangaAssetsReady()) return false;
   const compact = Math.min(Engine.W, Engine.H);
   const nearScale = Math.max(0.38, Math.min(0.52, compact / 1500));
-  const scale = orionMangaScale(orion.y, nearScale * 0.84, nearScale, { curve: 0.78 });
-  const y = orion.y + 8;
+  const drawX = typeof orion.visualX === 'number' ? orion.visualX : orion.x;
+  const drawY = typeof orion.visualY === 'number' ? orion.visualY : orion.y;
+  const scale = orionMangaScale(drawY, nearScale * 0.84, nearScale, { curve: 0.78 });
+  const y = drawY + 8;
   const jitter = orion.hurtFlash > 0 ? Math.sin(Engine.time * 78) * 2 : 0;
   const art = orionMangaArt();
   const hasAnim = orionMangaAssetReady(ORION_MANGA_ORION_SHEET)
     && art && typeof art.drawAnimation === 'function';
+  const runAmount = Math.min(1, Math.abs(orion.visualVx || orion.vx) / P_SPEED);
 
   ctx.save();
   const flash = orion.hurtFlash > 0 && Math.sin(Engine.time * 28) > 0;
@@ -1137,19 +1179,36 @@ function drawOrionMangaSprite() {
   let drew = false;
   if (hasAnim) {
     const motion = currentOrionMangaMotion();
-    drew = art.drawAnimation(ctx, ORION_MANGA_ORION_SHEET, motion.anim, motion.t, orion.x + jitter, y, {
+    const actionAmount = motion.anim === 'run'
+      ? runAmount
+      : (motion.anim === 'dodge' ? 0.62 : (/stab|throw|jump|hit|prone/.test(motion.anim) ? 0.36 : 0.20));
+    drew = art.drawAnimation(ctx, ORION_MANGA_ORION_SHEET, motion.anim, motion.t, drawX + jitter, y, {
       scale,
       flipX: motion.flipX,
       rotate: motion.rotate || 0,
+      phase: motion.anim === 'run' ? orion.walkPhase / (Math.PI * 2) : undefined,
+      amount: actionAmount,
+      bob: motion.anim === 'run' ? 5.4 : 3.4,
+      sway: motion.anim === 'run' ? 0.030 : 0.020,
+      squash: motion.anim === 'run' ? 0.030 : 0.018,
     });
   } else {
     const frame = currentOrionMangaFrame();
     const motion = currentOrionMangaMotion();
-    drew = Manga.assets.drawFrame(ctx, ORION_MANGA_LEGACY_SHEET, frame, orion.x + jitter, orion.y + 4, {
+    const drawOpts = {
       scale,
       flipX: motion.flipX,
       rotate: motion.rotate || (orion.proneT > 0 ? orion.hurtFacing * 0.10 : 0),
-    });
+      phase: (orion.walkPhase || Engine.time) / (Math.PI * 2),
+      amount: runAmount,
+      bob: 4.5,
+      sway: 0.024,
+      squash: 0.026,
+      animName: motion.anim || frame,
+    };
+    drew = art && typeof art.drawFilmFrame === 'function'
+      ? art.drawFilmFrame(ctx, ORION_MANGA_LEGACY_SHEET, frame, drawX + jitter, drawY + 4, drawOpts)
+      : Manga.assets.drawFrame(ctx, ORION_MANGA_LEGACY_SHEET, frame, drawX + jitter, drawY + 4, drawOpts);
   }
   ctx.restore();
   return drew;
@@ -1237,14 +1296,15 @@ function currentScorpionMangaFrame() {
 }
 
 function currentScorpionMangaMotion() {
-  if (boss.state === 'dead' || boss.hp <= 0) return { anim:'dead', t:boss.deadTimer || 0 };
-  if (boss.hurtFlash > 0) return { anim:'hurt', t:0.14 - boss.hurtFlash };
-  if (boss.state === 'charge') return { anim:'charge', t:boss.stateTimer };
-  if (boss.state === 'claw' || boss.state === 'phantom' || boss.clawOpen > 0.45) return { anim:'claw', t:boss.stateTimer };
-  if (boss.state === 'sting' || boss.stingT > 0.18 || boss.tailCurl > 0.72) return { anim:'sting', t:boss.stateTimer };
-  if (boss.phase >= 3) return { anim:'enraged', t:Engine.time };
-  if (boss.state === 'walk' || boss.state === 'idle' || boss.state === 'backup') return { anim:'crawl', t:Engine.time * (boss.phase >= 2 ? 1.15 : 1) };
-  return { anim:'idle', t:Engine.time };
+  const lean = boss.visualLean || 0;
+  if (boss.state === 'dead' || boss.hp <= 0) return { anim:'dead', t:boss.deadTimer || 0, rotate:lean * 0.25 };
+  if (boss.hurtFlash > 0) return { anim:'hurt', t:0.14 - boss.hurtFlash, rotate:-boss.facing * 0.035 };
+  if (boss.state === 'charge') return { anim:'charge', t:boss.stateTimer, rotate:lean };
+  if (boss.state === 'claw' || boss.state === 'phantom' || boss.clawOpen > 0.45) return { anim:'claw', t:boss.stateTimer, rotate:lean };
+  if (boss.state === 'sting' || boss.stingT > 0.18 || boss.tailCurl > 0.72) return { anim:'sting', t:boss.stateTimer, rotate:lean };
+  if (boss.phase >= 3) return { anim:'enraged', t:Engine.time, rotate:lean * 0.45 };
+  if (boss.state === 'walk' || boss.state === 'idle' || boss.state === 'backup') return { anim:'crawl', t:Engine.time * (boss.phase >= 2 ? 1.15 : 1), rotate:lean };
+  return { anim:'idle', t:Engine.time, rotate:lean * 0.35 };
 }
 
 function drawScorpionMangaSprite() {
@@ -1252,6 +1312,8 @@ function drawScorpionMangaSprite() {
   const compact = Math.min(Engine.W, Engine.H);
   const nearScale = Math.max(0.50, Math.min(0.78, compact / 1180));
   const scale = orionMangaScale(boss.y, nearScale * 0.84, nearScale, { curve: 0.74 });
+  const drawX = typeof boss.visualX === 'number' ? boss.visualX : boss.x;
+  const drawY = typeof boss.visualY === 'number' ? boss.visualY : boss.y;
   const art = orionMangaArt();
   const hasAnim = orionMangaAssetReady(ORION_MANGA_SCORPION_SHEET)
     && art && typeof art.drawAnimation === 'function';
@@ -1271,16 +1333,31 @@ function drawScorpionMangaSprite() {
   let drew = false;
   if (hasAnim) {
     const motion = currentScorpionMangaMotion();
-    drew = art.drawAnimation(ctx, ORION_MANGA_SCORPION_SHEET, motion.anim, motion.t, boss.x, boss.y + 12, {
+    drew = art.drawAnimation(ctx, ORION_MANGA_SCORPION_SHEET, motion.anim, motion.t, drawX, drawY + 12, {
       scale,
       flipX: boss.facing < 0,
+      rotate: motion.rotate || 0,
+      amount: motion.anim === 'crawl' ? 0.72 : (motion.anim === 'charge' ? 0.82 : (/claw|sting/.test(motion.anim) ? 0.34 : 0.20)),
+      bob: motion.anim === 'charge' ? 7 : 5.6,
+      sway: motion.anim === 'charge' ? 0.040 : 0.024,
+      squash: motion.anim === 'charge' ? 0.036 : 0.026,
     });
   } else {
     const frame = currentScorpionMangaFrame();
-    drew = Manga.assets.drawFrame(ctx, ORION_MANGA_LEGACY_SHEET, frame, boss.x, boss.y + 10, {
+    const drawOpts = {
       scale,
       flipX: boss.facing < 0,
-    });
+      rotate: boss.visualLean || 0,
+      phase: Engine.time * (boss.phase >= 2 ? 1.15 : 1),
+      amount: boss.state === 'dead' ? 0.02 : (boss.state === 'idle' ? 0.20 : 0.68),
+      bob: boss.state === 'charge' ? 6.5 : 4.8,
+      sway: boss.state === 'charge' ? 0.034 : 0.022,
+      squash: boss.state === 'charge' ? 0.032 : 0.022,
+      animName: boss.state || frame,
+    };
+    drew = art && typeof art.drawFilmFrame === 'function'
+      ? art.drawFilmFrame(ctx, ORION_MANGA_LEGACY_SHEET, frame, drawX, drawY + 10, drawOpts)
+      : Manga.assets.drawFrame(ctx, ORION_MANGA_LEGACY_SHEET, frame, drawX, drawY + 10, drawOpts);
   }
   ctx.restore();
   return drew;
@@ -1964,10 +2041,10 @@ function drawMangaScorpionPose(anim, x, y, opts = {}) {
 function drawOrionMangaWorldFrame() {
   const W = Engine.W, H = Engine.H;
   if (boss) {
-    drawMangaContactShadow(boss.x, boss.y, { w:128, h:24, alpha:boss.state === 'dead' ? 0.32 : 0.50, offsetY:13 });
+    drawMangaContactShadow(boss.visualX ?? boss.x, boss.visualY ?? boss.y, { w:128, h:24, alpha:boss.state === 'dead' ? 0.32 : 0.50, offsetY:13 });
   }
   if (orion) {
-    drawMangaContactShadow(orion.x, orion.y, { w:52, h:13, alpha:orion.proneT > 0 ? 0.30 : 0.45, offsetY:13 });
+    drawMangaContactShadow(orion.visualX ?? orion.x, orion.visualY ?? orion.y, { w:52, h:13, alpha:orion.proneT > 0 ? 0.30 : 0.45, offsetY:13 });
   }
 
   for(const s of spears) drawMangaSpearProjectile(s, false);
@@ -1985,7 +2062,7 @@ function drawOrionMangaWorldFrame() {
 
   if (orion && orion.hurtFlash > 0 && window.Manga && Manga.effects && Manga.effects.speedLines) {
     const f = Math.min(1, orion.hurtFlash / 0.7);
-    Manga.effects.speedLines(ctx, orion.x, orion.y - 32, {
+    Manga.effects.speedLines(ctx, orion.visualX ?? orion.x, (orion.visualY ?? orion.y) - 32, {
       count:14, innerR:28, outerR:86 + f * 48,
       color:'#ff2200', width:2.4, jitter:0.5,
     });

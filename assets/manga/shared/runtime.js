@@ -28,6 +28,16 @@
     return A.drawFrame(ctx, id, frame, x, y, opts);
   }
 
+  function cycle01(v) {
+    if (typeof v !== 'number' || !Number.isFinite(v)) return 0;
+    return v - Math.floor(v);
+  }
+
+  function smoothstep(edge0, edge1, v) {
+    const t = clamp((v - edge0) / Math.max(0.0001, edge1 - edge0), 0, 1);
+    return t * t * (3 - 2 * t);
+  }
+
   function animation(id, name) {
     const A = assets();
     if (!A || typeof A.get !== 'function') return null;
@@ -37,7 +47,7 @@
       : null;
   }
 
-  function animationFrame(id, name, t = 0, opts = {}) {
+  function animationState(id, name, t = 0, opts = {}) {
     const anim = animation(id, name);
     const frames = anim && Array.isArray(anim.frames) && anim.frames.length
       ? anim.frames
@@ -45,17 +55,154 @@
     const fps = opts.fps ?? (anim && anim.fps) ?? 8;
     const loop = opts.loop ?? (anim ? anim.loop !== false : true);
     let idx = 0;
+    let progress = 0;
 
     if (frames.length > 1 && fps > 0) {
-      idx = Math.floor(Math.max(0, t) * fps);
-      idx = loop ? idx % frames.length : Math.min(frames.length - 1, idx);
+      const raw = Math.max(0, t) * fps;
+      if (loop) {
+        const whole = Math.floor(raw);
+        idx = whole % frames.length;
+        progress = raw - whole;
+      } else {
+        const capped = Math.min(frames.length - 1, raw);
+        idx = Math.floor(capped);
+        progress = idx >= frames.length - 1 ? 1 : capped - idx;
+      }
     }
 
-    return frames[idx] || frames[0] || name;
+    const nextIdx = frames.length > 1
+      ? (loop ? (idx + 1) % frames.length : Math.min(frames.length - 1, idx + 1))
+      : idx;
+
+    return {
+      frame: frames[idx] || frames[0] || name,
+      nextFrame: frames[nextIdx] || frames[idx] || frames[0] || name,
+      frames,
+      index: idx,
+      nextIndex: nextIdx,
+      progress,
+      fps,
+      loop,
+      phase: frames.length > 1 ? (idx + progress) / frames.length : cycle01(Math.max(0, t) * Math.max(0.01, fps)),
+    };
+  }
+
+  function animationFrame(id, name, t = 0, opts = {}) {
+    return animationState(id, name, t, opts).frame;
+  }
+
+  function filmAmountForAnimation(name, opts = {}) {
+    if (typeof opts.amount === 'number') return opts.amount;
+    const n = String(name || '').toLowerCase();
+    if (/dead|fallen|stone|hazard|splash/.test(n)) return 0.04;
+    if (/idle|watch|gaze|victory|recover|guard/.test(n)) return 0.18;
+    if (/run|walk|crawl|charge|fly|breach/.test(n)) return 0.72;
+    if (/dodge|jump|flap|speed|dive/.test(n)) return 0.44;
+    if (/attack|claw|sting|stab|throw|bash|bow|strike|slash|release|hurt|hit/.test(n)) return 0.30;
+    return 0.22;
+  }
+
+  function tweenAmountForAnimation(name, opts = {}) {
+    if (opts.frameBlend === false || opts.tween === false) return 0;
+    if (typeof opts.frameBlendStrength === 'number') return opts.frameBlendStrength;
+    if (typeof opts.tweenAmount === 'number') return opts.tweenAmount;
+    const n = String(name || '').toLowerCase();
+    if (/dead|fallen|stone|hazard|splash/.test(n)) return 0;
+    if (/idle|watch|gaze|victory|recover|guard/.test(n)) return 0.16;
+    if (/run|walk|crawl|charge|fly|breach|flap/.test(n)) return 0.30;
+    if (/dodge|jump|speed|dive/.test(n)) return 0.18;
+    if (/attack|claw|sting|stab|throw|bash|bow|strike|slash|release|hurt|hit/.test(n)) return 0.20;
+    return 0.14;
+  }
+
+  function shouldFilmAnimation(id, name, opts = {}) {
+    if (opts.film === false) return false;
+    if (opts.film === true) return true;
+    const sid = String(id || '');
+    if (/fxhud|sceneAtlas|hubConcourse|destinationPanels|clueTablet|olympus/i.test(sid)) return false;
+    return /animSheet|archerSheet|orionAnim|scorpionAnim|perseus\.gorgonSheet|icarus\.stageAtlasV2/i.test(sid);
+  }
+
+  function drawFilmFrame(ctx, id, frame, x, y, opts = {}) {
+    const amount = clamp(filmAmountForAnimation(opts.animName || frame, opts), 0, 1.4);
+    const phase = cycle01(opts.phase != null
+      ? opts.phase
+      : (opts.walkPhase != null ? opts.walkPhase / (Math.PI * 2) : (opts.t || 0) * (opts.rate || 0.95)));
+    const wave = Math.sin(phase * Math.PI * 2);
+    const lift = Math.max(0, Math.sin(phase * Math.PI));
+    const settle = Math.max(0, Math.cos(phase * Math.PI * 2));
+    const baseScale = typeof opts.scale === 'number' ? opts.scale : 1;
+    const bob = (opts.bob ?? 5) * amount * lift * lift;
+    const floatBob = (opts.floatBob || 0) * Math.sin((opts.floatT ?? opts.t ?? 0) * (opts.floatRate ?? 1.8) + (opts.floatPhase || 0));
+    const sway = (opts.sway ?? 0.025) * amount * wave;
+    const squash = (opts.squash ?? 0.025) * amount * settle;
+    const lean = opts.lean || 0;
+    const xDrift = (opts.driftX || 0) * amount * Math.sin(phase * Math.PI * 2 + 0.8);
+    const yDrift = (opts.driftY || 0) * amount * Math.cos(phase * Math.PI * 2 + 0.4);
+    const smearAlpha = opts.smear === false
+      ? 0
+      : (opts.smearAlpha ?? clamp((amount - 0.26) * 0.12, 0, 0.12));
+    const smearX = opts.smearX != null
+      ? opts.smearX
+      : ((opts.flipX ? 1 : -1) * (opts.smear ?? 5) * amount * (0.45 + Math.abs(wave) * 0.55));
+    const smearY = opts.smearY ?? (bob * 0.22);
+
+    ctx.save();
+    ctx.translate(x + xDrift, y - bob + floatBob + yDrift);
+    const rotate = (opts.rotate || 0) + lean + sway;
+    if (rotate) ctx.rotate(rotate);
+    ctx.scale(
+      (opts.filmScaleX || 1) * (1 + squash),
+      (opts.filmScaleY || 1) * (1 - squash * 0.72)
+    );
+    if (smearAlpha > 0) {
+      drawFrame(ctx, id, frame, smearX, smearY, {
+        scale: baseScale,
+        alpha: (opts.alpha ?? 1) * smearAlpha,
+        flipX: opts.flipX,
+        flipY: opts.flipY,
+        anchorX: opts.anchorX,
+        anchorY: opts.anchorY,
+      });
+    }
+    const drew = drawFrame(ctx, id, frame, 0, 0, {
+      scale: baseScale,
+      alpha: opts.alpha,
+      flipX: opts.flipX,
+      flipY: opts.flipY,
+      anchorX: opts.anchorX,
+      anchorY: opts.anchorY,
+    });
+    ctx.restore();
+    return drew;
   }
 
   function drawAnimation(ctx, id, name, t, x, y, opts = {}) {
-    return drawFrame(ctx, id, animationFrame(id, name, t, opts), x, y, opts);
+    const state = animationState(id, name, t, opts);
+    if (shouldFilmAnimation(id, name, opts)) {
+      const baseOpts = Object.assign({}, opts, {
+        t,
+        animName: name,
+        phase: opts.phase != null ? opts.phase : state.phase,
+      });
+      const blendStrength = tweenAmountForAnimation(name, opts);
+      if (blendStrength > 0 && state.nextFrame && state.nextFrame !== state.frame) {
+        const alpha = opts.alpha ?? 1;
+        const mix = smoothstep(0.36, 0.94, state.progress) * blendStrength;
+        const drewA = drawFilmFrame(ctx, id, state.frame, x, y, Object.assign({}, baseOpts, {
+          alpha: alpha * Math.max(0.62, 1 - mix),
+        }));
+        const drewB = drawFilmFrame(ctx, id, state.nextFrame, x, y, Object.assign({}, baseOpts, {
+          alpha: alpha * mix,
+          phase: cycle01(baseOpts.phase + 1 / state.frames.length),
+          amount: filmAmountForAnimation(name, opts) * 0.82,
+          smear: false,
+        }));
+        return drewA || drewB;
+      }
+      return drawFilmFrame(ctx, id, state.frame, x, y, baseOpts);
+    }
+    return drawFrame(ctx, id, state.frame, x, y, opts);
   }
 
   function drawFrameCover(ctx, id, frameName, x, y, w, h, opts = {}) {
@@ -222,23 +369,36 @@
     const scale = opts.scale ?? 1;
     const x = state.x || 0;
     const y = state.y || 0;
+    const form = state.form || 'human';
+    const landing = clamp((state.landingT || 0) / 0.18, 0, 1);
+    const ready = clamp(state.readyT || 0, 0, 1);
+    const turn = clamp((state.turnT || 0) / 0.18, 0, 1);
     if (opts.shadow !== false) {
       contactShadow(ctx, x, y, {
         scale,
-        w: (state.form === 'toad' ? 32 : 24) * scale,
-        h: (state.form === 'toad' ? 7 : 5) * scale,
-        alpha: opts.shadowAlpha ?? 0.40,
+        w: ((form === 'toad' ? 32 : 24) + Math.abs(state.vx || 0) * 0.015 + landing * 8) * scale,
+        h: ((form === 'toad' ? 7 : 5) + landing * 2.4) * scale,
+        alpha: opts.shadowAlpha ?? (0.38 + ready * 0.05 + landing * 0.08),
       });
     }
+    const amount = clamp(Math.abs(state.vx || 0) / (form === 'toad' ? 440 : 220), 0, 1);
+    const phase = cycle01((state.walkPhase || 0) / (Math.PI * 2));
+    const step = Math.sin(phase * Math.PI * 2);
+    const lift = Math.max(0, Math.sin(phase * Math.PI));
+    const idleFloat = amount < 0.04 ? Math.sin((state.t || 0) * 2.1) * (form === 'toad' ? 0.8 : 0.35) : 0;
+    const bob = (form === 'toad' ? 10 : 2.4) * amount * lift * lift + idleFloat;
+    const squash = (form === 'toad' ? 0.06 : 0.025) * amount * Math.max(0, Math.cos(phase * Math.PI * 2)) + landing * 0.08;
+    const turnSqueeze = turn > 0 ? 0.56 + Math.abs((1 - turn) - 0.5) * 0.88 : 1;
     ctx.save();
-    ctx.translate(x, y);
-    ctx.scale(scale, scale);
+    ctx.translate(x, y - bob);
+    ctx.rotate((state.lean || 0) + step * amount * (form === 'toad' ? 0.045 : 0.018) + ready * (state.facing || 1) * -0.010);
+    ctx.scale(scale * turnSqueeze * (1 + squash), scale * (1 - squash * 0.7 + landing * 0.06));
     Manga.characters.hubWalker.draw(ctx, {
       x: 0, y: 0,
       facing: state.facing || 1,
       walkPhase: state.walkPhase || 0,
       vx: state.vx || 0,
-      form: state.form || 'human',
+      form,
     });
     ctx.restore();
     return true;
@@ -365,14 +525,31 @@
     const facing = opts.facing || 1;
     const vx = Math.abs(opts.vx || 0) > 1 ? opts.vx : facing * 60;
     const scale = opts.scale ?? 1;
+    const walkCycle = cycle01((opts.walkPhase || t * 4.2) / (Math.PI * 2));
+    const movingAmount = clamp(Math.abs(vx) / 80, 0.18, 1);
     let id = null, frame = null, spriteScale = scale, yy = y, flipX = facing < 0;
+    let film = { phase: walkCycle, amount: movingAmount, bob: 5 * scale, sway: 0.028, squash: 0.032 };
     if (game === 'icarus') {
-      id = 'godgames.icarus.flightSheet'; frame = Math.sin(t * 2.2) > 0 ? 'flapUp' : 'glide'; spriteScale *= 0.34; yy -= 22 * scale;
+      const wing = cycle01(t * 0.76);
+      id = 'godgames.icarus.flightSheet';
+      frame = wing < 0.24 ? 'flapUp' : (wing < 0.50 ? 'glide' : (wing < 0.74 ? 'flapDown' : 'glide'));
+      spriteScale *= 0.34;
+      yy -= 22 * scale;
+      film = {
+        phase: wing,
+        amount: 0.46,
+        bob: 5.5 * scale,
+        floatBob: 3.6 * scale,
+        floatRate: 1.45,
+        sway: 0.040,
+        squash: 0.018,
+        rotate: Math.sin(t * 1.1) * 0.035,
+      };
     } else if (game === 'achilles') {
       id = ready('godgames.achilles.animSheet') ? 'godgames.achilles.animSheet' : 'godgames.achilles.actionSheet';
       if (id === 'godgames.achilles.animSheet') {
         const anim = Math.abs(vx) > 1 ? (facing < 0 ? 'runLeft' : 'runRight') : 'idle';
-        frame = animationFrame(id, anim, opts.walkPhase || t); flipX = false; spriteScale *= 0.36;
+        frame = animationFrame(id, anim, opts.walkPhase || t); flipX = false; spriteScale *= 0.36; film.animName = anim;
       } else {
         frame = Math.abs(vx) > 1 ? (facing < 0 ? 'runLeft' : 'runRight') : 'idle'; flipX = frame === 'idle' && facing < 0; spriteScale *= 0.30;
       }
@@ -380,20 +557,29 @@
     } else if (game === 'orion') {
       id = ready('godgames.orion.orionAnimV1') ? 'godgames.orion.orionAnimV1' : 'godgames.orion.scorpionSheet';
       if (id === 'godgames.orion.orionAnimV1') {
-        frame = animationFrame(id, Math.abs(vx) > 1 ? 'run' : 'idle', opts.walkPhase || t); flipX = facing < 0; spriteScale *= 0.34;
+        const anim = Math.abs(vx) > 1 ? 'run' : 'idle';
+        frame = animationFrame(id, anim, opts.walkPhase || t); flipX = facing < 0; spriteScale *= 0.34; film.animName = anim;
       } else {
         frame = Math.abs(vx) > 1 ? 'orionRun' : 'orionIdle'; flipX = facing < 0; spriteScale *= 0.31;
       }
       yy += 2 * scale;
     } else if (game === 'perseus') {
-      id = 'godgames.perseus.gorgonSheet'; frame = Math.abs(Math.sin(opts.walkPhase || t)) > 0.18 ? 'perseusRun' : 'perseusIdle'; spriteScale *= 0.32; yy += 3 * scale;
+      id = 'godgames.perseus.gorgonSheet';
+      frame = Math.abs(Math.sin(opts.walkPhase || t)) > 0.18 ? 'perseusRun' : 'perseusIdle';
+      spriteScale *= 0.32;
+      yy += 3 * scale;
+      film.animName = frame;
     }
     if (!id || !frame || !ready(id)) return false;
     contactShadow(ctx, x, y, { scale, w: opts.shadowW || 42 * scale, h: opts.shadowH || 9 * scale, alpha: opts.shadowAlpha ?? 0.42, rim: opts.accent || '#D4AF37' });
     ctx.save();
     ctx.shadowColor = opts.accent || '#D4AF37';
     ctx.shadowBlur = opts.glow ?? 10;
-    const drew = drawFrame(ctx, id, frame, x, yy, { scale: spriteScale, flipX });
+    const drew = drawFilmFrame(ctx, id, frame, x, yy, Object.assign({}, film, {
+      scale: spriteScale,
+      flipX,
+      alpha: opts.alpha,
+    }));
     ctx.restore();
     return drew;
   }
@@ -460,8 +646,10 @@
   Art.drawImage = drawImage;
   Art.drawFrame = drawFrame;
   Art.animation = animation;
+  Art.animationState = animationState;
   Art.animationFrame = animationFrame;
   Art.drawAnimation = drawAnimation;
+  Art.drawFilmFrame = drawFilmFrame;
   Art.drawFrameCover = drawFrameCover;
   Art.drawScene = drawScene;
   Art.mangaAtmosphere = mangaAtmosphere;

@@ -161,6 +161,7 @@ let mangaTexts = [];     // { text, x, y, t, color, size }
 let eagles, eagleSpawnTimer;
 let orcas, orcaSpawnTimer;
 let waves, waveSpawnTimer;
+let daedalusVisual = null;
 let cameraX = 0;
 let keys;        // alias for Engine.keys, assigned after boot
 
@@ -357,6 +358,8 @@ function initGame() {
     facingRight: true,
     vx: 0,
     vy: -220,
+    visualX: canvas.width * 0.28,
+    visualY: canvas.height * 0.78,
     visualVx: 0,
     visualVy: -220,
     angle: 0,
@@ -396,6 +399,7 @@ function initGame() {
   // Manga abilities
   diveT = 0; diveCD = 0;
   rescueAvailable = 1; rescueIslandFavor = 0; rescueT = 0; rescueReach = 0;
+  daedalusVisual = null;
   sunEmbraceT = 0;
   mangaTexts.length = 0;
   hallStatus = null;
@@ -517,6 +521,10 @@ function recomputeWingHealth() {
 
 function updateIcarusSpriteMotion(dt, thrusting = false, diving = false) {
   if (!player) return;
+  if (typeof player.visualX !== 'number') player.visualX = player.x;
+  if (typeof player.visualY !== 'number') player.visualY = player.y;
+  player.visualX += (player.x - player.visualX) * Math.min(1, dt * (diving ? 14 : 10));
+  player.visualY += (player.y - player.visualY) * Math.min(1, dt * (diving ? 14 : 10));
   player.visualVx += (player.vx - player.visualVx) * Math.min(1, dt * 8.5);
   player.visualVy += (player.vy - player.visualVy) * Math.min(1, dt * 8.5);
 
@@ -532,6 +540,17 @@ function updateIcarusSpriteMotion(dt, thrusting = false, diving = false) {
   const diveKick = diving ? 0.24 * faceSign : 0;
   const targetTilt = verticalTilt + bankTilt + flapKick + diveKick;
   player.spriteTilt += (targetTilt - player.spriteTilt) * Math.min(1, dt * (diving ? 13 : 7));
+}
+
+function updateIcarusEnemyVisual(actor, dt, opts = {}) {
+  if (!actor) return;
+  if (typeof actor.visualX !== 'number') actor.visualX = actor.x;
+  if (typeof actor.visualY !== 'number') actor.visualY = actor.y;
+  if (typeof actor.visualTilt !== 'number') actor.visualTilt = 0;
+
+  actor.visualX += (actor.x - actor.visualX) * Math.min(1, dt * (opts.xEase || 12));
+  actor.visualY += (actor.y - actor.visualY) * Math.min(1, dt * (opts.yEase || 12));
+  actor.visualTilt += ((opts.tilt || 0) - actor.visualTilt) * Math.min(1, dt * (opts.tiltEase || 9));
 }
 
 // ── Update ─────────────────────────────────────────────────────────────────
@@ -861,6 +880,9 @@ function updatePlaying(dt) {
       eagles.push({
         x: canvas.width + 70 + i * 110,
         y: spawnY,
+        visualX: canvas.width + 70 + i * 110,
+        visualY: spawnY,
+        visualTilt: 0,
         speed: 340 + Math.random() * 140 + diff * 90,
         wingPhase: Math.random() * Math.PI * 2,
         size: 0.9 + Math.random() * 0.4,
@@ -899,6 +921,12 @@ function updatePlaying(dt) {
     } else {
       e.x -= e.speed * dt;
     }
+    updateIcarusEnemyVisual(e, dt, {
+      xEase: e._diving ? 15 : 10,
+      yEase: e._diving ? 15 : 9,
+      tilt: e._diving ? 0.28 : -0.06 + Math.sin(e.wingPhase) * 0.035,
+      tiltEase: e._diving ? 13 : 8,
+    });
     const edx = e.x - player.x, edy = e.y - player.y;
     const edist = Math.sqrt(edx * edx + edy * edy);
     // Icarian dive (player diving) downs eagles in path.
@@ -928,6 +956,9 @@ function updatePlaying(dt) {
     orcas.push({
       x: player.x,
       y: oceanY(),
+      visualX: player.x,
+      visualY: oceanY(),
+      visualTilt: 0,
       vx: 0,
       vy: 0,
       chargeT: 0.5,   // warning phase before launch
@@ -959,6 +990,12 @@ function updatePlaying(dt) {
         o.vx = +(170 + Math.random() * 80);  // arc rightward
         playOrcaSound();
       }
+      updateIcarusEnemyVisual(o, dt, {
+        xEase: 8,
+        yEase: 8,
+        tilt: Math.sin(time * 8 + o.x * 0.02) * 0.035,
+        tiltEase: 10,
+      });
       continue;
     }
 
@@ -966,6 +1003,12 @@ function updatePlaying(dt) {
     o.vy += GRAVITY * dt;
     o.y  += o.vy * dt;
     o.x  += o.vx * dt;
+    updateIcarusEnemyVisual(o, dt, {
+      xEase: 12,
+      yEase: 12,
+      tilt: Math.max(-0.38, Math.min(0.38, Math.atan2(o.vx, -o.vy) * 0.34)),
+      tiltEase: 12,
+    });
 
     // collision with player while above water
     if (o.y < oY) {
@@ -1231,6 +1274,12 @@ function rescueWorldMotion(dt) {
     e.divingT = Math.max(0, e.divingT - dt);
     if (e._diving) { e.x += e.diveDX * dt; e.y += e.diveDY * dt; }
     else           { e.x -= e.speed * dt; }
+    updateIcarusEnemyVisual(e, dt, {
+      xEase: e._diving ? 15 : 10,
+      yEase: e._diving ? 15 : 9,
+      tilt: e._diving ? 0.28 : -0.06 + Math.sin(e.wingPhase) * 0.035,
+      tiltEase: e._diving ? 13 : 8,
+    });
     if (e.x < -90 || e.y > canvas.height + 100) eagles.splice(i, 1);
   }
   // Orcas finish their breach arcs (no collision, no fresh splash sounds).
@@ -1243,11 +1292,23 @@ function rescueWorldMotion(dt) {
         o.vy = -(380 + Math.random() * 80);
         o.vx = +(170 + Math.random() * 80);
       }
+      updateIcarusEnemyVisual(o, dt, {
+        xEase: 8,
+        yEase: 8,
+        tilt: Math.sin(time * 8 + o.x * 0.02) * 0.035,
+        tiltEase: 10,
+      });
       continue;
     }
     o.vy += GRAVITY * dt;
     o.y  += o.vy * dt;
     o.x  += o.vx * dt;
+    updateIcarusEnemyVisual(o, dt, {
+      xEase: 12,
+      yEase: 12,
+      tilt: Math.max(-0.38, Math.min(0.38, Math.atan2(o.vx, -o.vy) * 0.34)),
+      tiltEase: 12,
+    });
     if (o.y > oY + 80) orcas.splice(i, 1);
   }
   // Waves continue their rise/hold/fall cycle.
@@ -2457,13 +2518,19 @@ function renderFlyingDaedalus(W, H) {
   const comment = getDaedalusComment();
   // Daedalus hovers behind and slightly below Icarus, gently bobbing
   const bob   = Math.sin(time * 1.35 + 0.8) * 7;
-  const ddx   = player.x - 108;
-  const ddy   = player.y + 14 + bob;
+  const targetX = player.x - 108;
+  const targetY = player.y + 14 + bob;
+  if (!daedalusVisual) daedalusVisual = { x: targetX, y: targetY, tilt: 0 };
+  daedalusVisual.x += (targetX - daedalusVisual.x) * 0.12;
+  daedalusVisual.y += (targetY - daedalusVisual.y) * 0.12;
+  daedalusVisual.tilt += ((player.spriteTilt || 0) * 0.45 - daedalusVisual.tilt) * 0.08;
+  const ddx = daedalusVisual.x;
+  const ddy = daedalusVisual.y;
   const flapY = Math.sin(time * 3.2 + 1.4) * 13;
 
   // Manga route — Icarus-specific support sprite first, portable fallback while
   // the project atlas is still loading.
-  if (Engine.manga && drawMangaDaedalusFly(ddx, ddy)) {
+  if (Engine.manga && drawMangaDaedalusFly(ddx, ddy, { tilt: daedalusVisual.tilt })) {
     drawDaedalusBubble(W, H, ddx, ddy, comment);
     return;
   }
@@ -3026,6 +3093,12 @@ function mangaAtlasReady() {
 function drawMangaAtlasFrame(frame, x, y, opts = {}) {
   const art = icarusMangaArt();
   if (!art || !mangaAtlasReady() || typeof art.drawFrame !== 'function') return false;
+  if (opts.film && typeof art.drawFilmFrame === 'function') {
+    return art.drawFilmFrame(ctx, ICARUS_MANGA_ATLAS_ASSET, frame, x, y, Object.assign({
+      animName: frame,
+      t: time,
+    }, opts));
+  }
   return art.drawFrame(ctx, ICARUS_MANGA_ATLAS_ASSET, frame, x, y, opts);
 }
 
@@ -3033,6 +3106,19 @@ function drawMangaAtlasAnimation(name, t, x, y, opts = {}) {
   const art = icarusMangaArt();
   if (!art || !mangaAtlasReady() || typeof art.drawAnimation !== 'function') return false;
   return art.drawAnimation(ctx, ICARUS_MANGA_ATLAS_ASSET, name, t, x, y, opts);
+}
+
+function drawIcarusSheetFrame(frame, x, y, opts = {}) {
+  if (!mangaAssetReady(ICARUS_MANGA_SHEET_ASSET)
+    || !Manga.assets || typeof Manga.assets.drawFrame !== 'function') return false;
+  const art = icarusMangaArt();
+  if (opts.film && art && typeof art.drawFilmFrame === 'function') {
+    return art.drawFilmFrame(ctx, ICARUS_MANGA_SHEET_ASSET, frame, x, y, Object.assign({
+      animName: frame,
+      t: time,
+    }, opts));
+  }
+  return Manga.assets.drawFrame(ctx, ICARUS_MANGA_SHEET_ASSET, frame, x, y, opts);
 }
 
 function icarusMangaStage() {
@@ -3394,6 +3480,9 @@ function drawMangaEagle(e, W, H) {
   const s = icarusMangaStage();
   const base = Math.max(0.16, Math.min(0.25, Math.min(W, H) / 2850));
   const scale = base * e.size * (e._diving ? 1.12 : 1);
+  const ex = typeof e.visualX === 'number' ? e.visualX : e.x;
+  const ey = typeof e.visualY === 'number' ? e.visualY : e.y;
+  const tilt = e.visualTilt || 0;
   const targetX = e.diveTargetX || (player ? player.x : e.x - 160);
   const targetY = e.diveTargetY || (player ? player.y : e.y + 140);
 
@@ -3405,11 +3494,11 @@ function drawMangaEagle(e, W, H) {
     ctx.lineWidth = 2.4;
     ctx.setLineDash([10, 8]);
     ctx.beginPath();
-    ctx.moveTo(e.x, e.y);
-    ctx.quadraticCurveTo((e.x + targetX) * 0.5, Math.min(e.y, targetY) - H * 0.08, targetX, targetY);
+    ctx.moveTo(ex, ey);
+    ctx.quadraticCurveTo((ex + targetX) * 0.5, Math.min(ey, targetY) - H * 0.08, targetX, targetY);
     ctx.stroke();
     ctx.setLineDash([]);
-    drawMangaAtlasFrame('diveAura', e.x, e.y, { scale: scale * 1.12, alpha: 0.32 + warn * 0.20, rotate: -0.55 });
+    drawMangaAtlasFrame('diveAura', ex, ey, { scale: scale * 1.12, alpha: 0.32 + warn * 0.20, rotate: -0.55 + tilt });
   }
 
   if (e._diving) {
@@ -3419,19 +3508,26 @@ function drawMangaEagle(e, W, H) {
     for (let i = 0; i < 5; i++) {
       const off = (i - 2) * 8;
       ctx.beginPath();
-      ctx.moveTo(e.x + 56 + off, e.y - 62 - off * 0.2);
-      ctx.lineTo(e.x - 26 + off * 0.5, e.y + 46);
+      ctx.moveTo(ex + 56 + off, ey - 62 - off * 0.2);
+      ctx.lineTo(ex - 26 + off * 0.5, ey + 46);
       ctx.stroke();
     }
   }
 
   ctx.globalAlpha = 0.96;
-  ctx.filter = `sepia(0.12) saturate(1.08) brightness(${0.88 + icarusSkyDepth(e.y) * 0.16}) contrast(1.08)`;
+  ctx.filter = `sepia(0.12) saturate(1.08) brightness(${0.88 + icarusSkyDepth(ey) * 0.16}) contrast(1.08)`;
+  const wingPhase = ((time + e.wingPhase * 0.12) * 0.78) % 1;
   const drew = e._diving
-    ? drawMangaAtlasFrame('eagleDive', e.x, e.y, { scale, alpha: 0.98, rotate: 0.10 })
+    ? drawMangaAtlasFrame('eagleDive', ex, ey, {
+        scale, alpha: 0.98, rotate: 0.10 + tilt,
+        film: true, phase: wingPhase, amount: 0.34, bob: 2.2, sway: 0.018, squash: 0.012,
+      })
     : (e.markT > 0
-      ? drawMangaAtlasFrame('eagleAttack', e.x, e.y, { scale, alpha: 0.98 })
-      : drawMangaAtlasAnimation('eagleFly', time + e.wingPhase * 0.12, e.x, e.y, { scale, alpha: 0.96 }));
+      ? drawMangaAtlasFrame('eagleAttack', ex, ey, {
+          scale, alpha: 0.98, rotate: tilt,
+          film: true, phase: wingPhase, amount: 0.44, bob: 3.0, sway: 0.026, squash: 0.014,
+        })
+      : drawMangaAtlasAnimation('eagleFly', time + e.wingPhase * 0.12, ex, ey, { scale, alpha: 0.96, rotate: tilt }));
   ctx.filter = 'none';
 
   if (drew && e.markT > 0) {
@@ -3439,7 +3535,7 @@ function drawMangaEagle(e, W, H) {
     ctx.strokeStyle = '#ff2a12';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.ellipse(e.x, e.y + 8, 54 * scale / base, 17 * scale / base, -0.15, 0, Math.PI * 2);
+    ctx.ellipse(ex, ey + 8, 54 * scale / base, 17 * scale / base, -0.15 + tilt, 0, Math.PI * 2);
     ctx.stroke();
   }
   ctx.restore();
@@ -3450,6 +3546,9 @@ function drawMangaOrca(o, W, H) {
   if (!mangaAtlasReady()) return false;
   const oY = oceanY();
   const base = Math.max(0.28, Math.min(0.42, Math.min(W, H) / 1750));
+  const ox = typeof o.visualX === 'number' ? o.visualX : o.x;
+  const oy = typeof o.visualY === 'number' ? o.visualY : o.y;
+  const tilt = o.visualTilt || 0;
   let drew = false;
 
   ctx.save();
@@ -3460,36 +3559,43 @@ function drawMangaOrca(o, W, H) {
     ctx.lineWidth = 2 + urgency * 2;
     for (let i = 0; i < 3; i++) {
       ctx.beginPath();
-      ctx.ellipse(o.x, oY + 4, 34 + urgency * 34 + i * 14, 9 + urgency * 9 + i * 3, 0, 0, Math.PI * 2);
+      ctx.ellipse(ox, oY + 4, 34 + urgency * 34 + i * 14, 9 + urgency * 9 + i * 3, tilt * 0.35, 0, Math.PI * 2);
       ctx.stroke();
     }
-    drew = drawMangaAtlasFrame('orcaChurn', o.x, oY + 12, {
+    drew = drawMangaAtlasFrame('orcaChurn', ox, oY + 12, {
       scale: base * (0.82 + urgency * 0.18),
       alpha: 0.52 + urgency * 0.34,
+      rotate: tilt,
     });
     ctx.restore();
     return drew;
   }
 
-  const above = o.y < oY - 10;
+  const above = oy < oY - 10;
   const frame = !above || o.splashed ? 'orcaSplash' : (o.vy > -80 ? 'orcaBite' : 'orcaBreach');
-  const rot = above ? Math.max(-0.32, Math.min(0.32, Math.atan2(o.vx, -o.vy) * 0.28)) : 0;
-  const depth = icarusSeaDepth(o.y);
+  const rot = above ? tilt : 0;
+  const depth = icarusSeaDepth(oy);
   ctx.beginPath();
   ctx.rect(0, 0, W, oY + 82);
   ctx.clip();
   ctx.filter = `saturate(1.10) brightness(${0.92 + depth * 0.12}) contrast(1.08)`;
-  drew = drawMangaAtlasFrame(frame, o.x, Math.min(o.y + 26, oY + 36), {
+  drew = drawMangaAtlasFrame(frame, ox, Math.min(oy + 26, oY + 36), {
     scale: base * (frame === 'orcaSplash' ? 0.92 : 1.0),
     rotate: rot,
     alpha: o.y > oY + 30 ? 0.74 : 0.98,
+    film: above,
+    phase: ((time * 0.42 + o.x * 0.001) % 1 + 1) % 1,
+    amount: above ? 0.30 : 0.08,
+    bob: 4,
+    sway: 0.016,
+    squash: 0.010,
   });
   ctx.filter = 'none';
   ctx.restore();
   return drew;
 }
 
-function drawMangaDaedalusFly(x, y) {
+function drawMangaDaedalusFly(x, y, opts = {}) {
   if (!mangaAtlasReady()) return false;
   const scale = Math.max(0.17, Math.min(0.27, Math.min(canvas.width, canvas.height) / 2400));
   ctx.save();
@@ -3498,7 +3604,13 @@ function drawMangaDaedalusFly(x, y) {
   const drew = drawMangaAtlasFrame('daedalusFly', x, y, {
     scale,
     alpha: 0.88,
-    rotate: Math.sin(time * 1.2) * 0.035,
+    rotate: (opts.tilt || 0) + Math.sin(time * 1.2) * 0.035,
+    film: true,
+    phase: ((time * 0.52) % 1 + 1) % 1,
+    amount: 0.28,
+    bob: 3.5,
+    floatBob: 2.0,
+    sway: 0.018,
   });
   ctx.filter = 'none';
   ctx.restore();
@@ -3531,6 +3643,12 @@ function drawMangaDaedalusRescue(x, y, opts = {}) {
     scale,
     alpha: standing ? 0.92 : 0.94,
     rotate: standing ? -0.05 : -0.08 + reach * 0.08,
+    film: true,
+    phase: ((time * (standing ? 0.36 : 0.58)) % 1 + 1) % 1,
+    amount: standing ? 0.16 : 0.32,
+    bob: standing ? 1.6 : 3.6,
+    floatBob: standing ? 0.6 : 2.2,
+    sway: standing ? 0.010 : 0.020,
   });
   ctx.restore();
   return drew;
@@ -3538,10 +3656,12 @@ function drawMangaDaedalusRescue(x, y, opts = {}) {
 
 function drawMangaIcarusStatusFx(p, spriteScale) {
   if (!mangaAtlasReady()) return false;
+  const drawX = typeof p.visualX === 'number' ? p.visualX : p.x;
+  const drawY = typeof p.visualY === 'number' ? p.visualY : p.y;
   let drew = false;
   if (diveT > 0) {
     const a = clamp01(diveT / DIVE_DUR);
-    drew = drawMangaAtlasFrame('diveAura', p.x - 16, p.y + 6, {
+    drew = drawMangaAtlasFrame('diveAura', drawX - 16, drawY + 6, {
       scale: spriteScale * 1.35,
       alpha: 0.30 + Math.sin(a * Math.PI) * 0.32,
       rotate: -0.52,
@@ -3549,7 +3669,7 @@ function drawMangaIcarusStatusFx(p, spriteScale) {
   }
   if (p.burnDmg > 34 && p.burnDmg >= p.wetDmg) {
     const burn = clamp01((p.burnDmg - 34) / 66);
-    drew = drawMangaAtlasFrame('burnFlare', p.x - 34, p.y - 18, {
+    drew = drawMangaAtlasFrame('burnFlare', drawX - 34, drawY - 18, {
       scale: spriteScale * (0.92 + burn * 0.34),
       alpha: 0.26 + burn * 0.34,
       rotate: -0.36,
@@ -3557,7 +3677,7 @@ function drawMangaIcarusStatusFx(p, spriteScale) {
   }
   if (p.wetDmg > 28 && p.wetDmg > p.burnDmg) {
     const wet = clamp01((p.wetDmg - 28) / 72);
-    drew = drawMangaAtlasFrame('waterDrips', p.x - 4, p.y + 16, {
+    drew = drawMangaAtlasFrame('waterDrips', drawX - 4, drawY + 16, {
       scale: spriteScale * (0.82 + wet * 0.24),
       alpha: 0.24 + wet * 0.36,
       rotate: 0.18,
@@ -3572,7 +3692,11 @@ function currentIcarusSpriteFrame() {
   if (player.burnDmg > 34 && player.burnDmg >= player.wetDmg) return 'burn';
   if (player.wetDmg > 34 && player.wetDmg > player.burnDmg) return 'wet';
   if (keys && (keys['ArrowUp'] || keys[' '])) {
-    return Math.sin(player.flapPhase) > 0 ? 'flapDown' : 'flapUp';
+    const wing = ((player.flapPhase / (Math.PI * 2)) % 1 + 1) % 1;
+    if (wing < 0.28) return 'flapDown';
+    if (wing < 0.56) return 'glide';
+    if (wing < 0.84) return 'flapUp';
+    return 'glide';
   }
   if (Math.abs(player.vy) > 190 || player.vx > 170) return 'speed';
   return 'glide';
@@ -3586,7 +3710,9 @@ function drawIcarusMangaSprite() {
   const frame = currentIcarusSpriteFrame();
   const compact = Math.min(canvas.width, canvas.height);
   const nearScale = Math.max(0.26, Math.min(0.42, compact / 2200));
-  const baseScale = icarusMangaScale(p.y, nearScale * 0.84, nearScale, 0.72);
+  const drawX = typeof p.visualX === 'number' ? p.visualX : p.x;
+  const drawY = typeof p.visualY === 'number' ? p.visualY : p.y;
+  const baseScale = icarusMangaScale(drawY, nearScale * 0.84, nearScale, 0.72);
   const scale = frame === 'falling' ? baseScale * 0.95 : baseScale;
 
   ctx.save();
@@ -3596,14 +3722,14 @@ function drawIcarusMangaSprite() {
     ctx.strokeStyle = '#0a0a0a';
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.moveTo(p.x - 92, p.y + 72);
-    ctx.lineTo(p.x + 18, p.y - 72);
+    ctx.moveTo(drawX - 92, drawY + 72);
+    ctx.lineTo(drawX + 18, drawY - 72);
     ctx.stroke();
     ctx.strokeStyle = '#ffd54a';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.moveTo(p.x - 105, p.y + 83);
-    ctx.lineTo(p.x + 12, p.y - 61);
+    ctx.moveTo(drawX - 105, drawY + 83);
+    ctx.lineTo(drawX + 12, drawY - 61);
     ctx.stroke();
   }
   ctx.restore();
@@ -3624,11 +3750,32 @@ function drawIcarusMangaSprite() {
   } else {
     ctx.filter = 'sepia(0.06) saturate(1.04) brightness(0.98) contrast(1.05)';
   }
-  const drew = Manga.assets.drawFrame(ctx, ICARUS_MANGA_SHEET_ASSET, frame, p.x, p.y, {
-    scale,
-    flipX: !p.facingRight,
-    rotate: state === 'dying' ? p.angle * 0.16 : (p.spriteTilt || 0),
-  });
+  const art = icarusMangaArt();
+  const wingCycle = ((p.flapPhase / (Math.PI * 2)) % 1 + 1) % 1;
+  const thrusting = keys && (keys['ArrowUp'] || keys[' ']);
+  const motionAmount = state === 'dying'
+    ? 0.08
+    : (diveT > 0 ? 0.52 : Math.max(thrusting ? 0.48 : 0.22, Math.min(0.54, Math.abs(p.visualVy || p.vy) / 780)));
+  const rotate = state === 'dying' ? p.angle * 0.16 : (p.spriteTilt || 0);
+  const drew = art && typeof art.drawFilmFrame === 'function'
+    ? art.drawFilmFrame(ctx, ICARUS_MANGA_SHEET_ASSET, frame, drawX, drawY, {
+        scale,
+        flipX: !p.facingRight,
+        rotate,
+        phase: wingCycle,
+        amount: motionAmount,
+        bob: state === 'dying' ? 0 : 5.5,
+        floatBob: state === 'dying' ? 0 : 2.4,
+        floatRate: 2.1,
+        sway: diveT > 0 ? 0.012 : 0.034,
+        squash: thrusting ? 0.020 : 0.012,
+        animName: thrusting ? 'flap' : frame,
+      })
+    : Manga.assets.drawFrame(ctx, ICARUS_MANGA_SHEET_ASSET, frame, drawX, drawY, {
+        scale,
+        flipX: !p.facingRight,
+        rotate,
+      });
   ctx.filter = 'none';
   ctx.shadowBlur = 0;
   ctx.restore();
@@ -3642,7 +3789,7 @@ function drawIcarusMangaSprite() {
     ctx.globalAlpha = diveT > 0 ? 0.35 : stress * 0.22;
     ctx.fillStyle = p.burnDmg >= p.wetDmg ? '#ff8800' : '#66ccff';
     ctx.beginPath();
-    ctx.ellipse(p.x - 6, p.y, 72, 42, -0.18, 0, Math.PI * 2);
+    ctx.ellipse(drawX - 6, drawY, 72, 42, -0.18, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
@@ -3677,9 +3824,15 @@ function drawMangaTitleStage(W, H) {
       alpha: 0.22,
       rotate: -0.55,
     });
-    Manga.assets.drawFrame(ctx, ICARUS_MANGA_SHEET_ASSET, 'speed', W * 0.47, H * 0.43, {
+    drawIcarusSheetFrame('speed', W * 0.47, H * 0.43, {
       scale,
       flipX: false,
+      film: true,
+      phase: ((time * 0.72) % 1 + 1) % 1,
+      amount: 0.34,
+      bob: 4.0,
+      sway: 0.022,
+      squash: 0.014,
     });
   }
 
@@ -3842,8 +3995,14 @@ function drawMangaTutorialStagePanel(W, H, platY) {
   const spriteReady = mangaAssetReady(ICARUS_MANGA_SHEET_ASSET)
     && Manga.assets && typeof Manga.assets.drawFrame === 'function';
   if (spriteReady) {
-    Manga.assets.drawFrame(ctx, ICARUS_MANGA_SHEET_ASSET, 'glide', x + panelW * 0.47, y + panelH * 0.50, {
+    drawIcarusSheetFrame('glide', x + panelW * 0.47, y + panelH * 0.50, {
       scale: Math.max(0.15, Math.min(0.23, panelH / 720)),
+      film: true,
+      phase: ((time * 0.42) % 1 + 1) % 1,
+      amount: 0.20,
+      bob: 2.8,
+      floatBob: 1.6,
+      sway: 0.018,
     });
   }
   if (mangaAtlasReady()) {
@@ -4049,8 +4208,14 @@ function renderTutorial(W, H) {
   // tutorial/story panels match gameplay instead of falling back to old art.
   if (Engine.manga && mangaAssetReady(ICARUS_MANGA_SHEET_ASSET)
       && Manga.assets && typeof Manga.assets.drawFrame === 'function') {
-    Manga.assets.drawFrame(ctx, ICARUS_MANGA_SHEET_ASSET, 'recover', W * 0.65, platY - 30, {
+    drawIcarusSheetFrame('recover', W * 0.65, platY - 30, {
       scale: Math.max(0.23, Math.min(0.34, Math.min(W, H) / 1900)),
+      film: true,
+      phase: ((time * 0.34) % 1 + 1) % 1,
+      amount: 0.16,
+      bob: 1.8,
+      floatBob: 0.8,
+      sway: 0.010,
     });
   } else if (Engine.manga && window.Manga && typeof window.Manga.characters?.icarus?.draw === 'function') {
     Manga.characters.icarus.draw(ctx, {
@@ -4306,9 +4471,14 @@ function renderDead(W, H) {
         && Manga.assets && typeof Manga.assets.drawFrame === 'function') {
       ctx.save();
       ctx.globalAlpha = 0.36;
-      Manga.assets.drawFrame(ctx, ICARUS_MANGA_SHEET_ASSET, 'falling', W * 0.32, H * 0.52, {
+      drawIcarusSheetFrame('falling', W * 0.32, H * 0.52, {
         scale: Math.max(0.32, Math.min(0.48, Math.min(W, H) / 1500)),
         rotate: -0.32,
+        film: true,
+        phase: ((time * 0.28) % 1 + 1) % 1,
+        amount: 0.08,
+        bob: 1.4,
+        sway: 0.008,
       });
       ctx.restore();
     }
