@@ -43,7 +43,7 @@
   function frameBlendEnabled(opts = {}) {
     if (opts.frameBlend === false || opts.tween === false) return false;
     if (opts.frameBlend === true || opts.tween === true) return true;
-    return performanceTier() === 'high';
+    return performanceTier() !== 'low';
   }
 
   function smearEnabled(opts = {}, amount = 0) {

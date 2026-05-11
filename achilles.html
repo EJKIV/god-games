@@ -552,6 +552,12 @@ function update(dt) {
     if (typeof a.visualTilt !== 'number') a.visualTilt = 0;
     a.visualX += (a.x - a.visualX) * Math.min(1, dt * 18);
     a.visualY += (a.y - a.visualY) * Math.min(1, dt * 18);
+    if (window.GodGames && GodGames.Debug && typeof GodGames.Debug.clampVisualDrift === 'function') {
+      GodGames.Debug.clampVisualDrift(a, PLAYER_R + 12, {
+        maxDrift: (PLAYER_R + 12) * 0.32,
+        label: 'arrow',
+      });
+    }
     const targetTilt = ((a.targetX ?? a.x) - (a.originX ?? a.x)) / Math.max(1, Engine.W) * 0.32
       + Math.sin(time * 13 + a.x * 0.02) * 0.025;
     a.visualTilt += (targetTilt - a.visualTilt) * Math.min(1, dt * 14);

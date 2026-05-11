@@ -69,6 +69,7 @@ canvas { display: block; }
 <script>
 // Canvas + ctx are owned by Engine; aliased after boot.
 let canvas, ctx;
+let icarusMangaStageCache = null;
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const GRAVITY        = 400;
@@ -552,13 +553,21 @@ function updateIcarusEnemyVisual(actor, dt, opts = {}) {
   actor.visualY += (actor.y - actor.visualY) * Math.min(1, dt * (opts.yEase || 12));
   actor.visualTilt += ((opts.tilt || 0) - actor.visualTilt) * Math.min(1, dt * (opts.tiltEase || 9));
   if (typeof opts.maxDrift === 'number') {
-    const dx = actor.visualX - actor.x;
-    const dy = actor.visualY - actor.y;
-    const dist = Math.hypot(dx, dy);
-    if (dist > opts.maxDrift) {
-      const k = opts.maxDrift / Math.max(0.0001, dist);
-      actor.visualX = actor.x + dx * k;
-      actor.visualY = actor.y + dy * k;
+    const debug = window.GodGames && GodGames.Debug;
+    if (debug && typeof debug.clampVisualDrift === 'function') {
+      debug.clampVisualDrift(actor, opts.hitRadius || opts.maxDrift / 0.32, {
+        maxDrift: opts.maxDrift,
+        label: opts.label,
+      });
+    } else {
+      const dx = actor.visualX - actor.x;
+      const dy = actor.visualY - actor.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > opts.maxDrift) {
+        const k = opts.maxDrift / Math.max(0.0001, dist);
+        actor.visualX = actor.x + dx * k;
+        actor.visualY = actor.y + dy * k;
+      }
     }
   }
 }
@@ -936,7 +945,9 @@ function updatePlaying(dt) {
       yEase: e._diving ? 15 : 9,
       tilt: e._diving ? 0.28 : -0.06 + Math.sin(e.wingPhase) * 0.035,
       tiltEase: e._diving ? 13 : 8,
-      maxDrift: e._diving ? 14 : 16,
+      hitRadius: 28,
+      maxDrift: e._diving ? 8 : 9,
+      label: 'eagle',
     });
     const edx = e.x - player.x, edy = e.y - player.y;
     const edist = Math.sqrt(edx * edx + edy * edy);
@@ -1006,7 +1017,9 @@ function updatePlaying(dt) {
         yEase: 8,
         tilt: Math.sin(time * 8 + o.x * 0.02) * 0.035,
         tiltEase: 10,
-        maxDrift: 18,
+        hitRadius: 38,
+        maxDrift: 12,
+        label: 'orca-warn',
       });
       continue;
     }
@@ -1020,7 +1033,9 @@ function updatePlaying(dt) {
       yEase: 12,
       tilt: Math.max(-0.38, Math.min(0.38, Math.atan2(o.vx, -o.vy) * 0.34)),
       tiltEase: 12,
-      maxDrift: 22,
+      hitRadius: 38,
+      maxDrift: 12,
+      label: 'orca',
     });
 
     // collision with player while above water
@@ -1292,7 +1307,9 @@ function rescueWorldMotion(dt) {
       yEase: e._diving ? 15 : 9,
       tilt: e._diving ? 0.28 : -0.06 + Math.sin(e.wingPhase) * 0.035,
       tiltEase: e._diving ? 13 : 8,
-      maxDrift: e._diving ? 14 : 16,
+      hitRadius: 28,
+      maxDrift: e._diving ? 8 : 9,
+      label: 'eagle',
     });
     if (e.x < -90 || e.y > canvas.height + 100) eagles.splice(i, 1);
   }
@@ -1311,7 +1328,9 @@ function rescueWorldMotion(dt) {
         yEase: 8,
         tilt: Math.sin(time * 8 + o.x * 0.02) * 0.035,
         tiltEase: 10,
-        maxDrift: 18,
+        hitRadius: 38,
+        maxDrift: 12,
+        label: 'orca-warn',
       });
       continue;
     }
@@ -1323,7 +1342,9 @@ function rescueWorldMotion(dt) {
       yEase: 12,
       tilt: Math.max(-0.38, Math.min(0.38, Math.atan2(o.vx, -o.vy) * 0.34)),
       tiltEase: 12,
-      maxDrift: 22,
+      hitRadius: 38,
+      maxDrift: 12,
+      label: 'orca',
     });
     if (o.y > oY + 80) orcas.splice(i, 1);
   }
@@ -3187,13 +3208,54 @@ function drawMangaFlightStageBackground(W, H, opts = {}) {
   const heat = player ? dangerHeat() : (opts.title ? 0.18 : 0);
   const wet = player ? clamp01(player.wetDmg / 100) : 0;
   const dead = !!opts.dead;
+  const alpha = opts.alpha ?? 1;
+  const perf = typeof art.performanceTier === 'function' ? art.performanceTier() : 'balanced';
+  const key = [W, H, opts.title ? 1 : 0, alpha, perf].join('|');
+  if (!icarusMangaStageCache || icarusMangaStageCache.key !== key) {
+    const layer = document.createElement('canvas');
+    layer.width = W;
+    layer.height = H;
+    const layerCtx = layer.getContext('2d');
+    if (!layerCtx) return false;
 
-  art.drawImage(ctx, ICARUS_MANGA_STAGE_ASSET, 0, 0, W, H, {
-    fit: 'cover',
-    focusX: 0.50,
-    focusY: 0.52,
-    alpha: opts.alpha ?? 1,
-  });
+    if (!art.drawImage(layerCtx, ICARUS_MANGA_STAGE_ASSET, 0, 0, W, H, {
+      fit: 'cover',
+      focusX: 0.50,
+      focusY: 0.52,
+      alpha,
+    })) return false;
+
+    layerCtx.save();
+    const lane = layerCtx.createLinearGradient(0, s.safeTop, 0, s.safeBottom);
+    lane.addColorStop(0, 'rgba(255,244,188,0.00)');
+    lane.addColorStop(0.46, opts.title ? 'rgba(255,244,188,0.09)' : 'rgba(255,244,188,0.05)');
+    lane.addColorStop(1, 'rgba(255,244,188,0.00)');
+    layerCtx.fillStyle = lane;
+    layerCtx.fillRect(0, s.safeTop, W, Math.max(1, s.safeBottom - s.safeTop));
+
+    layerCtx.strokeStyle = `rgba(10,10,10,${opts.title ? 0.16 : 0.22})`;
+    layerCtx.lineWidth = 2;
+    layerCtx.beginPath();
+    layerCtx.moveTo(0, s.safeTop);
+    layerCtx.quadraticCurveTo(W * 0.5, s.safeTop + 10, W, s.safeTop);
+    layerCtx.moveTo(0, s.safeBottom);
+    layerCtx.quadraticCurveTo(W * 0.5, s.safeBottom - 8, W, s.safeBottom);
+    layerCtx.stroke();
+
+    if (art.mangaAtmosphere) {
+      art.mangaAtmosphere(layerCtx, W, H, {
+        density: opts.title ? 9 : 8,
+        dotSize: 1.15,
+        halftoneAlpha: opts.title ? 0.09 : 0.12,
+        scanAlpha: opts.title ? 0.04 : 0.06,
+        vignette: opts.title ? 0.36 : 0.48,
+      });
+    }
+    layerCtx.restore();
+    icarusMangaStageCache = { key, canvas: layer };
+  }
+
+  ctx.drawImage(icarusMangaStageCache.canvas, 0, 0, W, H);
 
   ctx.save();
   const heatWash = ctx.createLinearGradient(0, 0, 0, H);
@@ -3211,22 +3273,6 @@ function drawMangaFlightStageBackground(W, H, opts = {}) {
   ctx.fillStyle = coolWash;
   ctx.fillRect(0, s.safeBottom, W, H - s.safeBottom);
 
-  const lane = ctx.createLinearGradient(0, s.safeTop, 0, s.safeBottom);
-  lane.addColorStop(0, 'rgba(255,244,188,0.00)');
-  lane.addColorStop(0.46, opts.title ? 'rgba(255,244,188,0.09)' : 'rgba(255,244,188,0.05)');
-  lane.addColorStop(1, 'rgba(255,244,188,0.00)');
-  ctx.fillStyle = lane;
-  ctx.fillRect(0, s.safeTop, W, Math.max(1, s.safeBottom - s.safeTop));
-
-  ctx.strokeStyle = `rgba(10,10,10,${opts.title ? 0.16 : 0.22})`;
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(0, s.safeTop);
-  ctx.quadraticCurveTo(W * 0.5, s.safeTop + 10, W, s.safeTop);
-  ctx.moveTo(0, s.safeBottom);
-  ctx.quadraticCurveTo(W * 0.5, s.safeBottom - 8, W, s.safeBottom);
-  ctx.stroke();
-
   if (dead) {
     const deadG = ctx.createRadialGradient(W * 0.5, H * 0.55, H * 0.1, W * 0.5, H * 0.55, H * 0.72);
     deadG.addColorStop(0, 'rgba(0,0,0,0.28)');
@@ -3235,15 +3281,6 @@ function drawMangaFlightStageBackground(W, H, opts = {}) {
     ctx.fillRect(0, 0, W, H);
   }
 
-  if (art.mangaAtmosphere) {
-    art.mangaAtmosphere(ctx, W, H, {
-      density: opts.title ? 9 : 8,
-      dotSize: 1.15,
-      halftoneAlpha: opts.title ? 0.09 : 0.12 + heat * 0.04,
-      scanAlpha: opts.title ? 0.04 : 0.06,
-      vignette: opts.title ? 0.36 : 0.48,
-    });
-  }
   ctx.restore();
   return true;
 }
@@ -3435,7 +3472,7 @@ function renderMangaIslands(W, H) {
       alpha,
       rotate: isl.sinking ? -0.07 - sinkFrac * 0.12 : 0,
     });
-    ctx.filter = 'none';
+    if (heavy) ctx.filter = 'none';
 
     if (isl.sparkle > 0) {
       ctx.globalAlpha = isl.sparkle * alpha;
@@ -3547,9 +3584,9 @@ function drawMangaEagle(e, W, H) {
   ctx.globalAlpha = 0.96;
   const art = window.GodGames && GodGames.MangaArt;
   const heavy = art && typeof art.heavyEffects === 'function' && art.heavyEffects();
-  ctx.filter = heavy
-    ? `sepia(0.12) saturate(1.08) brightness(${0.88 + icarusSkyDepth(ey) * 0.16}) contrast(1.08)`
-    : `sepia(0.08) saturate(1.02) brightness(${0.92 + icarusSkyDepth(ey) * 0.10}) contrast(1.04)`;
+  if (heavy) {
+    ctx.filter = `sepia(0.12) saturate(1.08) brightness(${0.88 + icarusSkyDepth(ey) * 0.16}) contrast(1.08)`;
+  }
   const wingPhase = ((time + e.wingPhase * 0.12) * 0.78) % 1;
   const drew = e._diving
     ? drawMangaAtlasFrame('eagleDive', ex, ey, {
@@ -3562,7 +3599,7 @@ function drawMangaEagle(e, W, H) {
           film: true, phase: wingPhase, amount: 0.44, bob: 3.0, sway: 0.026, squash: 0.014,
         })
       : drawMangaAtlasAnimation('eagleFly', time + e.wingPhase * 0.12, ex, ey, { scale, alpha: 0.96, rotate: tilt }));
-  ctx.filter = 'none';
+  if (heavy) ctx.filter = 'none';
 
   if (drew && e.markT > 0) {
     ctx.globalAlpha = clamp01(e.markT / 0.45) * 0.64;
@@ -3614,9 +3651,9 @@ function drawMangaOrca(o, W, H) {
   ctx.clip();
   const art = window.GodGames && GodGames.MangaArt;
   const heavy = art && typeof art.heavyEffects === 'function' && art.heavyEffects();
-  ctx.filter = heavy
-    ? `saturate(1.10) brightness(${0.92 + depth * 0.12}) contrast(1.08)`
-    : `saturate(1.02) brightness(${0.94 + depth * 0.08}) contrast(1.04)`;
+  if (heavy) {
+    ctx.filter = `saturate(1.10) brightness(${0.92 + depth * 0.12}) contrast(1.08)`;
+  }
   drew = drawMangaAtlasFrame(frame, ox, Math.min(oy + 26, oY + 36), {
     scale: base * (frame === 'orcaSplash' ? 0.92 : 1.0),
     rotate: rot,
@@ -3628,7 +3665,7 @@ function drawMangaOrca(o, W, H) {
     sway: 0.016,
     squash: 0.010,
   });
-  ctx.filter = 'none';
+  if (heavy) ctx.filter = 'none';
   ctx.restore();
   return drew;
 }
@@ -3652,7 +3689,7 @@ function drawMangaDaedalusFly(x, y, opts = {}) {
     floatBob: 2.0,
     sway: 0.018,
   });
-  ctx.filter = 'none';
+  if (heavy) ctx.filter = 'none';
   ctx.restore();
   return drew;
 }
@@ -3781,18 +3818,18 @@ function drawIcarusMangaSprite() {
   ctx.save();
   if (p.burnDmg > 20 && p.burnDmg >= p.wetDmg) {
     const burn = clamp01(p.burnDmg / 100);
-    ctx.filter = heavy
-      ? `sepia(${0.08 + burn * 0.22}) saturate(${1.04 + burn * 0.50}) brightness(${0.96 + burn * 0.16}) contrast(1.08)`
-      : `sepia(${0.06 + burn * 0.10}) brightness(${0.98 + burn * 0.08})`;
+    if (heavy) {
+      ctx.filter = `sepia(${0.08 + burn * 0.22}) saturate(${1.04 + burn * 0.50}) brightness(${0.96 + burn * 0.16}) contrast(1.08)`;
+    }
     ctx.shadowColor = '#ff7a00';
-    ctx.shadowBlur = heavy ? 8 + burn * 18 : 3 + burn * 6;
+    ctx.shadowBlur = heavy ? 8 + burn * 18 : 0;
   } else if (p.wetDmg > 20) {
     const wet = clamp01(p.wetDmg / 100);
-    ctx.filter = heavy
-      ? `saturate(${0.88 - wet * 0.16}) brightness(${0.94 - wet * 0.10}) contrast(1.05)`
-      : `brightness(${0.96 - wet * 0.06})`;
+    if (heavy) {
+      ctx.filter = `saturate(${0.88 - wet * 0.16}) brightness(${0.94 - wet * 0.10}) contrast(1.05)`;
+    }
     ctx.shadowColor = '#6ccfff';
-    ctx.shadowBlur = heavy ? 7 + wet * 14 : 3 + wet * 5;
+    ctx.shadowBlur = heavy ? 7 + wet * 14 : 0;
   } else if (heavy) {
     ctx.filter = 'sepia(0.06) saturate(1.04) brightness(0.98) contrast(1.05)';
   }
@@ -3821,7 +3858,7 @@ function drawIcarusMangaSprite() {
         flipX: !p.facingRight,
         rotate,
       });
-  ctx.filter = 'none';
+  if (heavy) ctx.filter = 'none';
   ctx.shadowBlur = 0;
   ctx.restore();
 
