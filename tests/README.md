@@ -20,6 +20,24 @@ node tests/e2e.mjs
 
 Set `BASE_URL`, `CHROME_PATH`, or `SHOTS_DIR` env vars to override defaults.
 
+## Performance + Fairness Harness
+
+```bash
+# Serve the project first.
+python3 -m http.server 8765 &
+
+# Then run every game + the hub across desktop/mobile, manga on/off,
+# cold load/warm load.
+npm run perf
+```
+
+The harness gates unexpected 404s/HTTP errors, request failures, uncaught JS
+errors, `console.error`, p95 frame time, and the debug-overlay drift report.
+It sets `localStorage.godgames_debug='1'` so each gameplay surface publishes
+hitbox-vs-sprite drift while it drives a short fairness playtest. Useful env
+overrides: `PERF_DURATION_MS`, `PERF_DESKTOP_P95_MS`, `PERF_MOBILE_P95_MS`,
+and `PERF_DRIFT_RATIO`. To focus one surface, pass `-- --only=icarus`.
+
 ## What it covers
 
 - `Engine.unlock` writes + reads via `window.Engine.unlock` (caught the
