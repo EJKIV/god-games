@@ -3,3 +3,5 @@
 !.claude/skills/
 node_modules/
 
+# Generated manga loop-sheet drafts; commit only once wired through manifests.
+assets/manga/**/*-loops-v1.png
