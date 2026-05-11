@@ -135,6 +135,64 @@
       },
     });
     prime('godgames.icarus.stageAtlasV2');
+
+    const fxCell = 314;
+    const fxFrame = (col, row, anchorY = fxCell / 2) => ({
+      x: col * fxCell, y: row * fxCell, w: fxCell, h: fxCell,
+      anchorX: fxCell / 2, anchorY,
+    });
+
+    M.assets.define('godgames.icarus.fxCreaturesV2', {
+      src: 'assets/manga/icarus/icarus-fx-creatures-v2.png',
+      frames: {
+        orcaWarn1:     fxFrame(0, 0, fxCell * 0.66),
+        orcaWarn2:     fxFrame(1, 0, fxCell * 0.66),
+        orcaWarn3:     fxFrame(2, 0, fxCell * 0.66),
+        orcaWarn4:     fxFrame(3, 0, fxCell * 0.66),
+        orcaChurn:     fxFrame(4, 0, fxCell * 0.66),
+        orcaSplash1:   fxFrame(5, 0, fxCell * 0.78),
+        orcaSplash2:   fxFrame(6, 0, fxCell * 0.78),
+        orcaSplash3:   fxFrame(7, 0, fxCell * 0.78),
+        orcaBreach1:   fxFrame(0, 1, fxCell * 0.76),
+        orcaBreach2:   fxFrame(1, 1, fxCell * 0.76),
+        orcaBreach3:   fxFrame(2, 1, fxCell * 0.77),
+        orcaBreach4:   fxFrame(3, 1, fxCell * 0.78),
+        orcaBreach5:   fxFrame(4, 1, fxCell * 0.78),
+        orcaBreach6:   fxFrame(5, 1, fxCell * 0.76),
+        orcaBite:      fxFrame(6, 1, fxCell * 0.78),
+        orcaSplash4:   fxFrame(7, 1, fxCell * 0.78),
+        daedalusFly1:  fxFrame(0, 2, fxCell * 0.62),
+        daedalusFly2:  fxFrame(1, 2, fxCell * 0.62),
+        daedalusFly3:  fxFrame(2, 2, fxCell * 0.62),
+        daedalusFly4:  fxFrame(3, 2, fxCell * 0.62),
+        daedalusRescue1: fxFrame(4, 2, fxCell * 0.82),
+        daedalusRescue2: fxFrame(5, 2, fxCell * 0.82),
+        wetWingFx1:    fxFrame(6, 2),
+        wetWingFx2:    fxFrame(7, 2),
+        waveCurl1:     fxFrame(0, 3, fxCell * 0.84),
+        waveCurl2:     fxFrame(1, 3, fxCell * 0.84),
+        waveCurl3:     fxFrame(2, 3, fxCell * 0.84),
+        waveCurl4:     fxFrame(3, 3, fxCell * 0.84),
+        waveCurl5:     fxFrame(4, 3, fxCell * 0.84),
+        waveCurl6:     fxFrame(5, 3, fxCell * 0.84),
+        waveFoam:      fxFrame(6, 3, fxCell * 0.84),
+        waveImpact:    fxFrame(7, 3, fxCell * 0.78),
+      },
+      meta: {
+        usage: 'Icarus manga FX atlas for orca warning/breach/splash, Daedalus flight/rescue, wet wing overlays, and animated wave hazards.',
+        animations: {
+          orcaWarn:     { frames: ['orcaWarn1', 'orcaWarn2', 'orcaWarn3', 'orcaWarn4', 'orcaChurn'], fps: 10, loop: true },
+          orcaBreach:   { frames: ['orcaBreach1', 'orcaBreach2', 'orcaBreach3', 'orcaBreach4', 'orcaBreach5', 'orcaBreach6'], fps: 11, loop: false },
+          orcaSplash:   { frames: ['orcaSplash1', 'orcaSplash2', 'orcaSplash3', 'orcaSplash4'], fps: 12, loop: false },
+          daedalusFly:  { frames: ['daedalusFly1', 'daedalusFly2', 'daedalusFly3', 'daedalusFly4'], fps: 7, loop: true },
+          daedalusRescue: { frames: ['daedalusRescue1', 'daedalusRescue2'], fps: 4, loop: true },
+          wetWingFx:    { frames: ['wetWingFx1', 'wetWingFx2'], fps: 8, loop: true },
+          waveCurl:     { frames: ['waveCurl1', 'waveCurl2', 'waveCurl3', 'waveCurl4', 'waveCurl5', 'waveCurl6'], fps: 9, loop: true },
+          waveImpact:   { frames: ['waveImpact', 'waveFoam'], fps: 10, loop: false },
+        },
+      },
+    });
+    prime('godgames.icarus.fxCreaturesV2', null, { limit: 24 });
   }
 
   register();
