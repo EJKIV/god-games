@@ -63,6 +63,28 @@
         usage: 'Five cohesive manga destination murals used as live hub shrine insets.',
       },
     });
+
+    const avatarCell = 1774 / 4;
+    const avatarFrame = (idx) => ({
+      x: idx * avatarCell,
+      y: 0,
+      w: avatarCell,
+      h: 887,
+      anchorX: avatarCell / 2,
+      anchorY: 768,
+    });
+    M.assets.define('godgames.shared.hubAvatarV2', {
+      src: 'assets/manga/shared/hub-avatar-v2.png',
+      frames: {
+        idle: avatarFrame(0),
+        walkA: avatarFrame(1),
+        walkB: avatarFrame(2),
+        ready: avatarFrame(3),
+      },
+      meta: {
+        usage: 'Transparent manga/anime hub traveler sprite sheet for the Mount Olympus concourse.',
+      },
+    });
   }
 
   register();

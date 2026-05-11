@@ -173,6 +173,7 @@ god-games/
 
 | Date       | Change                                                                                     | Author |
 |------------|--------------------------------------------------------------------------------------------|--------|
+| 2026-05-10 | Refined the manga hub so destination murals sit as wall paintings inside the Olympus shrine bays, labels read as etched stone, and the hub traveler uses an asset-backed manga avatar sheet. | codex  |
 | 2026-05-10 | Rebuilt the manga hub around a generated Olympus concourse backdrop and integrated destination shrine stations, replacing the old floating gate composition. | codex  |
 | 2026-05-10 | Rebuilt Perseus manga gameplay around a generated three-chamber cave atlas, shared stage projection, anchored actor/effect origins, Sigma floor continuity, manga HUD, and cave-continuous title/death/victory screens. | codex  |
 | 2026-05-10 | Unified non-game manga surfaces around shared panels, place-scene mappings, traveler scale rules, hub stage depth, and manga-styled hub/Olympus/clue/place chrome. | codex  |
