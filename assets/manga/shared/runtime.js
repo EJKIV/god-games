@@ -1218,6 +1218,7 @@
   Art.SCENE_ATLAS = SCENE_ATLAS;
   Art.PLACE_SCENES = PLACE_SCENES;
   Art.mangaEnabled = mangaEnabled;
+  Art.basePerformanceTier = basePerformanceTier;
   Art.performanceTier = performanceTier;
   Art.performanceReport = performanceReport;
   Art.noteFrame = recordFrameDelta;
