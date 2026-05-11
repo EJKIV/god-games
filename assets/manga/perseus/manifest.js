@@ -23,6 +23,19 @@
         if (art && typeof art.primeAsset === 'function') art.primeAsset(id, frames, opts || {});
       }, 0);
     }
+    function loadAfterPlaying(id, delay = 800) {
+      if (!shouldPrime) return;
+      const wait = () => {
+        if (window.Engine && Engine.state === 'playing') {
+          setTimeout(() => {
+            if (M.assets && typeof M.assets.image === 'function') M.assets.image(id);
+          }, delay);
+        } else {
+          setTimeout(wait, 250);
+        }
+      };
+      setTimeout(wait, 0);
+    }
 
     const cell = 362;
     const frame = (col, row, anchorY) => ({ x: col * cell, y: row * cell, w: cell, h: cell, anchorX: cell / 2, anchorY: anchorY || cell * 0.78 });
@@ -132,7 +145,7 @@
 
     M.assets.define('godgames.perseus.fxHudSheet', {
       src: 'assets/manga/perseus/serpent-fx-hud-v1.png',
-      preload: shouldPrime,
+      preload: false,
       frames: {
         serpentFly:     fxFrame(0, 0),
         serpentReflect: fxFrame(1, 0),
@@ -155,6 +168,7 @@
         usage: 'Manga/anime Perseus serpents, mirror/gaze effects, Sigma seal, cave hazards, and HUD icons.',
       },
     });
+    loadAfterPlaying('godgames.perseus.fxHudSheet', 900);
   }
 
   register();

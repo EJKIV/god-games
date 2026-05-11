@@ -23,6 +23,19 @@
         if (art && typeof art.primeAsset === 'function') art.primeAsset(id, frames, opts || {});
       }, 0);
     }
+    function loadAfterPlaying(id, delay = 800) {
+      if (!shouldPrime) return;
+      const wait = () => {
+        if (window.Engine && Engine.state === 'playing') {
+          setTimeout(() => {
+            if (M.assets && typeof M.assets.image === 'function') M.assets.image(id);
+          }, delay);
+        } else {
+          setTimeout(wait, 250);
+        }
+      };
+      setTimeout(wait, 0);
+    }
 
     const cell = 362;
     const frame = (col, row, anchorY) => ({ x: col * cell, y: row * cell, w: cell, h: cell, anchorX: cell / 2, anchorY: anchorY || cell * 0.76 });
@@ -199,6 +212,8 @@
         usage: 'Manga/anime Orion spear, venom, phantom claw, constellation strike, dust, and HUD accents.',
       },
     });
+    loadAfterPlaying('godgames.orion.fxHudV1', 900);
+    loadAfterPlaying('godgames.orion.scorpionSheet', 1400);
   }
 
   register();

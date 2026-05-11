@@ -8,6 +8,7 @@
     "qa:harness": "node tests/qa-harness.mjs",
     "perf": "node tests/perf-harness.mjs",
     "perf:harness": "node tests/perf-harness.mjs",
+    "perf:strict": "PERF_FRAME_GATE=1 node tests/perf-harness.mjs",
     "sync-engine": "rm -rf vendor/@tns/game-engine && mkdir -p vendor/@tns && cp -RL node_modules/@tns/game-engine vendor/@tns/game-engine"
   },
   "dependencies": {

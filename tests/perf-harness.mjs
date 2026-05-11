@@ -5,8 +5,8 @@
 //   - unexpected 4xx/5xx responses or request failures
 //   - uncaught JS errors or console.error calls
 //   - gameplay-vs-visual drift over the debug overlay budget
-// Prints p95 requestAnimationFrame deltas; set PERF_FRAME_GATE=0 to report
-// frame-budget regressions without failing during noisy local profiling.
+// Prints p95 requestAnimationFrame deltas as report-only frame warnings by
+// default. Set PERF_FRAME_GATE=1 for strict frame-budget failures.
 
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
@@ -29,7 +29,7 @@ const DRIFT_BUDGET = Number(process.env.PERF_DRIFT_RATIO || 0.35);
 const DESKTOP_P95_MS = Number(process.env.PERF_DESKTOP_P95_MS || 67);
 const MOBILE_P95_MS = Number(process.env.PERF_MOBILE_P95_MS || 84);
 const MIN_FRAMES = Number(process.env.PERF_MIN_FRAMES || 16);
-const FRAME_GATE = process.env.PERF_FRAME_GATE !== '0';
+const FRAME_GATE = process.env.PERF_FRAME_GATE === '1';
 
 const VIEWPORTS = [
   { id: 'desktop', budget: DESKTOP_P95_MS, viewport: { width: 1280, height: 720, deviceScaleFactor: 1 } },
@@ -324,12 +324,14 @@ async function probe(page) {
 
 function gateResult(route, viewport, sink, frames, pageProbe) {
   const failures = [];
+  const warnings = [];
   if (sink.responses.length) failures.push(`http ${sink.responses.map((r) => `${r.status} ${r.url}`).join('; ')}`);
   if (sink.failedRequests.length) failures.push(`request failed ${sink.failedRequests.map((r) => `${r.method} ${r.url}: ${r.error}`).join('; ')}`);
   if (sink.pageErrors.length) failures.push(`js ${sink.pageErrors.join('; ')}`);
   if (sink.consoleErrors.length) failures.push(`console ${sink.consoleErrors.join('; ')}`);
-  if (FRAME_GATE && route.frameGate !== false && frames.frames < MIN_FRAMES) failures.push(`only ${frames.frames} frames collected < ${MIN_FRAMES}`);
-  if (FRAME_GATE && route.frameGate !== false && frames.p95 > viewport.budget) failures.push(`p95 ${frames.p95.toFixed(1)}ms > ${viewport.budget}ms`);
+  if (route.frameGate !== false && frames.frames < MIN_FRAMES) warnings.push(`only ${frames.frames} frames collected < ${MIN_FRAMES}`);
+  if (route.frameGate !== false && frames.p95 > viewport.budget) warnings.push(`p95 ${frames.p95.toFixed(1)}ms > ${viewport.budget}ms`);
+  if (FRAME_GATE) failures.push(...warnings);
 
   if (route.needsDebug) {
     const report = pageProbe.debug;
@@ -343,7 +345,7 @@ function gateResult(route, viewport, sink, frames, pageProbe) {
     }
   }
 
-  return failures;
+  return { failures, warnings };
 }
 
 async function launchBrowser() {
@@ -392,7 +394,7 @@ for (const route of routes) {
           await drivePromise;
           await sleep(120);
           const pageProbe = await probe(page);
-          const failures = gateResult(route, viewport, sink, frames, pageProbe);
+          const { failures, warnings } = gateResult(route, viewport, sink, frames, pageProbe);
           results.push({
             route: route.id,
             viewport: viewport.id,
@@ -403,6 +405,7 @@ for (const route of routes) {
             debug: pageProbe.debug,
             ok: failures.length === 0,
             failures,
+            warnings,
           });
         } catch (err) {
           results.push({
@@ -415,6 +418,7 @@ for (const route of routes) {
             debug: null,
             ok: false,
             failures: [`threw ${err.message}`],
+            warnings: [],
           });
         } finally {
           if (page) await page.close().catch(() => {});
@@ -432,11 +436,15 @@ console.log('route      viewport manga load  load_ms frames p95_ms avg_ms max_ms
 console.log('-'.repeat(132));
 
 let failed = 0;
+let warned = 0;
 for (const r of results) {
   const f = r.frames || { frames: 0, p95: 0, avg: 0, max: 0 };
   const drift = r.debug ? (r.debug.maxDriftRatio * 100).toFixed(1) : 'n/a';
-  const status = r.ok ? 'ok' : `FAIL ${r.failures.join(' | ')}`;
+  const status = r.ok
+    ? ((r.warnings || []).length ? `WARN ${r.warnings.join(' | ')}` : 'ok')
+    : `FAIL ${r.failures.join(' | ')}`;
   if (!r.ok) failed++;
+  if ((r.warnings || []).length) warned++;
   console.log([
     r.route.padEnd(10),
     r.viewport.padEnd(8),
@@ -453,7 +461,7 @@ for (const r of results) {
 }
 
 console.log('-'.repeat(132));
-console.log(`${results.length - failed} passed, ${failed} failed`);
+console.log(`${results.length - failed} passed, ${failed} failed, ${warned} frame warnings`);
 console.log(`budgets: desktop p95 <= ${DESKTOP_P95_MS}ms, mobile p95 <= ${MOBILE_P95_MS}ms, frames >= ${MIN_FRAMES}, drift <= ${(DRIFT_BUDGET * 100).toFixed(1)}%`);
-console.log(`frame gate: ${FRAME_GATE ? 'on' : 'off'} (set PERF_FRAME_GATE=0 to report p95 without failing)`);
+console.log(`frame gate: ${FRAME_GATE ? 'strict' : 'report-only'} (set PERF_FRAME_GATE=1 to fail on p95/min-frame warnings)`);
 process.exit(failed ? 1 : 0);

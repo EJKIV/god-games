@@ -23,6 +23,19 @@
         if (art && typeof art.primeAsset === 'function') art.primeAsset(id, frames, opts || {});
       }, 0);
     }
+    function loadAfterPlaying(id, delay = 800) {
+      if (!shouldPrime) return;
+      const wait = () => {
+        if (window.Engine && Engine.state === 'playing') {
+          setTimeout(() => {
+            if (M.assets && typeof M.assets.image === 'function') M.assets.image(id);
+          }, delay);
+        } else {
+          setTimeout(wait, 250);
+        }
+      };
+      setTimeout(wait, 0);
+    }
 
     M.assets.define('godgames.icarus.hero', {
       src: 'assets/manga/icarus/icarus-hero.jpg',
@@ -96,7 +109,7 @@
 
     M.assets.define('godgames.icarus.stageAtlasV2', {
       src: 'assets/manga/icarus/icarus-creatures-film-v2.png',
-      preload: shouldPrime,
+      preload: false,
       frames: {
         eagleFly1:      atlasFrame(0, 0),
         eagleFly2:      atlasFrame(1, 0),
@@ -142,8 +155,6 @@
         },
       },
     });
-    prime('godgames.icarus.stageAtlasV2');
-
     const fxCell = 314;
     const fxFrame = (col, row, anchorY = fxCell / 2) => ({
       x: col * fxCell, y: row * fxCell, w: fxCell, h: fxCell,
@@ -152,7 +163,7 @@
 
     M.assets.define('godgames.icarus.fxCreaturesV2', {
       src: 'assets/manga/icarus/icarus-fx-creatures-v2.png',
-      preload: shouldPrime,
+      preload: false,
       frames: {
         orcaWarn1:     fxFrame(0, 0, fxCell * 0.66),
         orcaWarn2:     fxFrame(1, 0, fxCell * 0.66),
@@ -201,7 +212,8 @@
         },
       },
     });
-    prime('godgames.icarus.fxCreaturesV2', null, { limit: 24 });
+    loadAfterPlaying('godgames.icarus.stageAtlasV2', 500);
+    loadAfterPlaying('godgames.icarus.fxCreaturesV2', 1050);
   }
 
   register();

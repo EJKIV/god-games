@@ -23,13 +23,26 @@
         if (art && typeof art.primeAsset === 'function') art.primeAsset(id, frames, opts || {});
       }, 0);
     }
+    function loadAfterPlaying(id, delay = 800) {
+      if (!shouldPrime) return;
+      const wait = () => {
+        if (window.Engine && Engine.state === 'playing') {
+          setTimeout(() => {
+            if (M.assets && typeof M.assets.image === 'function') M.assets.image(id);
+          }, delay);
+        } else {
+          setTimeout(wait, 250);
+        }
+      };
+      setTimeout(wait, 0);
+    }
 
     const cell = 418;
     const frame = (col, row) => ({ x: col * cell, y: row * cell, w: cell, h: cell, anchorX: cell / 2, anchorY: cell * 0.72 });
 
     M.assets.define('godgames.achilles.actionSheet', {
       src: 'assets/manga/achilles/achilles-action-sheet.png',
-      preload: shouldPrime,
+      preload: false,
       frames: {
         idle:     frame(0, 0),
         runLeft:  frame(1, 0),
@@ -125,7 +138,7 @@
 
     M.assets.define('godgames.achilles.archerSheet', {
       src: 'assets/manga/achilles/archers-film-v2.png',
-      preload: shouldPrime,
+      preload: false,
       frames: {
         idle1:          archerFrame(0, 0),
         idle2:          archerFrame(1, 0),
@@ -157,8 +170,6 @@
         },
       },
     });
-    prime('godgames.achilles.archerSheet');
-
     const fxCell = 1254 / 4;
     const fxFrame = (col, row) => ({
       x: col * fxCell, y: row * fxCell, w: fxCell, h: fxCell,
@@ -167,7 +178,7 @@
 
     M.assets.define('godgames.achilles.fxHudSheet', {
       src: 'assets/manga/achilles/fx-hud-v2.png',
-      preload: shouldPrime,
+      preload: false,
       frames: {
         arrowDown1:   fxFrame(0, 0),
         arrowDown2:   fxFrame(1, 0),
@@ -190,6 +201,9 @@
         usage: 'Manga/anime Achilles arrows, attack FX, and HUD icons.',
       },
     });
+    loadAfterPlaying('godgames.achilles.actionSheet', 350);
+    loadAfterPlaying('godgames.achilles.archerSheet', 650);
+    loadAfterPlaying('godgames.achilles.fxHudSheet', 1000);
   }
 
   register();
