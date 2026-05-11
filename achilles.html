@@ -199,6 +199,12 @@ async function submitToHall(finalScore) {
     hallStatus = 'fail';
   }
 }
+window.GodGames = window.GodGames || {};
+window.GodGames.submitNow = () => {
+  if (submittedThisRun) return Promise.resolve();
+  submittedThisRun = true;
+  return submitToHall(Math.floor(score));
+};
 
 // ── Audio (uses the engine's shared audio context) ────────────────────────
 function beep(freq, dur, type = 'square', vol = 0.18, detune = 0) {

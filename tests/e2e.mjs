@@ -99,7 +99,7 @@ async function testProgressSyncAfterLateName() {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          unlocks: { 'hint.v2.z': 123 },
+          unlocks: { 'hint.v3.z': 123 },
           counters: { glyphs_found: 2 },
         }),
       });
@@ -135,6 +135,85 @@ async function testProgressSyncAfterLateName() {
   } else {
     fail('Progress sync late name', JSON.stringify({ pullsBeforeName, pulls, posts, r }));
   }
+  await close();
+}
+
+async function testProgressSyncDropsOldChainKeys() {
+  const { page, close } = await freshPage();
+  await page.evaluateOnNewDocument(() => {
+    localStorage.setItem('godgames_playerName', 'OLDCHAIN');
+    localStorage.removeItem('godgames_manga');
+    localStorage.removeItem('godgames_mystery_chain_version');
+    localStorage.removeItem('tns.unlocks');
+  });
+  await page.setRequestInterception(true);
+  page.on('request', req => {
+    const url = new URL(req.url());
+    if (url.pathname !== '/api/progress') {
+      req.continue();
+      return;
+    }
+    req.respond({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        unlocks: {
+          'hint.v2.z': Date.now(),
+          'clue.v2.first': Date.now(),
+          'manga_mode.v2': Date.now(),
+        },
+        counters: { mysteries_solved_count: 1 },
+      }),
+    });
+  });
+  await page.goto(`${BASE}/index.html?testHooks=1`, { waitUntil: 'load' });
+  await new Promise(r => setTimeout(r, 1000));
+  const r = await page.evaluate(() => ({
+    version: localStorage.getItem('godgames_mystery_chain_version'),
+    hasZ: !!window.GodGames?.Mysteries?.hasHint('z'),
+    zTypable: !!window.GodGames?.HubTest?.codewordLetterUnlocked?.(0),
+    manga: localStorage.getItem('godgames_manga'),
+    unlocks: Object.keys(JSON.parse(localStorage.getItem('tns.unlocks') || '{}')).sort(),
+    counters: JSON.parse(localStorage.getItem('tns.counters') || '{}'),
+  }));
+  if (r.version === 'v3' && !r.hasZ && !r.zTypable && !r.manga && r.unlocks.length === 0 && !('mysteries_solved_count' in r.counters)) {
+    pass('Progress sync drops old chain keys');
+  } else {
+    fail('Progress sync old chain keys', JSON.stringify(r));
+  }
+  await close();
+}
+
+async function testProgressSyncRefreshesSameName() {
+  const { page, close } = await freshPage();
+  let pulls = 0;
+  await page.evaluateOnNewDocument(() => {
+    localStorage.setItem('godgames_playerName', 'REFRESH');
+    localStorage.setItem('godgames_mystery_chain_version', 'v3');
+  });
+  await page.setRequestInterception(true);
+  page.on('request', req => {
+    const url = new URL(req.url());
+    if (url.pathname !== '/api/progress') {
+      req.continue();
+      return;
+    }
+    pulls++;
+    req.respond({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(pulls === 1
+        ? { unlocks: {}, counters: {} }
+        : { unlocks: {}, counters: { glyphs_found: 3 } }),
+    });
+  });
+  await page.goto(`${BASE}/index.html`, { waitUntil: 'load' });
+  await page.waitForFunction(() => window.GodGames?.Mysteries?.CHAIN_VERSION === 'v3', { timeout: 3000 });
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await page.waitForFunction(() => window.Engine?.unlock?.count('glyphs_found') === 3, { timeout: 4000 });
+  const count = await page.evaluate(() => window.Engine.unlock.count('glyphs_found'));
+  if (pulls >= 2 && count === 3) pass('Progress sync refreshes same name');
+  else fail('Progress sync same-name refresh', JSON.stringify({ pulls, count }));
   await close();
 }
 
@@ -254,11 +333,11 @@ async function testIcarusRetrigger() {
   const { page, close } = await freshPage();
   await page.evaluateOnNewDocument(() => {
     localStorage.setItem('tns.unlocks', JSON.stringify({
-      'hint.v2.z': Date.now(), 'hint.z': Date.now(),
-      'clue.v2.first': Date.now(), 'clue.first': Date.now(),
+      'hint.v3.z': Date.now(), 'hint.z': Date.now(),
+      'clue.v3.first': Date.now(), 'clue.first': Date.now(),
     }));
     localStorage.setItem('tns.counters', JSON.stringify({ mysteries_solved_count: 1 }));
-    localStorage.setItem('godgames_mystery_chain_version', 'v2');
+    localStorage.setItem('godgames_mystery_chain_version', 'v3');
     localStorage.setItem('godgames_playerName', 'TEST');
     localStorage.setItem('icarus_lastPlay', String(Date.now()));
   });
@@ -330,11 +409,11 @@ async function testOlympusClues() {
   const { page, close } = await freshPage();
   await page.evaluateOnNewDocument(() => {
     localStorage.setItem('tns.unlocks', JSON.stringify({
-      'hint.v2.z': Date.now(), 'clue.v2.first': Date.now(),
-      'hint.v2.e': Date.now(), 'clue.v2.second': Date.now(),
+      'hint.v3.z': Date.now(), 'clue.v3.first': Date.now(),
+      'hint.v3.e': Date.now(), 'clue.v3.second': Date.now(),
     }));
     localStorage.setItem('tns.counters', JSON.stringify({ mysteries_solved_count: 2 }));
-    localStorage.setItem('godgames_mystery_chain_version', 'v2');
+    localStorage.setItem('godgames_mystery_chain_version', 'v3');
   });
   await page.goto(`${BASE}/olympus-clues.html`, { waitUntil: 'load' });
   await new Promise(r => setTimeout(r, 1200));
@@ -374,10 +453,10 @@ async function testZeusInvocation() {
   const { page, close } = await freshPage();
   await page.evaluateOnNewDocument(() => {
     localStorage.setItem('tns.unlocks', JSON.stringify({
-      'hint.v2.z': Date.now(), 'hint.v2.e': Date.now(), 'hint.v2.u': Date.now(), 'hint.v2.s': Date.now(),
-      'clue.v2.first': Date.now(), 'clue.v2.second': Date.now(), 'clue.v2.third': Date.now(), 'clue.v2.fourth': Date.now(),
+      'hint.v3.z': Date.now(), 'hint.v3.e': Date.now(), 'hint.v3.u': Date.now(), 'hint.v3.s': Date.now(),
+      'clue.v3.first': Date.now(), 'clue.v3.second': Date.now(), 'clue.v3.third': Date.now(), 'clue.v3.fourth': Date.now(),
     }));
-    localStorage.setItem('godgames_mystery_chain_version', 'v2');
+    localStorage.setItem('godgames_mystery_chain_version', 'v3');
     localStorage.setItem('godgames_playerName', 'TEST');
   });
   await page.goto(`${BASE}/index.html`, { waitUntil: 'load' });
@@ -403,12 +482,12 @@ async function testZeusLockedLettersBlockProgress() {
   const { page, close } = await freshPage();
   await page.evaluateOnNewDocument(() => {
     localStorage.setItem('tns.unlocks', JSON.stringify({
-      'hint.v2.z': Date.now(),
-      'clue.v2.first': Date.now(),
+      'hint.v3.z': Date.now(),
+      'clue.v3.first': Date.now(),
       // A loose synced hint is not enough; the clue mark itself must be recovered.
-      'hint.v2.e': Date.now(),
+      'hint.v3.e': Date.now(),
     }));
-    localStorage.setItem('godgames_mystery_chain_version', 'v2');
+    localStorage.setItem('godgames_mystery_chain_version', 'v3');
     localStorage.setItem('godgames_playerName', 'TEST');
   });
   await page.goto(`${BASE}/index.html?testHooks=1`, { waitUntil: 'load' });
@@ -434,10 +513,10 @@ async function testNoZeusHintReveal() {
   const { page, close } = await freshPage();
   await page.evaluateOnNewDocument(() => {
     localStorage.setItem('tns.unlocks', JSON.stringify({
-      'hint.v2.z': Date.now(), 'hint.v2.e': Date.now(), 'hint.v2.u': Date.now(), 'hint.v2.s': Date.now(),
-      'clue.v2.first': Date.now(), 'clue.v2.second': Date.now(), 'clue.v2.third': Date.now(), 'clue.v2.fourth': Date.now(),
+      'hint.v3.z': Date.now(), 'hint.v3.e': Date.now(), 'hint.v3.u': Date.now(), 'hint.v3.s': Date.now(),
+      'clue.v3.first': Date.now(), 'clue.v3.second': Date.now(), 'clue.v3.third': Date.now(), 'clue.v3.fourth': Date.now(),
     }));
-    localStorage.setItem('godgames_mystery_chain_version', 'v2');
+    localStorage.setItem('godgames_mystery_chain_version', 'v3');
     localStorage.setItem('godgames_playerName', 'TEST');
   });
   await page.goto(`${BASE}/index.html`, { waitUntil: 'load' });
@@ -460,8 +539,8 @@ async function testNoZeusHintReveal() {
 async function testHeelMystery() {
   const { page, close } = await freshPage();
   await page.evaluateOnNewDocument(() => {
-    localStorage.setItem('tns.unlocks', JSON.stringify({ 'manga_mode.v2': Date.now(), manga_mode: Date.now() }));
-    localStorage.setItem('godgames_mystery_chain_version', 'v2');
+    localStorage.setItem('tns.unlocks', JSON.stringify({ 'manga_mode.v3': Date.now(), manga_mode: Date.now() }));
+    localStorage.setItem('godgames_mystery_chain_version', 'v3');
     localStorage.setItem('godgames_playerName', 'TEST');
     localStorage.setItem('godgames_manga', '1');
   });
@@ -487,8 +566,8 @@ async function testHeelMystery() {
 async function testPanel() {
   const { page, close } = await freshPage();
   await page.evaluateOnNewDocument(() => {
-    localStorage.setItem('tns.unlocks', JSON.stringify({ 'hint.v2.z': Date.now() }));
-    localStorage.setItem('godgames_mystery_chain_version', 'v2');
+    localStorage.setItem('tns.unlocks', JSON.stringify({ 'hint.v3.z': Date.now() }));
+    localStorage.setItem('godgames_mystery_chain_version', 'v3');
     localStorage.setItem('godgames_playerName', 'TEST');
   });
   await page.goto(`${BASE}/index.html`, { waitUntil: 'load' });
@@ -505,7 +584,7 @@ async function testPanel() {
 }
 
 // ── Run all ──────────────────────────────────────────────────────────────
-const tests = [testEngineUnlock, testProgressSyncAfterLateName, testIcarus, testIcarusRetrigger, testOrion, testAchilles, testPerseus, testPlacePage, testPerseusPlaceCharacter, testOlympusClues, testPanel, testShankleBypass, testZeusInvocation, testZeusLockedLettersBlockProgress, testNoZeusHintReveal, testHeelMystery];
+const tests = [testEngineUnlock, testProgressSyncAfterLateName, testProgressSyncDropsOldChainKeys, testProgressSyncRefreshesSameName, testIcarus, testIcarusRetrigger, testOrion, testAchilles, testPerseus, testPlacePage, testPerseusPlaceCharacter, testOlympusClues, testPanel, testShankleBypass, testZeusInvocation, testZeusLockedLettersBlockProgress, testNoZeusHintReveal, testHeelMystery];
 for (const t of tests) {
   try { await t(); }
   catch (e) { fail(t.name, 'threw: ' + e.message); }

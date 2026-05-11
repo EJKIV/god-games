@@ -64,26 +64,11 @@
       },
     });
 
-    M.assets.define('godgames.shared.hubConcourseIdleV3', {
-      src: 'assets/manga/shared/hub-concourse-idle-v3.jpg',
+    M.assets.define('godgames.shared.hubConcourseIdleV4', {
+      src: 'assets/manga/shared/hub-concourse-idle-v4.jpg',
       meta: {
-        usage: 'Authored manga hub idle scene with destination portals, recessed wall insets, and etched game names baked into the hall art.',
+        usage: 'Authored manga hub concourse with rectangular destination frescoes painted into the shrine walls, etched stone names, and no floating portal cards.',
       },
-    });
-
-    [
-      ['godgames.shared.hubConcourseOrionSelectedV3', 'assets/manga/shared/hub-concourse-orion-selected-v3.jpg', 'Orion'],
-      ['godgames.shared.hubConcourseAchillesSelectedV3', 'assets/manga/shared/hub-concourse-achilles-selected-v3.jpg', 'Achilles'],
-      ['godgames.shared.hubConcourseOlympusSelectedV3', 'assets/manga/shared/hub-concourse-olympus-selected-v3.jpg', 'Olympus'],
-      ['godgames.shared.hubConcoursePerseusSelectedV3', 'assets/manga/shared/hub-concourse-perseus-selected-v3.jpg', 'Perseus'],
-      ['godgames.shared.hubConcourseIcarusSelectedV3', 'assets/manga/shared/hub-concourse-icarus-selected-v3.jpg', 'Icarus'],
-    ].forEach(([id, src, portal]) => {
-      M.assets.define(id, {
-        src,
-        meta: {
-          usage: `${portal} selected-state manga hub scene with portal art, wall lighting, dimmed neighboring portals, floor spill, and embedded game name authored into the background.`,
-        },
-      });
     });
 
     const hubPanelW = 1983 / 5;
@@ -110,10 +95,10 @@
       w: avatarCell,
       h: avatarH,
       anchorX: avatarCell / 2,
-      anchorY: 768,
+      anchorY: 805,
     });
     M.assets.define('godgames.shared.hubAvatarV2', {
-      src: 'assets/manga/shared/hub-avatar-film-v2.png',
+      src: 'assets/manga/shared/hub-avatar-film-v3.png',
       frames: {
         idle:  avatarFrame(0, 0),
         walkA: avatarFrame(0, 1),
@@ -137,7 +122,7 @@
         walk8: avatarFrame(7, 1),
       },
       meta: {
-        usage: 'Transparent manga/anime hub traveler film-motion sprite sheet for the Mount Olympus concourse.',
+        usage: 'Transparent manga/anime hub traveler film-motion sprite sheet for the Mount Olympus concourse, with a contained in-cell walk cycle.',
         animations: {
           idle: { frames: ['idle1', 'idle2', 'idle3', 'idle4'], fps: 4, loop: true },
           ready: { frames: ['ready1', 'ready2', 'ready3', 'ready4'], fps: 4, loop: true },

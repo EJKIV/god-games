@@ -106,10 +106,11 @@ player name, so a kid who unlocks a clue at home can see it when they
 return on a different device.
 
 - `GET  /api/progress?name=<player>` → `{ unlocks: {id: ts, ...}, counters: {key: int, ...} }`
-- `POST /api/progress` body `{ name, unlocks, counters }` → merges incoming
-  into stored. Merge strategy is **union of unlocks (max ts) + max of
-  counters** — divergent devices never lose progress, both converge to
-  the union. Mysteries are forever-state, so this is correct.
+- `POST /api/progress` body `{ name, unlocks, counters }` → filters obsolete
+  ZEUS-chain keys, then merges incoming into stored. Merge strategy is **union
+  of unlocks (max ts) + max of counters** for retained progress — divergent
+  devices never lose unrelated progress, while chain-version bumps can reset
+  the puzzle without deleting the whole player record.
 
 Storage key: `progress:<name>` → JSON. Rate-limit `rl:progress:<ip>` at
 30/min (higher than the leaderboard's 5 because progress writes are
@@ -129,6 +130,7 @@ sites write unlocks for a guessed player name.
 
 | Date       | Change                                                                          | Author |
 |------------|---------------------------------------------------------------------------------|--------|
+| 2026-05-11 | Added server-side filtering for obsolete ZEUS-chain progress keys.              | codex  |
 | 2026-05-09 | Restricted progress CORS to same-host/localhost origins and clamped incoming keys. | codex |
 | 2026-05-08 | Added `progress.js` for mystery state sync (Engine.unlock + counters).          | jim    |
 | 2026-05-07 | Created subtree router. Achilles registered in `GAMES` (order:desc, 0..10M).    | jim    |

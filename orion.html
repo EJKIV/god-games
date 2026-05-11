@@ -144,6 +144,13 @@ async function submitToHall(timeMs) {
     hallStatus = 'fail';
   }
 }
+window.GodGames = window.GodGames || {};
+window.GodGames.submitNow = () => {
+  if (submittedThisRun) return Promise.resolve();
+  submittedThisRun = true;
+  const endMs = runEndMs == null ? performance.now() : runEndMs;
+  return submitToHall(Math.floor(endMs - runStartMs));
+};
 
 // ── Name gate ──────────────────────────────────────────────────────────────
 function hasName() { return !!localStorage.getItem(NAME_KEY); }

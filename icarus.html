@@ -4982,6 +4982,12 @@ async function submitToHall(score) {
     hallStatus = 'fail';
   }
 }
+window.GodGames = window.GodGames || {};
+window.GodGames.submitNow = () => {
+  if (submittedThisRun) return Promise.resolve();
+  submittedThisRun = true;
+  return submitToHall(Math.floor(player.xp));
+};
 
 // ── Session helpers ────────────────────────────────────────────────────────
 const LAST_PLAY_KEY = 'icarus_lastPlay';

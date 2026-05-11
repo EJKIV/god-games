@@ -196,31 +196,25 @@ const canvas = document.getElementById('c');
 let ctx      = canvas.getContext('2d');
 canvas.width  = window.innerWidth;
 canvas.height = window.innerHeight;
-const W = canvas.width, H = canvas.height;
+let W = canvas.width, H = canvas.height;
 const GOLD = '#D4AF37';
 const MANGA_KEY = 'godgames_manga';
 const HUB_CONCOURSE_ASSET = 'godgames.shared.hubConcourseV2';
 const HUB_CONCOURSE_MURALS_ASSET = 'godgames.shared.hubConcourseMuralsV1';
-const HUB_CONCOURSE_IDLE_ASSET = 'godgames.shared.hubConcourseIdleV3';
-const HUB_CONCOURSE_SELECTED_ASSETS = Object.freeze({
-  ORION: 'godgames.shared.hubConcourseOrionSelectedV3',
-  ACHILLES: 'godgames.shared.hubConcourseAchillesSelectedV3',
-  OLYMPUS: 'godgames.shared.hubConcourseOlympusSelectedV3',
-  PERSEUS: 'godgames.shared.hubConcoursePerseusSelectedV3',
-  ICARUS: 'godgames.shared.hubConcourseIcarusSelectedV3',
-});
+const HUB_CONCOURSE_IDLE_ASSET = 'godgames.shared.hubConcourseIdleV4';
+const HUB_CONCOURSE_SELECTED_ASSETS = Object.freeze({});
 const HUB_DESTINATION_PANELS_ASSET = 'godgames.shared.hubDestinationPanelsV2';
 const HUB_AVATAR_ASSET = 'godgames.shared.hubAvatarV2';
 const HUB_MANGA_STATION_X = [0.145, 0.322, 0.500, 0.678, 0.855];
 const HUB_CONCOURSE_SOURCE = { w: 1672, h: 941, focusX: 0.50, focusY: 0.54 };
 const HUB_MANGA_STATION_RECTS = [
-  { x: 166, y: 358, w: 150, h: 218, labelY: 604 },
-  { x: 464, y: 360, w: 148, h: 216, labelY: 604 },
-  { x: 762, y: 360, w: 148, h: 216, labelY: 604 },
-  { x: 1060, y: 360, w: 148, h: 216, labelY: 604 },
-  { x: 1356, y: 360, w: 146, h: 216, labelY: 604 },
+  { x: 162, y: 318, w: 160, h: 278, labelY: 620 },
+  { x: 460, y: 318, w: 156, h: 278, labelY: 620 },
+  { x: 758, y: 318, w: 156, h: 278, labelY: 620 },
+  { x: 1056, y: 318, w: 156, h: 278, labelY: 620 },
+  { x: 1352, y: 318, w: 156, h: 278, labelY: 620 },
 ];
-const GY   = H * 0.73;   // ground y
+let GY   = H * 0.73;   // ground y
 let _mangaHubStaticLayer = null;
 let _mangaHubStaticKey = '';
 let _mangaHubMuralsDrawn = false;
@@ -255,7 +249,7 @@ portals.forEach((p, i) => {
   p.slot = i;
   p._btn = null;
 });
-const PORTAL_RADIUS = Math.min(130, (W / (portals.length + 1)) * 0.45);
+let PORTAL_RADIUS = Math.min(130, (W / (portals.length + 1)) * 0.45);
 const IS_TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
 
 function hubStage() {
@@ -418,6 +412,67 @@ const HUB_TURN_DUR = 0.18;
 const HUB_LAND_DUR = 0.18;
 const HUB_MANGA_HUMAN_STRIDE_PX = 88;
 const HUB_MANGA_TOAD_STRIDE_PX = 96;
+
+function refreshPortalLayout() {
+  portals.forEach((p, i) => {
+    p.x = W * (i + 1) / (portals.length + 1);
+    p.mangaX = W * (HUB_MANGA_STATION_X[i] ?? ((i + 1) / (portals.length + 1)));
+    p._btn = null;
+  });
+  PORTAL_RADIUS = Math.min(130, (W / (portals.length + 1)) * 0.45);
+}
+
+function invalidateHubRenderCache() {
+  _mangaHubStaticLayer = null;
+  _mangaHubStaticKey = '';
+}
+
+function resizeHubCanvas() {
+  const oldW = W || window.innerWidth || 1;
+  const oldH = H || window.innerHeight || 1;
+  const oldGY = GY || oldH * 0.73;
+  const nextW = window.innerWidth;
+  const nextH = window.innerHeight;
+  if (nextW === W && nextH === H && canvas.width === nextW && canvas.height === nextH) return;
+
+  canvas.width = nextW;
+  canvas.height = nextH;
+  W = canvas.width;
+  H = canvas.height;
+  GY = H * 0.73;
+  refreshPortalLayout();
+  invalidateHubRenderCache();
+
+  const sx = W / Math.max(1, oldW);
+  const sy = H / Math.max(1, oldH);
+  const groundSy = GY / Math.max(1, oldGY);
+  for (const s of stars) {
+    s.x *= sx;
+    s.y *= groundSy;
+    if (s.x < 0 || s.x > W || s.y < 0 || s.y > GY) {
+      s.x = Math.random() * W;
+      s.y = Math.random() * GY * 0.9;
+    }
+  }
+  for (const m of motes) {
+    m.x *= sx;
+    m.y *= groundSy;
+    if (m.x < 0 || m.x > W || m.y < 0 || m.y > GY) {
+      m.x = Math.random() * W;
+      m.y = GY - Math.random() * Math.max(1, GY * 0.8);
+    }
+  }
+  player.x = Math.max(24, Math.min(W - 24, player.x * sx));
+  player.visualX = Math.max(24, Math.min(W - 24, (player.visualX || player.x) * sx));
+  if (player.onGround) {
+    player.y = GY;
+    player.visualY = GY;
+  } else {
+    player.y = Math.min(GY, player.y * sy);
+    player.visualY = Math.min(GY, (player.visualY || player.y) * sy);
+  }
+}
+window.addEventListener('resize', resizeHubCanvas);
 
 let keys = {}, time = 0, mouse = {x:0, y:0};
 let lastHopCycle = 0; // tracks toad's hop cycle to fire one ribbit per hop
@@ -1295,10 +1350,12 @@ function mangaHubStaticKey() {
   const tier = art && typeof art.basePerformanceTier === 'function' ? art.basePerformanceTier() : 'base';
   const selectedPortal = player.nearPortal || null;
   const authoredSceneAsset = mangaHubAuthoredSceneAsset(selectedPortal);
+  const authoredReady = mangaHubAssetReady(authoredSceneAsset);
+  const selectedKey = authoredReady ? 'authored-v4' : (selectedPortal ? selectedPortal.name : 'idle');
   return [
     W, H, tier,
-    selectedPortal ? selectedPortal.name : 'idle',
-    mangaHubAssetReady(authoredSceneAsset) ? 1 : 0,
+    selectedKey,
+    authoredReady ? 1 : 0,
     mangaHubAssetReady(HUB_CONCOURSE_MURALS_ASSET) ? 1 : 0,
     mangaHubAssetReady(HUB_CONCOURSE_ASSET) ? 1 : 0,
     mangaHubAssetReady(HUB_DESTINATION_PANELS_ASSET) ? 1 : 0,
@@ -1336,7 +1393,9 @@ function drawMangaHubCachedBase() {
 
   ctx.drawImage(_mangaHubStaticLayer, 0, 0, W, H);
   for (const p of portals) p._btn = hubPortalHitRegion(p);
-  if (player.nearPortal && !_mangaHubStaticAuthoredScene) drawMangaDestinationHighlight(player.nearPortal);
+  if (player.nearPortal) drawMangaDestinationHighlight(player.nearPortal, {
+    authored: _mangaHubStaticAuthoredScene,
+  });
   return true;
 }
 
@@ -1455,44 +1514,7 @@ function drawMangaDestinationStation(p) {
   drawEtchedHubLabel(p, box, near);
 
   p._btn = hubPortalHitRegion(p);
-  if (near) {
-    const by = Math.min(H - 42, hubStage().groundY + Math.max(28, H * 0.064));
-    const label = p.kind === 'mountain' ? 'ASCEND' : 'ENTER';
-    const bw = p.kind === 'mountain' ? 118 : 98;
-    const bh = 30;
-    if (art && art.drawPanel) art.drawPanel(ctx, box.cx - bw / 2, by - bh / 2, bw, bh, {
-      radius: 5,
-      paper: 'rgba(255,224,92,0.96)',
-      bottom: 'rgba(212,175,55,0.96)',
-      accent: '#fff1b8',
-      toneAlpha: 0.05,
-      lineWidth: 3,
-    });
-    else {
-      ctx.save();
-      ctx.fillStyle = GOLD;
-      ctx.fillRect(box.cx - bw / 2, by - bh / 2, bw, bh);
-      ctx.strokeStyle = '#0a0a0a'; ctx.lineWidth = 3;
-      ctx.strokeRect(box.cx - bw / 2, by - bh / 2, bw, bh);
-      ctx.restore();
-    }
-    ctx.save();
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.font = `900 ${Math.max(14, Math.min(17, W / 74))}px "Impact", "Arial Black", sans-serif`;
-    ctx.fillStyle = '#0a0a0a';
-    ctx.fillText(label, box.cx, by + 1);
-    ctx.restore();
-    ctx.save();
-    ctx.textAlign = 'center';
-    ctx.font = 'bold 10px monospace';
-    ctx.fillStyle = '#fff1b8';
-    ctx.strokeStyle = '#0a0a0a';
-    ctx.lineWidth = 3;
-    ctx.strokeText('click or press SPACE', box.cx, by + 30);
-    ctx.fillText('click or press SPACE', box.cx, by + 30);
-    ctx.restore();
-  }
+  if (near) drawMangaPortalPrompt(p, box);
 }
 
 function drawMangaIntegratedStationChrome(p) {
@@ -1505,55 +1527,8 @@ function drawMangaAuthoredStationChrome(p) {
   p._btn = hubPortalHitRegion(p);
 }
 
-function traceMangaStationArchPath(box, pad = 0) {
-  const x = box.x - pad;
-  const y = box.y - pad;
-  const w = box.w + pad * 2;
-  const h = box.h + pad * 2;
-  const shoulderY = y + h * 0.22;
-  ctx.moveTo(x + w * 0.04, y + h);
-  ctx.lineTo(x + w * 0.06, shoulderY);
-  ctx.lineTo(x + w * 0.50, y + h * 0.02);
-  ctx.lineTo(x + w * 0.94, shoulderY);
-  ctx.lineTo(x + w * 0.96, y + h);
-  ctx.closePath();
-}
-
-function drawMangaDestinationHighlight(p) {
+function drawMangaPortalPrompt(p, box) {
   const art = window.GodGames && GodGames.MangaArt;
-  const box = hubStationBox(p);
-  const pulse = 0.76 + Math.sin(time * 5) * 0.18;
-  ctx.save();
-  ctx.shadowColor = p.hue;
-  ctx.shadowBlur = 10;
-  ctx.fillStyle = `${p.hue}24`;
-  ctx.beginPath();
-  traceMangaStationArchPath(box, 5);
-  ctx.fill();
-  ctx.shadowBlur = 0;
-  ctx.strokeStyle = `rgba(255,241,184,${0.38 + pulse * 0.18})`;
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  traceMangaStationArchPath(box, 2);
-  ctx.stroke();
-  ctx.strokeStyle = `${p.hue}88`;
-  ctx.lineWidth = 1.2;
-  ctx.beginPath();
-  traceMangaStationArchPath(box, -7);
-  ctx.stroke();
-  const shine = ctx.createLinearGradient(box.x, box.y, box.x + box.w, box.y + box.h);
-  shine.addColorStop(0, 'rgba(255,255,255,0.00)');
-  shine.addColorStop(0.48, `rgba(255,255,255,${0.08 + pulse * 0.04})`);
-  shine.addColorStop(0.62, 'rgba(255,255,255,0.00)');
-  ctx.fillStyle = shine;
-  ctx.beginPath();
-  traceMangaStationArchPath(box, -3);
-  ctx.fill();
-  ctx.restore();
-
-  drawEtchedHubLabel(p, box, true);
-
-  p._btn = hubPortalHitRegion(p);
   const by = Math.min(H - 42, hubStage().groundY + Math.max(28, H * 0.064));
   const label = p.kind === 'mountain' ? 'ASCEND' : 'ENTER';
   const bw = p.kind === 'mountain' ? 118 : 98;
@@ -1588,6 +1563,120 @@ function drawMangaDestinationHighlight(p) {
   ctx.strokeText('click or press SPACE', box.cx, by + 30);
   ctx.fillText('click or press SPACE', box.cx, by + 30);
   ctx.restore();
+}
+
+function traceMangaStationArchPath(box, pad = 0) {
+  const x = box.x - pad;
+  const y = box.y - pad;
+  const w = box.w + pad * 2;
+  const h = box.h + pad * 2;
+  const shoulderY = y + h * 0.22;
+  ctx.moveTo(x + w * 0.04, y + h);
+  ctx.lineTo(x + w * 0.06, shoulderY);
+  ctx.lineTo(x + w * 0.50, y + h * 0.02);
+  ctx.lineTo(x + w * 0.94, shoulderY);
+  ctx.lineTo(x + w * 0.96, y + h);
+  ctx.closePath();
+}
+
+function drawMangaDestinationHighlight(p, options = {}) {
+  const box = hubStationBox(p);
+  const pulse = 0.76 + Math.sin(time * 5) * 0.18;
+  if (options.authored) {
+    const bayPadX = box.w * 0.42;
+    const bayPadTop = box.h * 0.28;
+    const bayPadBottom = box.h * 0.66;
+    const bayX = box.x - bayPadX;
+    const bayY = box.y - bayPadTop;
+    const bayW = box.w + bayPadX * 2;
+    const bayH = box.h + bayPadTop + bayPadBottom;
+    ctx.save();
+
+    const wallGlow = ctx.createRadialGradient(box.cx, box.cy, box.w * 0.08, box.cx, box.cy, bayW * 0.58);
+    wallGlow.addColorStop(0, `rgba(255,241,184,${0.16 + pulse * 0.05})`);
+    wallGlow.addColorStop(0.38, `${p.hue}24`);
+    wallGlow.addColorStop(1, 'rgba(255,241,184,0)');
+    ctx.globalCompositeOperation = 'screen';
+    ctx.fillStyle = wallGlow;
+    ctx.fillRect(bayX, bayY, bayW, bayH);
+
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.shadowColor = p.hue;
+    ctx.shadowBlur = 12 + pulse * 8;
+    ctx.strokeStyle = `rgba(255,241,184,${0.34 + pulse * 0.16})`;
+    ctx.lineWidth = Math.max(1, Math.min(2.2, W / 620));
+    ctx.beginPath();
+    ctx.roundRect(box.x - 2, box.y - 2, box.w + 4, box.h + 4, 2);
+    ctx.stroke();
+
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = `${p.hue}80`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(box.x + 6, box.y + 6, box.w - 12, box.h - 12, 1.5);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.roundRect(box.x, box.y, box.w, box.h, 2);
+    ctx.clip();
+    const sheen = ctx.createLinearGradient(box.x, box.y, box.x + box.w, box.y + box.h);
+    sheen.addColorStop(0, 'rgba(255,255,255,0)');
+    sheen.addColorStop(0.48, `rgba(255,255,255,${0.08 + pulse * 0.04})`);
+    sheen.addColorStop(0.62, 'rgba(255,255,255,0)');
+    ctx.globalCompositeOperation = 'screen';
+    ctx.fillStyle = sheen;
+    ctx.fillRect(box.x, box.y, box.w, box.h);
+    ctx.restore();
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    const floorGlow = ctx.createRadialGradient(box.cx, hubStage().groundY + H * 0.06, 4, box.cx, hubStage().groundY + H * 0.06, W * 0.10);
+    floorGlow.addColorStop(0, `${p.hue}42`);
+    floorGlow.addColorStop(0.42, 'rgba(255,226,130,0.13)');
+    floorGlow.addColorStop(1, 'rgba(255,226,130,0)');
+    ctx.fillStyle = floorGlow;
+    ctx.beginPath();
+    ctx.ellipse(box.cx, hubStage().groundY + H * 0.06, W * 0.11, H * 0.052, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    p._btn = hubPortalHitRegion(p);
+    drawMangaPortalPrompt(p, box);
+    return;
+  }
+
+  ctx.save();
+  ctx.shadowColor = p.hue;
+  ctx.shadowBlur = 10;
+  ctx.fillStyle = `${p.hue}24`;
+  ctx.beginPath();
+  traceMangaStationArchPath(box, 5);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = `rgba(255,241,184,${0.38 + pulse * 0.18})`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  traceMangaStationArchPath(box, 2);
+  ctx.stroke();
+  ctx.strokeStyle = `${p.hue}88`;
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  traceMangaStationArchPath(box, -7);
+  ctx.stroke();
+  const shine = ctx.createLinearGradient(box.x, box.y, box.x + box.w, box.y + box.h);
+  shine.addColorStop(0, 'rgba(255,255,255,0.00)');
+  shine.addColorStop(0.48, `rgba(255,255,255,${0.08 + pulse * 0.04})`);
+  shine.addColorStop(0.62, 'rgba(255,255,255,0.00)');
+  ctx.fillStyle = shine;
+  ctx.beginPath();
+  traceMangaStationArchPath(box, -3);
+  ctx.fill();
+  ctx.restore();
+
+  drawEtchedHubLabel(p, box, true);
+
+  p._btn = hubPortalHitRegion(p);
+  drawMangaPortalPrompt(p, box);
 }
 
 function drawMangaStationPreview(p, box, near) {
@@ -1877,7 +1966,7 @@ function drawMangaHubAvatar(scale) {
         filmScaleY: 1 + landing * 0.05,
         lean: (player.visualLean || 0) + ready * facing * -0.012,
         smear: false,
-        frameBlendStrength: moving ? 0.28 : 0.16,
+        frameBlendStrength: moving ? 0.12 : 0.08,
         animName: anim,
         hero: true,
         film: true,

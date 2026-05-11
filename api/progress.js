@@ -25,6 +25,15 @@ const MAX_COUNTER_KEYS = 100; // upper bound on counter keys
 const MAX_PAYLOAD_BYTES = 12_000;
 const CORS_METHODS = 'GET, POST, OPTIONS';
 const CORS_HEADERS = 'Content-Type';
+const CHAIN_VERSION = 'v3';
+const CODE_HINTS = new Set(['z', 'e', 'u', 's']);
+const CHAIN_CLUES = new Set(['first', 'second', 'third', 'fourth']);
+const LEGACY_CHAIN_UNLOCKS = new Set([
+  'hint.z', 'hint.e', 'hint.u', 'hint.s',
+  'clue.first', 'clue.second', 'clue.third', 'clue.fourth',
+  'manga_mode', 'hint.zeus_call',
+]);
+const LEGACY_CHAIN_COUNTERS = new Set(['mysteries_solved_count']);
 
 async function redis(...command) {
   if (!REDIS_URL || !REDIS_TOKEN) {
@@ -140,6 +149,7 @@ function sanitizeIncoming(side) {
     let n = 0;
     for (const [k, v] of Object.entries(side.unlocks)) {
       if (!safeProgressKey(k)) continue;
+      if (isObsoleteChainUnlock(k)) continue;
       if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) continue;
       out.unlocks[k] = v;
       if (++n >= MAX_UNLOCKS) break;
@@ -149,6 +159,7 @@ function sanitizeIncoming(side) {
     let n = 0;
     for (const [k, v] of Object.entries(side.counters)) {
       if (!safeProgressKey(k)) continue;
+      if (LEGACY_CHAIN_COUNTERS.has(k)) continue;
       if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) continue;
       out.counters[k] = Math.floor(v);
       if (++n >= MAX_COUNTER_KEYS) break;
@@ -164,6 +175,22 @@ function safeProgressKey(k) {
     && k !== '__proto__'
     && k !== 'constructor'
     && k !== 'prototype';
+}
+
+function isObsoleteChainUnlock(key) {
+  const k = String(key || '');
+  if (LEGACY_CHAIN_UNLOCKS.has(k)) return true;
+
+  const hint = k.match(/^hint\.(?:(v\d+)\.)?([a-z])$/);
+  if (hint && CODE_HINTS.has(hint[2])) return k !== `hint.${CHAIN_VERSION}.${hint[2]}`;
+
+  const clue = k.match(/^clue\.(?:(v\d+)\.)?(first|second|third|fourth)$/);
+  if (clue && CHAIN_CLUES.has(clue[2])) return k !== `clue.${CHAIN_VERSION}.${clue[2]}`;
+
+  const manga = k.match(/^manga_mode(?:\.(v\d+))?$/);
+  if (manga) return k !== `manga_mode.${CHAIN_VERSION}`;
+
+  return false;
 }
 
 function mergeStates(stored, incoming) {

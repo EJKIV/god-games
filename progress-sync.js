@@ -5,7 +5,7 @@
 //      It may be missing on first load until the name modal saves it.
 //   2. When a name exists or changes, GET /api/progress?name=<player>.
 //      Merge remote state into Engine.unlock:
-//      • set every remote unlock id (no-op if local already has it)
+//      • set every non-obsolete remote unlock id (no-op if local already has it)
 //      • for every remote counter, take max(local, remote) and write back
 //   3. Subscribe to Engine.unlock.onChange. On any change, debounce ~2s and
 //      POST the full local state to /api/progress. Server merges (max, union).
@@ -13,9 +13,10 @@
 // Why this is safe:
 //   • All operations are merges, never replaces. A divergent device never
 //     loses progress; both sides converge to the union.
-//   • Mysteries are forever-state. Counters never decrease (Engine.unlock has
-//     no decrement). So max-merge is correct. Puzzle resets are handled by
-//     versioned keys in mysteries.js, which filters obsolete chain keys.
+//   • Most mysteries are forever-state. Counters never decrease (Engine.unlock
+//     has no decrement). Puzzle-chain resets are handled by versioned keys in
+//     mysteries.js and api/progress.js, which filter obsolete chain keys before
+//     merging.
 //   • Player name is the only identity. No accounts, no auth. The Workshop
 //     usage pattern: kid types name once, progress follows them across
 //     devices on the same name.
@@ -33,6 +34,7 @@
   const NAME_KEY = 'godgames_playerName';
   const ENDPOINT = '/api/progress';
   const DEBOUNCE_MS = 2000;
+  const PULL_INTERVAL_MS = 15000;
   const PULL_RETRY_MS = 15000;
 
   function getName() {
@@ -86,17 +88,20 @@
 
   // ── Remote pull whenever the active player name appears/changes ──────
   let lastPulledName = '';
+  let lastPulledAt = 0;
   let lastAttemptedName = '';
   let nextPullAt = 0;
   let pullInFlightName = '';
-  async function pullForCurrentName() {
+  async function pullForCurrentName(opts) {
+    opts = opts || {};
     const name = getName();
-    if (!name || name === lastPulledName || name === pullInFlightName) return;
+    if (!name || name === pullInFlightName) return;
     const now = Date.now();
     if (name !== lastAttemptedName) {
       lastAttemptedName = name;
       nextPullAt = 0;
     }
+    if (!opts.force && name === lastPulledName && now - lastPulledAt < PULL_INTERVAL_MS) return;
     if (now < nextPullAt) return;
     pullInFlightName = name;
     try {
@@ -108,6 +113,7 @@
       const remote = await r.json();
       mergeRemoteIntoLocal(remote);
       lastPulledName = name;
+      lastPulledAt = Date.now();
       nextPullAt = 0;
       if (hasAnyState(getLocalState())) schedulePush();
     } catch (_e) {
@@ -149,17 +155,17 @@
       setTimeout(start, 50);
       return;
     }
-    pullForCurrentName();
+    pullForCurrentName({ force: true });
     Engine.unlock.onChange(schedulePush);
     setInterval(pullForCurrentName, 1000);
-    window.addEventListener('focus', pullForCurrentName);
+    window.addEventListener('focus', () => pullForCurrentName({ force: true }));
     // Best-effort flush on page hide so we don't lose a freshly-earned hint.
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') {
         if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
         pushNow();
       } else {
-        pullForCurrentName();
+        pullForCurrentName({ force: true });
       }
     });
   }

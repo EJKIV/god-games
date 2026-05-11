@@ -124,17 +124,17 @@ async function seedPage(page, manga) {
     localStorage.setItem('godgames_playerName', 'QA');
     localStorage.setItem('godgames_perf', 'balanced');
     localStorage.setItem('icarus_lastPlay', String(Date.now()));
-    localStorage.setItem('godgames_mystery_chain_version', 'v2');
+    localStorage.setItem('godgames_mystery_chain_version', 'v3');
     const ts = Date.now();
     localStorage.setItem('tns.unlocks', JSON.stringify({
-      'hint.v2.z': ts,
-      'hint.v2.e': ts,
-      'hint.v2.u': ts,
-      'hint.v2.s': ts,
-      'clue.v2.first': ts,
-      'clue.v2.second': ts,
-      'clue.v2.third': ts,
-      'clue.v2.fourth': ts,
+      'hint.v3.z': ts,
+      'hint.v3.e': ts,
+      'hint.v3.u': ts,
+      'hint.v3.s': ts,
+      'clue.v3.first': ts,
+      'clue.v3.second': ts,
+      'clue.v3.third': ts,
+      'clue.v3.fourth': ts,
     }));
     if (mangaOn) localStorage.setItem('godgames_manga', '1');
     else localStorage.removeItem('godgames_manga');

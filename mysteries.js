@@ -22,9 +22,10 @@
   if (typeof window === 'undefined') return;
   window.GodGames = window.GodGames || {};
 
-  const CHAIN_VERSION = 'v2';
+  const CHAIN_VERSION = 'v3';
   const CHAIN_VERSION_KEY = 'godgames_mystery_chain_version';
   const CODE_HINTS = new Set(['z', 'e', 'u', 's']);
+  const CHAIN_CLUES = new Set(['first', 'second', 'third', 'fourth']);
   const LEGACY_CHAIN_UNLOCKS = new Set([
     'hint.z', 'hint.e', 'hint.u', 'hint.s',
     'clue.first', 'clue.second', 'clue.third', 'clue.fourth',
@@ -589,6 +590,7 @@
     const counters = Object.create(null);
     for (const [id, ts] of Object.entries(input.unlocks || {})) {
       if (LEGACY_CHAIN_UNLOCKS.has(id)) continue;
+      if (isObsoleteChainUnlock(id)) continue;
       if (opts.dropCurrent && isCurrentChainUnlock(id)) continue;
       unlocks[id] = ts;
     }
@@ -607,6 +609,20 @@
     for (const c of ['clue.first', 'clue.second', 'clue.third', 'clue.fourth']) {
       if (id === storageClueId(c)) return true;
     }
+    return false;
+  }
+
+  function isObsoleteChainUnlock(id) {
+    const s = String(id || '');
+    const hint = s.match(/^hint\.(?:(v\d+)\.)?([a-z])$/);
+    if (hint && CODE_HINTS.has(hint[2])) return s !== storageHintId(hint[2]);
+
+    const clue = s.match(/^clue\.(?:(v\d+)\.)?(first|second|third|fourth)$/);
+    if (clue && CHAIN_CLUES.has(clue[2])) return s !== storageClueId(`clue.${clue[2]}`);
+
+    const manga = s.match(/^manga_mode(?:\.(v\d+))?$/);
+    if (manga) return s !== storageMysteryId('manga_mode');
+
     return false;
   }
 
