@@ -375,6 +375,7 @@ async function testZeusInvocation() {
   await page.evaluateOnNewDocument(() => {
     localStorage.setItem('tns.unlocks', JSON.stringify({
       'hint.v2.z': Date.now(), 'hint.v2.e': Date.now(), 'hint.v2.u': Date.now(), 'hint.v2.s': Date.now(),
+      'clue.v2.first': Date.now(), 'clue.v2.second': Date.now(), 'clue.v2.third': Date.now(), 'clue.v2.fourth': Date.now(),
     }));
     localStorage.setItem('godgames_mystery_chain_version', 'v2');
     localStorage.setItem('godgames_playerName', 'TEST');
@@ -401,7 +402,12 @@ async function testZeusInvocation() {
 async function testZeusLockedLettersBlockProgress() {
   const { page, close } = await freshPage();
   await page.evaluateOnNewDocument(() => {
-    localStorage.setItem('tns.unlocks', JSON.stringify({ 'hint.v2.z': Date.now() }));
+    localStorage.setItem('tns.unlocks', JSON.stringify({
+      'hint.v2.z': Date.now(),
+      'clue.v2.first': Date.now(),
+      // A loose synced hint is not enough; the clue mark itself must be recovered.
+      'hint.v2.e': Date.now(),
+    }));
     localStorage.setItem('godgames_mystery_chain_version', 'v2');
     localStorage.setItem('godgames_playerName', 'TEST');
   });
@@ -429,6 +435,7 @@ async function testNoZeusHintReveal() {
   await page.evaluateOnNewDocument(() => {
     localStorage.setItem('tns.unlocks', JSON.stringify({
       'hint.v2.z': Date.now(), 'hint.v2.e': Date.now(), 'hint.v2.u': Date.now(), 'hint.v2.s': Date.now(),
+      'clue.v2.first': Date.now(), 'clue.v2.second': Date.now(), 'clue.v2.third': Date.now(), 'clue.v2.fourth': Date.now(),
     }));
     localStorage.setItem('godgames_mystery_chain_version', 'v2');
     localStorage.setItem('godgames_playerName', 'TEST');

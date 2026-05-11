@@ -210,7 +210,12 @@
       if (!clue) return false;
       if (clue.id === M.prologueClue.id) return true;
       if (!window.Engine || !Engine.unlock) return false;
-      return Engine.unlock.has(storageClueId(clue.id)) || (clue.revealedBy && M.hasHint(clue.revealedBy));
+      return M.storedClueUnlocked(clue);
+    },
+    storedClueUnlocked(clue) {
+      if (!clue || !window.Engine || !Engine.unlock) return false;
+      if (clue.id === M.prologueClue.id) return true;
+      return Engine.unlock.has(storageClueId(clue.id));
     },
     firstUnmetOrder() {
       if (!window.Engine || !Engine.unlock) return 0;
@@ -416,10 +421,16 @@
     },
 
     // ── Manga-mode codeword helpers ──────────────────────────────────────
-    // True once every codeword fragment has been earned. Player still has to
-    // infer and type the hidden word on the hub to activate manga mode.
+    // True once every codeword fragment has been uncovered as a clue mark.
+    // Loose synced hint ids are not enough to invoke the mountain.
+    codewordLetterUnlocked(index) {
+      const letter = String(M.MANGA_CODEWORD[index] || '').toUpperCase();
+      if (!letter) return false;
+      const clue = M.clues.find(c => String(c.letter || '').toUpperCase() === letter);
+      return !!(clue && M.storedClueUnlocked(clue));
+    },
     mangaCodewordReady() {
-      return M.hasHint('z') && M.hasHint('e') && M.hasHint('u') && M.hasHint('s');
+      return M.MANGA_CODEWORD.split('').every((_ch, index) => M.codewordLetterUnlocked(index));
     },
     triggerMangaUnlock() {
       try { localStorage.setItem('godgames_manga', '1'); } catch (_e) {}
@@ -466,8 +477,13 @@
             if (clueId !== chainClue.id) Engine.unlock.set(chainClue.id);
             revealedClueId = chainClue.id;
           }
-        } else if (chainClue && M.clueUnlocked(chainClue)) {
-          revealedClueId = chainClue.id;
+        } else if (chainClue && hintId && Engine.unlock.has(hintId)) {
+          const clueId = storageClueId(chainClue.id);
+          if (!M.storedClueUnlocked(chainClue)) {
+            Engine.unlock.set(clueId);
+            if (clueId !== chainClue.id) Engine.unlock.set(chainClue.id);
+          }
+          if (M.storedClueUnlocked(chainClue)) revealedClueId = chainClue.id;
         }
       }
       try { if (typeof window.GodGames.submitNow === 'function') window.GodGames.submitNow(); }

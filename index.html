@@ -2469,8 +2469,7 @@ function codewordReady() {
 }
 function codewordLetterUnlocked(index) {
   const M = window.GodGames && window.GodGames.Mysteries;
-  const letter = CODEWORD[index];
-  return !!(letter && M && typeof M.hasHint === 'function' && M.hasHint(letter));
+  return !!(M && typeof M.codewordLetterUnlocked === 'function' && M.codewordLetterUnlocked(index));
 }
 if (new URLSearchParams(location.search).get('testHooks') === '1') {
   window.GodGames = window.GodGames || {};
