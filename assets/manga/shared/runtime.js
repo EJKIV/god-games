@@ -444,8 +444,8 @@
     }
     const key = [
       tier, w, h, settings.ink, settings.density, settings.dotSize.toFixed(2),
-      settings.halftoneAlpha.toFixed(3), settings.scanSpacing,
-      settings.scanAlpha.toFixed(3), settings.vignette.toFixed(2),
+      settings.halftoneAlpha.toFixed(2), settings.scanSpacing,
+      settings.scanAlpha.toFixed(2), settings.vignette.toFixed(2),
     ].join('|');
     let layer = atmosphereCache.get(key);
     if (!layer) {
@@ -854,6 +854,173 @@
       },
     };
   }
+
+  function debugEnabled() {
+    try {
+      const qs = new URLSearchParams(location.search);
+      if (qs.get('debug') === '1' || qs.get('hitboxes') === '1') return true;
+      return localStorage.getItem('godgames_debug') === '1';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function finite(v) {
+    return typeof v === 'number' && Number.isFinite(v);
+  }
+
+  function debugColor(role) {
+    if (role === 'visual') return '#28a8ff';
+    if (role === 'drift') return '#ff4dff';
+    if (role === 'hotspot') return '#ffd54a';
+    if (role === 'danger') return '#ff3333';
+    if (role === 'player') return '#44ff88';
+    return '#ff3333';
+  }
+
+  function drawDebugLabel(ctx, text, x, y, color) {
+    if (!text || !finite(x) || !finite(y)) return;
+    ctx.save();
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(0,0,0,0.82)';
+    ctx.fillStyle = color;
+    ctx.strokeText(text, x, y - 4);
+    ctx.fillText(text, x, y - 4);
+    ctx.restore();
+  }
+
+  function drawDebugShape(ctx, item) {
+    if (!item) return;
+    const role = item.role || item.kind || 'hitbox';
+    const color = item.color || debugColor(role);
+    ctx.save();
+    ctx.globalAlpha = item.alpha ?? 0.82;
+    ctx.strokeStyle = color;
+    ctx.fillStyle = item.fill || 'transparent';
+    ctx.lineWidth = item.lineWidth || 1.5;
+    ctx.setLineDash(item.dash || (role === 'visual' ? [6, 4] : []));
+    if (finite(item.r)) {
+      ctx.beginPath();
+      ctx.arc(item.x, item.y, item.r, 0, Math.PI * 2);
+      if (item.fill) ctx.fill();
+      ctx.stroke();
+    } else if (finite(item.w) && finite(item.h)) {
+      const x = item.center === false ? item.x : item.x - item.w / 2;
+      const y = item.center === false ? item.y : item.y - item.h / 2;
+      ctx.strokeRect(x, y, item.w, item.h);
+    } else if (finite(item.x1) && finite(item.y1) && finite(item.x2) && finite(item.y2)) {
+      ctx.beginPath();
+      ctx.moveTo(item.x1, item.y1);
+      ctx.lineTo(item.x2, item.y2);
+      ctx.stroke();
+    }
+    ctx.restore();
+    drawDebugLabel(ctx, item.label, item.x ?? item.x1, item.y ?? item.y1, color);
+  }
+
+  function debugDrift(entry) {
+    if (!entry || !finite(entry.x) || !finite(entry.y) || !finite(entry.visualX) || !finite(entry.visualY)) return null;
+    const radius = Math.max(1, entry.radius || entry.hitRadius || 1);
+    const budgetRatio = entry.budgetRatio ?? 0.35;
+    const budgetPx = entry.maxDrift ?? radius * budgetRatio;
+    const dx = entry.visualX - entry.x;
+    const dy = entry.visualY - entry.y;
+    const px = Math.hypot(dx, dy);
+    return {
+      label: entry.label || 'drift',
+      x: entry.x,
+      y: entry.y,
+      visualX: entry.visualX,
+      visualY: entry.visualY,
+      radius,
+      px,
+      ratio: px / radius,
+      budgetPx,
+      budgetRatio,
+      ok: px <= budgetPx + 0.001,
+    };
+  }
+
+  function clampVisualDrift(actor, radius, opts = {}) {
+    if (!actor || !finite(actor.x) || !finite(actor.y) || !finite(actor.visualX) || !finite(actor.visualY)) return null;
+    const maxDrift = opts.maxDrift ?? Math.max(0, radius * (opts.budgetRatio ?? 0.32));
+    const dx = actor.visualX - actor.x;
+    const dy = actor.visualY - actor.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist > maxDrift) {
+      const k = maxDrift / Math.max(0.0001, dist);
+      actor.visualX = actor.x + dx * k;
+      actor.visualY = actor.y + dy * k;
+    }
+    return debugDrift({
+      label: opts.label,
+      x: actor.x,
+      y: actor.y,
+      visualX: actor.visualX,
+      visualY: actor.visualY,
+      radius,
+      maxDrift,
+      budgetRatio: opts.budgetRatio ?? 0.32,
+    });
+  }
+
+  function updateDebugReport(game, items = [], drifts = []) {
+    const measured = drifts.map(debugDrift).filter(Boolean);
+    const failures = measured.filter(d => !d.ok);
+    const max = measured.reduce((best, d) => d.ratio > best.ratio ? d : best, { ratio: 0, px: 0 });
+    const report = {
+      game: game || 'unknown',
+      enabled: debugEnabled(),
+      items: items.length,
+      driftCount: measured.length,
+      maxDriftPx: max.px || 0,
+      maxDriftRatio: max.ratio || 0,
+      failures,
+      drifts: measured,
+      ts: performance && performance.now ? performance.now() : Date.now(),
+    };
+    GG.Debug = GG.Debug || {};
+    GG.Debug.lastReport = report;
+    return report;
+  }
+
+  function drawDebugOverlay(ctx, opts = {}) {
+    const items = Array.isArray(opts.items) ? opts.items : [];
+    const drifts = Array.isArray(opts.drifts) ? opts.drifts : [];
+    const report = updateDebugReport(opts.game, items, drifts);
+    if (!debugEnabled()) return report;
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    for (const item of items) drawDebugShape(ctx, item);
+    for (const raw of drifts) {
+      const d = debugDrift(raw);
+      if (!d) continue;
+      drawDebugShape(ctx, { x1: d.x, y1: d.y, x2: d.visualX, y2: d.visualY, role: 'drift', label: d.label, dash: [3, 4] });
+      drawDebugShape(ctx, { x: d.visualX, y: d.visualY, r: 3, role: 'visual', label: `${d.label} ${d.ratio.toFixed(2)}` });
+    }
+    ctx.font = '12px monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = 'rgba(0,0,0,0.72)';
+    ctx.fillRect(10, 10, 290, 46);
+    ctx.fillStyle = report.failures.length ? '#ff7777' : '#8cffaa';
+    ctx.fillText(`${report.game} debug`, 18, 16);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(`drift max ${(report.maxDriftRatio * 100).toFixed(1)}% / failures ${report.failures.length}`, 18, 34);
+    ctx.restore();
+    return report;
+  }
+
+  const Debug = GG.Debug = GG.Debug || {};
+  Debug.enabled = debugEnabled;
+  Debug.draw = drawDebugOverlay;
+  Debug.report = () => Debug.lastReport || updateDebugReport('unknown');
+  Debug.measureDrift = debugDrift;
+  Debug.clampVisualDrift = clampVisualDrift;
+  Debug.maxDriftForRadius = (radius, ratio = 0.32) => Math.max(0, radius * ratio);
 
   Art.SCENE_ATLAS = SCENE_ATLAS;
   Art.PLACE_SCENES = PLACE_SCENES;

@@ -86,6 +86,7 @@ const ORION_MANGA_ARENA = 'godgames.orion.arenaCleanV1';
 const ORION_MANGA_ORION_SHEET = 'godgames.orion.orionAnimV1';
 const ORION_MANGA_SCORPION_SHEET = 'godgames.orion.scorpionAnimV1';
 const ORION_MANGA_FXHUD_SHEET = 'godgames.orion.fxHudV1';
+let orionMangaArenaCache = null;
 
 // ── Manga abilities (player) ──────────────────────────────────────────────
 let constellationT  = 0;          // charge animation duration remaining
@@ -269,6 +270,7 @@ const OL = [[0,1],[0,2],[1,3],[2,5],[3,4],[4,5],[3,6],[5,7]];
 
 // ── Init ──────────────────────────────────────────────────────────────────
 function initGame() {
+  orionMangaArenaCache = null;
   const W = Engine.W, GY = groundY();
   orion = {
     x:W*0.18, y:GY, vx:0, vy:0,
@@ -878,75 +880,90 @@ function drawOrionConstellation(c, W, H, time, opts = {}) {
   c.restore();
 }
 
-function drawOrionMangaFloorUnderlay(opts = {}) {
+function drawOrionMangaFloorUnderlay(opts = {}, targetCtx = ctx) {
   const s = orionMangaStage();
-  ctx.save();
+  const c = targetCtx;
+  c.save();
 
-  const horizon = ctx.createLinearGradient(0, s.horizonY - 70, 0, s.horizonY + 86);
+  const horizon = c.createLinearGradient(0, s.horizonY - 70, 0, s.horizonY + 86);
   horizon.addColorStop(0, 'rgba(0,0,0,0.00)');
   horizon.addColorStop(0.52, opts.title ? 'rgba(20,8,2,0.16)' : 'rgba(20,8,2,0.24)');
   horizon.addColorStop(1, 'rgba(0,0,0,0.00)');
-  ctx.fillStyle = horizon;
-  ctx.fillRect(0, s.horizonY - 72, s.W, 160);
+  c.fillStyle = horizon;
+  c.fillRect(0, s.horizonY - 72, s.W, 160);
 
-  ctx.strokeStyle = opts.title ? 'rgba(10,10,10,0.22)' : 'rgba(10,10,10,0.34)';
-  ctx.lineWidth = 1.4;
+  c.strokeStyle = opts.title ? 'rgba(10,10,10,0.22)' : 'rgba(10,10,10,0.34)';
+  c.lineWidth = 1.4;
   for (let i = 0; i <= 9; i++) {
     const t = i / 9;
     const x = s.laneLeft + (s.laneRight - s.laneLeft) * t;
     const hx = s.vanishX + (x - s.vanishX) * 0.10;
-    ctx.beginPath();
-    ctx.moveTo(hx, s.horizonY + 4);
-    ctx.lineTo(x, s.H);
-    ctx.stroke();
+    c.beginPath();
+    c.moveTo(hx, s.horizonY + 4);
+    c.lineTo(x, s.H);
+    c.stroke();
   }
 
-  const lane = ctx.createRadialGradient(s.vanishX, s.groundY - 34, s.W * 0.05, s.vanishX, s.groundY - 4, s.W * 0.48);
+  const lane = c.createRadialGradient(s.vanishX, s.groundY - 34, s.W * 0.05, s.vanishX, s.groundY - 4, s.W * 0.48);
   lane.addColorStop(0, opts.title ? 'rgba(255,235,170,0.16)' : 'rgba(255,235,170,0.18)');
   lane.addColorStop(0.48, 'rgba(255,210,120,0.07)');
   lane.addColorStop(1, 'rgba(255,235,160,0.00)');
-  ctx.fillStyle = lane;
-  ctx.fillRect(0, s.horizonY, s.W, s.H - s.horizonY);
+  c.fillStyle = lane;
+  c.fillRect(0, s.horizonY, s.W, s.H - s.horizonY);
 
-  ctx.strokeStyle = 'rgba(255,225,155,0.36)';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(0, s.groundY);
-  ctx.lineTo(s.W, s.groundY);
-  ctx.stroke();
+  c.strokeStyle = 'rgba(255,225,155,0.36)';
+  c.lineWidth = 2;
+  c.beginPath();
+  c.moveTo(0, s.groundY);
+  c.lineTo(s.W, s.groundY);
+  c.stroke();
 
-  ctx.restore();
+  c.restore();
 }
 
 function drawOrionMangaArena(c, W, H, time, opts = {}) {
   const art = orionMangaArt();
   if (!Engine.manga || !art || typeof art.drawImage !== 'function') return false;
-  if (!art.drawImage(c, ORION_MANGA_ARENA, 0, 0, W, H, {
-    fit: 'cover',
-    focusX: opts.focusX ?? 0.50,
-    focusY: opts.focusY ?? 0.54,
-    alpha: opts.alpha ?? 1,
-  })) return false;
+  const focusX = opts.focusX ?? 0.50;
+  const focusY = opts.focusY ?? 0.54;
+  const alpha = opts.alpha ?? 1;
+  const perf = typeof art.performanceTier === 'function' ? art.performanceTier() : 'balanced';
+  const key = [W, H, focusX, focusY, alpha, opts.title ? 1 : 0, perf].join('|');
+  if (!orionMangaArenaCache || orionMangaArenaCache.key !== key) {
+    const layer = document.createElement('canvas');
+    layer.width = W;
+    layer.height = H;
+    const layerCtx = layer.getContext('2d');
+    if (!layerCtx) return false;
+    if (!art.drawImage(layerCtx, ORION_MANGA_ARENA, 0, 0, W, H, {
+      fit: 'cover',
+      focusX,
+      focusY,
+      alpha,
+    })) return false;
 
-  c.save();
-  const sky = c.createLinearGradient(0, 0, 0, H);
-  sky.addColorStop(0, opts.title ? 'rgba(10,16,44,0.18)' : 'rgba(10,16,44,0.10)');
-  sky.addColorStop(0.48, 'rgba(0,0,0,0.00)');
-  sky.addColorStop(1, 'rgba(0,0,0,0.28)');
-  c.fillStyle = sky;
-  c.fillRect(0, 0, W, H);
-  drawOrionMangaFloorUnderlay(opts);
-  drawOrionConstellation(c, W, H, time, { lineWidth: opts.title ? 1.2 : 1.5 });
-  if (art.mangaAtmosphere) {
-    art.mangaAtmosphere(c, W, H, {
-      density: 9,
-      dotSize: 1.20,
-      halftoneAlpha: opts.title ? 0.09 : 0.12,
-      scanAlpha: opts.title ? 0.05 : 0.07,
-      vignette: opts.title ? 0.42 : 0.50,
-    });
+    layerCtx.save();
+    const sky = layerCtx.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, opts.title ? 'rgba(10,16,44,0.18)' : 'rgba(10,16,44,0.10)');
+    sky.addColorStop(0.48, 'rgba(0,0,0,0.00)');
+    sky.addColorStop(1, 'rgba(0,0,0,0.28)');
+    layerCtx.fillStyle = sky;
+    layerCtx.fillRect(0, 0, W, H);
+    drawOrionMangaFloorUnderlay(opts, layerCtx);
+    drawOrionConstellation(layerCtx, W, H, time, { lineWidth: opts.title ? 1.2 : 1.5 });
+    if (art.mangaAtmosphere) {
+      art.mangaAtmosphere(layerCtx, W, H, {
+        density: 9,
+        dotSize: 1.20,
+        halftoneAlpha: opts.title ? 0.09 : 0.12,
+        scanAlpha: opts.title ? 0.05 : 0.07,
+        vignette: opts.title ? 0.42 : 0.50,
+      });
+    }
+    layerCtx.restore();
+    orionMangaArenaCache = { key, canvas: layer };
   }
-  c.restore();
+  c.drawImage(orionMangaArenaCache.canvas, 0, 0, W, H);
   return true;
 }
 
