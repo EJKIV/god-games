@@ -24,6 +24,11 @@
   if (window.__progressSyncLoaded) return;
   window.__progressSyncLoaded = true;
 
+  try {
+    const params = new URLSearchParams(window.location.search || '');
+    if (params.has('perfHarness') || params.has('qaHarness')) return;
+  } catch (_e) {}
+
   const NAME_KEY = 'godgames_playerName';
   const ENDPOINT = '/api/progress';
   const DEBOUNCE_MS = 2000;
