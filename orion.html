@@ -453,6 +453,9 @@ function updateBossVisual(dt) {
         : Math.max(-0.055, Math.min(0.055, vx / 5200));
   boss.visualX += (boss.x - boss.visualX) * Math.min(1, dt * (boss.state === 'charge' ? 16 : 9));
   boss.visualY += (boss.y - boss.visualY) * Math.min(1, dt * 10);
+  if (window.GodGames && GodGames.Debug && typeof GodGames.Debug.clampVisualDrift === 'function') {
+    GodGames.Debug.clampVisualDrift(boss, 75, { maxDrift: 24, label: 'scorpion' });
+  }
   boss.visualLean += (targetLean - boss.visualLean) * Math.min(1, dt * 9);
 }
 

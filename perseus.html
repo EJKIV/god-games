@@ -663,6 +663,15 @@ function updatePerseusActorVisual(actor, dt, opts = {}) {
   const targetY = opts.y ?? actor.y ?? actor.baseY ?? groundY();
   actor.visualX = smoothToward(actor.visualX, actor.x, dt, opts.xEase || 11);
   actor.visualY = smoothToward(actor.visualY, targetY, dt, opts.yEase || 11);
+  if (typeof opts.maxDrift === 'number' && window.GodGames && GodGames.Debug && typeof GodGames.Debug.clampVisualDrift === 'function') {
+    const originalY = actor.y;
+    if (!Number.isFinite(originalY) && Number.isFinite(targetY)) actor.y = targetY;
+    GodGames.Debug.clampVisualDrift(actor, opts.hitRadius || opts.maxDrift / 0.32, {
+      maxDrift: opts.maxDrift,
+      label: opts.label,
+    });
+    if (!Number.isFinite(originalY)) delete actor.y;
+  }
 }
 
 function updateMedusaVisual(dt) {
@@ -782,7 +791,13 @@ function update(dt) {
     s.reflectT = Math.max(0, (s.reflectT || 0) - dt);
     s.prevVisualX = typeof s.visualX === 'number' ? s.visualX : s.x;
     s.prevVisualY = typeof s.visualY === 'number' ? s.visualY : s.y;
-    updatePerseusActorVisual(s, dt, { xEase: s.returning ? 24 : 16, yEase: 13 });
+    updatePerseusActorVisual(s, dt, {
+      xEase: s.returning ? 24 : 16,
+      yEase: 13,
+      hitRadius: 28,
+      maxDrift: 9,
+      label: 'serpent',
+    });
     if (s.returning) {
       const hx = medusa.x - 16;
       const hy = medusa.y - 58;
@@ -843,6 +858,15 @@ function updateHazards(dt) {
     const lift = clamp01((h.baseY - hy) / 74);
     h.visualX = smoothToward(h.visualX, hx, dt, 18);
     h.visualY = smoothToward(h.visualY, hy, dt, 18);
+    if (window.GodGames && GodGames.Debug && typeof GodGames.Debug.clampVisualDrift === 'function') {
+      const debugActor = { x: hx, y: hy, visualX: h.visualX, visualY: h.visualY };
+      GodGames.Debug.clampVisualDrift(debugActor, h.r + 18, {
+        maxDrift: (h.r + 18) * 0.32,
+        label: 'hazard',
+      });
+      h.visualX = debugActor.visualX;
+      h.visualY = debugActor.visualY;
+    }
     h.visualEmerge = smoothToward(h.visualEmerge || 0, lift, dt, 14);
     if (Math.hypot(player.x - hx, (player.y - 34) - hy) < h.r + 18) {
       damagePlayer(1);
