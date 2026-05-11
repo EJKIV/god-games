@@ -1657,6 +1657,7 @@ function drawMangaPerseus(t) {
 
 function drawMangaMedusa(t) {
   const ink = Manga.INK || '#0a0a0a';
+  const heavy = perseusMangaHeavy();
   ctx.save();
   ctx.translate(medusa.x, medusa.y);
   const flash = medusa.hurtFlash > 0;
@@ -1706,7 +1707,7 @@ function drawMangaMedusa(t) {
   ctx.moveTo(12, -116); ctx.lineTo(4, -101); ctx.lineTo(17, -105);
   ctx.closePath(); ctx.fill();
   ctx.shadowColor = medusa.phase === 'gaze' ? '#dcff9b' : 'transparent';
-  ctx.shadowBlur = medusa.phase === 'gaze' ? 18 : 0;
+  ctx.shadowBlur = heavy && medusa.phase === 'gaze' ? 18 : 0;
   Manga.effects.animeEye(ctx, -7.2, -101.5, {
     sx: 0.74, sy: 0.78,
     white: medusa.phase === 'gaze' ? '#f2ffd0' : '#eaffdc',
@@ -1815,6 +1816,7 @@ function currentMedusaMangaMotion() {
 function drawMangaVeil(t) {
   if (!medusa || medusa.veil <= 0) return;
   const art = perseusMangaArt();
+  const heavy = perseusMangaHeavy();
   const eye = mangaMedusaEyePoint();
   const centerX = eye.x + 22;
   const centerY = (medusa.visualY ?? medusa.y) - 68;
@@ -1823,7 +1825,7 @@ function drawMangaVeil(t) {
   ctx.strokeStyle = '#d6fbff';
   ctx.lineWidth = 2.2;
   ctx.shadowColor = '#d6fbff';
-  ctx.shadowBlur = 10;
+  ctx.shadowBlur = heavy ? 10 : 0;
   ctx.globalAlpha = 0.34 + medusa.veil * 0.13;
   for (let i = 0; i < medusa.veil; i++) {
     const r = 58 + i * 17 + Math.sin(t * 3.2 + i) * 3;
@@ -1885,14 +1887,14 @@ function drawMedusaMangaSprite(t) {
   const bodyScaleX = 1 + gaze * 0.028 + hurt * 0.042 + gazePulse * 0.010;
   const bodyScaleY = 1 - gaze * 0.020 - hurt * 0.032 - gazePulse * 0.006;
 
-  if (heavy || gaze > 0.08 || hurt > 0.05) drawMangaMedusaSecondaryMotion(t, x, y, scale, gaze, hurt);
+  if (heavy) drawMangaMedusaSecondaryMotion(t, x, y, scale, gaze, hurt);
 
   ctx.save();
   if (medusa.phase === 'gaze') {
     ctx.shadowColor = '#dcff9b';
-    ctx.shadowBlur = heavy ? 22 : 6;
+    ctx.shadowBlur = heavy ? 22 : 0;
   }
-  if (medusa.hurtFlash > 0) ctx.filter = heavy ? 'brightness(2.8) saturate(0.2)' : 'brightness(1.55)';
+  if (medusa.hurtFlash > 0 && heavy) ctx.filter = 'brightness(2.8) saturate(0.2)';
   if (heavy && gaze > 0.48) {
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
@@ -1965,7 +1967,7 @@ function drawSnakes(t) {
         ctx.globalAlpha = trailAlpha;
         ctx.strokeStyle = s.returning ? '#d6fbff' : '#b8f28f';
         ctx.shadowColor = ctx.strokeStyle;
-        ctx.shadowBlur = heavy ? (s.returning ? 14 : 8) : (s.returning ? 6 : 3);
+        ctx.shadowBlur = heavy ? (s.returning ? 14 : 8) : 0;
         ctx.lineWidth = s.returning ? 3 : 2;
         ctx.beginPath();
         ctx.moveTo(hair.x, hair.y);
@@ -1976,7 +1978,7 @@ function drawSnakes(t) {
         ctx.globalAlpha = Math.min(0.42, 0.12 + speedStretch * 1.2 + reflect * 0.22);
         ctx.strokeStyle = s.returning ? '#d6fbff' : '#b8f28f';
         ctx.shadowColor = ctx.strokeStyle;
-        ctx.shadowBlur = heavy ? (s.returning ? 18 : 9) : (s.returning ? 7 : 3);
+        ctx.shadowBlur = heavy ? (s.returning ? 18 : 9) : 0;
         ctx.lineWidth = 1.8 + reflect * 2;
         ctx.beginPath();
         ctx.moveTo(prevX, prevY);
@@ -1989,7 +1991,7 @@ function drawSnakes(t) {
       ctx.save();
       if (s.returning) {
         ctx.shadowColor = '#d6fbff';
-        ctx.shadowBlur = heavy ? 16 : 5;
+        ctx.shadowBlur = heavy ? 16 : 0;
       }
       if (fxReady) {
         if (heavy && (Math.abs(s.vx) > 250 || reflect > 0.05)) {
@@ -2054,6 +2056,7 @@ function drawHazards(t) {
     const y = h.visualY || h.drawY || h.baseY;
     if (Engine.manga && perseusMangaAssetsReady()) {
       const art = perseusMangaArt();
+      const heavy = perseusMangaHeavy();
       const compact = Math.min(Engine.W, Engine.H);
       const baseX = mangaProjectX(h.x, h.baseY);
       const sx = mangaProjectX(x, y);
@@ -2086,7 +2089,7 @@ function drawHazards(t) {
       let drew = false;
       ctx.save();
       ctx.shadowColor = '#d6fbff';
-      ctx.shadowBlur = 8 + emerge * 14;
+      ctx.shadowBlur = heavy ? 8 + emerge * 14 : 0;
       if (fxReady) {
         drew = drawMangaFrameTransformed(art, PERSEUS_FXHUD_SHEET, 'floorHazard', sx, sy + (1 - emerge) * 6, {
           scale: scale * 1.25,
@@ -2205,10 +2208,11 @@ function drawSerpentSeal(t) {
 }
 
 function drawParticles() {
+  const heavy = perseusMangaHeavy();
   for (const p of sparks) {
     ctx.globalAlpha = Math.max(0, p.t);
     ctx.fillStyle = p.color;
-    if (Engine.manga) {
+    if (Engine.manga && heavy) {
       ctx.shadowColor = p.color;
       ctx.shadowBlur = 8;
     }
@@ -2314,6 +2318,7 @@ function drawMangaChamberCuts(t) {
   const W = Engine.W;
   const H = Engine.H;
   const art = perseusMangaArt();
+  const heavy = perseusMangaHeavy();
 
   if (levelTransitionT > 0) {
     const p = clamp01(1 - levelTransitionT / 1.9);
@@ -2381,7 +2386,7 @@ function drawMangaChamberCuts(t) {
     ctx.strokeText(cfg.name, W / 2, compactHud ? H * 0.20 : H * 0.24);
     ctx.fillStyle = '#d6fbff';
     ctx.shadowColor = '#3db0c6';
-    ctx.shadowBlur = 20;
+    ctx.shadowBlur = heavy ? 20 : 0;
     ctx.fillText(cfg.name, W / 2, compactHud ? H * 0.20 : H * 0.24);
     ctx.shadowBlur = 0;
     if (!compactHud) {
@@ -2452,12 +2457,13 @@ function drawMangaHudBar(x, y, w, h, pct, color, back = 'rgba(8,14,16,0.72)') {
 
 function drawMangaAbilityIcon(cx, cy, key, frame, active, alpha = 1) {
   const art = perseusMangaArt();
+  const heavy = perseusMangaHeavy();
   const r = 22;
   ctx.save();
   ctx.fillStyle = active ? 'rgba(214,251,255,0.32)' : 'rgba(0,0,0,0.50)';
   ctx.strokeStyle = active ? '#d6fbff' : 'rgba(212,175,55,0.54)';
   ctx.lineWidth = 2.5;
-  if (active) {
+  if (active && heavy) {
     ctx.shadowColor = '#d6fbff';
     ctx.shadowBlur = 12;
   }
@@ -2487,6 +2493,7 @@ function drawMangaAbilityIcon(cx, cy, key, frame, active, alpha = 1) {
 
 function drawMangaHud() {
   const art = perseusMangaArt();
+  const heavy = perseusMangaHeavy();
   const W = Engine.W;
   const H = Engine.H;
   const cfg = levelCfg();
@@ -2522,7 +2529,7 @@ function drawMangaHud() {
   ctx.strokeText(cfg.title + ' / III', W / 2, compact ? 25 : 29);
   ctx.fillStyle = '#d6fbff';
   ctx.shadowColor = '#3db0c6';
-  ctx.shadowBlur = 8;
+  ctx.shadowBlur = heavy ? 8 : 0;
   ctx.fillText(cfg.title + ' / III', W / 2, compact ? 25 : 29);
   ctx.shadowBlur = 0;
   if (!compact && levelBannerT <= 0.2) {
