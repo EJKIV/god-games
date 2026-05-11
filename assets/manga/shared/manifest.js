@@ -57,6 +57,13 @@
       },
     });
 
+    M.assets.define('godgames.shared.hubConcourseMuralsV1', {
+      src: 'assets/manga/shared/hub-concourse-murals-v1.jpg',
+      meta: {
+        usage: 'Integrated Mount Olympus game-selection hall with destination murals physically inset into the wall bays. Visual order: Orion, Achilles, Olympus, Perseus, Icarus.',
+      },
+    });
+
     const hubPanelW = 1983 / 5;
     const hubPanel = (idx) => ({ x: idx * hubPanelW + 28, y: 42, w: hubPanelW - 56, h: 662 });
     M.assets.define('godgames.shared.hubDestinationPanelsV2', {

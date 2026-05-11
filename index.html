@@ -200,6 +200,7 @@ const W = canvas.width, H = canvas.height;
 const GOLD = '#D4AF37';
 const MANGA_KEY = 'godgames_manga';
 const HUB_CONCOURSE_ASSET = 'godgames.shared.hubConcourseV2';
+const HUB_CONCOURSE_MURALS_ASSET = 'godgames.shared.hubConcourseMuralsV1';
 const HUB_DESTINATION_PANELS_ASSET = 'godgames.shared.hubDestinationPanelsV2';
 const HUB_AVATAR_ASSET = 'godgames.shared.hubAvatarV2';
 const HUB_MANGA_STATION_X = [0.145, 0.322, 0.500, 0.678, 0.855];
@@ -214,6 +215,7 @@ const HUB_MANGA_STATION_RECTS = [
 const GY   = H * 0.73;   // ground y
 let _mangaHubStaticLayer = null;
 let _mangaHubStaticKey = '';
+let _mangaHubMuralsDrawn = false;
 
 function mangaOn() { return localStorage.getItem(MANGA_KEY) === '1'; }
 function syncMangaClass() { document.body.classList.toggle('manga-mode', mangaOn()); }
@@ -232,8 +234,8 @@ const stars = Array.from({length:160}, () => ({
 const portals = [
   { name: 'ORION',    sub: 'The Giant Scorpion',    hue: '#8844ff', glow: '#6622cc', href: 'orion.html'         },
   { name: 'ACHILLES', sub: 'The Arrow Gauntlet',    hue: '#cc2222', glow: '#882200', href: 'achilles.html'      },
-  { name: 'PERSEUS',  sub: 'The Gorgon\'s Mirror',  hue: '#3db0c6', glow: '#1c6c80', href: 'perseus.html'       },
   { name: 'OLYMPUS',  sub: 'Hall of the Gods',      hue: '#fff5c0', glow: '#D4AF37', href: 'mount-olympus.html', kind: 'mountain' },
+  { name: 'PERSEUS',  sub: 'The Gorgon\'s Mirror',  hue: '#3db0c6', glow: '#1c6c80', href: 'perseus.html'       },
   { name: 'ICARUS',   sub: 'The Flight of Icarus',  hue: '#ff7700', glow: '#ff4400', href: 'icarus.html'        },
 ];
 portals.forEach((p, i) => {
@@ -1222,8 +1224,14 @@ function drawPortal(p) {
 function drawMangaHubBackdrop() {
   const art = window.GodGames && GodGames.MangaArt;
   let drewAsset = false;
+  let drewMurals = false;
   if (art && typeof art.drawImage === 'function') {
-    drewAsset = art.drawImage(ctx, HUB_CONCOURSE_ASSET, 0, 0, W, H, {
+    drewMurals = art.drawImage(ctx, HUB_CONCOURSE_MURALS_ASSET, 0, 0, W, H, {
+      fit: 'cover',
+      focusX: HUB_CONCOURSE_SOURCE.focusX,
+      focusY: HUB_CONCOURSE_SOURCE.focusY,
+    });
+    drewAsset = drewMurals || art.drawImage(ctx, HUB_CONCOURSE_ASSET, 0, 0, W, H, {
       fit: 'cover',
       focusX: HUB_CONCOURSE_SOURCE.focusX,
       focusY: HUB_CONCOURSE_SOURCE.focusY,
@@ -1237,9 +1245,10 @@ function drawMangaHubBackdrop() {
   if (art && art.overlay) art.overlay(ctx, W, H, {
     top: 'rgba(0,0,0,0.08)',
     mid: 'rgba(0,0,0,0.02)',
-    bottom: 'rgba(0,0,0,0.24)',
+    bottom: drewMurals ? 'rgba(0,0,0,0.15)' : 'rgba(0,0,0,0.24)',
   });
-  drawMangaHubStageUnderlay(drewAsset);
+  _mangaHubMuralsDrawn = drewMurals;
+  drawMangaHubStageUnderlay(drewAsset, drewMurals);
   return true;
 }
 
@@ -1252,6 +1261,7 @@ function mangaHubStaticKey() {
   const tier = art && typeof art.basePerformanceTier === 'function' ? art.basePerformanceTier() : 'base';
   return [
     W, H, tier,
+    mangaHubAssetReady(HUB_CONCOURSE_MURALS_ASSET) ? 1 : 0,
     mangaHubAssetReady(HUB_CONCOURSE_ASSET) ? 1 : 0,
     mangaHubAssetReady(HUB_DESTINATION_PANELS_ASSET) ? 1 : 0,
   ].join('|');
@@ -1273,7 +1283,10 @@ function drawMangaHubCachedBase() {
       ctx = layerCtx;
       player.nearPortal = null;
       drawMangaHubBackdrop();
-      for (const p of portals) drawMangaDestinationStation(p);
+      for (const p of portals) {
+        if (_mangaHubMuralsDrawn) drawMangaIntegratedStationChrome(p);
+        else drawMangaDestinationStation(p);
+      }
     } finally {
       player.nearPortal = prevNear;
       ctx = prevCtx;
@@ -1331,14 +1344,14 @@ function drawMangaHubConcourseFallback() {
   ctx.restore();
 }
 
-function drawMangaHubStageUnderlay(assetReady = false) {
+function drawMangaHubStageUnderlay(assetReady = false, muralsReady = false) {
   const art = window.GodGames && GodGames.MangaArt;
   const s = hubStage();
   ctx.save();
   const floor = ctx.createLinearGradient(0, s.horizonY, 0, H);
   floor.addColorStop(0, assetReady ? 'rgba(255,240,190,0.00)' : 'rgba(255,240,190,0.06)');
-  floor.addColorStop(0.60, 'rgba(255,225,140,0.08)');
-  floor.addColorStop(1, 'rgba(0,0,0,0.30)');
+  floor.addColorStop(0.60, muralsReady ? 'rgba(255,225,140,0.03)' : 'rgba(255,225,140,0.08)');
+  floor.addColorStop(1, muralsReady ? 'rgba(0,0,0,0.18)' : 'rgba(0,0,0,0.30)');
   ctx.fillStyle = floor;
   ctx.fillRect(0, s.horizonY, W, H - s.horizonY);
 
@@ -1444,22 +1457,56 @@ function drawMangaDestinationStation(p) {
   }
 }
 
+function drawMangaIntegratedStationChrome(p) {
+  const box = hubStationBox(p);
+  drawEtchedHubLabel(p, box, false);
+  p._btn = hubPortalHitRegion(p);
+}
+
+function traceMangaStationArchPath(box, pad = 0) {
+  const x = box.x - pad;
+  const y = box.y - pad;
+  const w = box.w + pad * 2;
+  const h = box.h + pad * 2;
+  const shoulderY = y + h * 0.22;
+  ctx.moveTo(x + w * 0.04, y + h);
+  ctx.lineTo(x + w * 0.06, shoulderY);
+  ctx.lineTo(x + w * 0.50, y + h * 0.02);
+  ctx.lineTo(x + w * 0.94, shoulderY);
+  ctx.lineTo(x + w * 0.96, y + h);
+  ctx.closePath();
+}
+
 function drawMangaDestinationHighlight(p) {
   const art = window.GodGames && GodGames.MangaArt;
   const box = hubStationBox(p);
   const pulse = 0.76 + Math.sin(time * 5) * 0.18;
   ctx.save();
   ctx.shadowColor = p.hue;
-  ctx.shadowBlur = 8;
-  ctx.fillStyle = `${p.hue}1f`;
-  ctx.beginPath(); ctx.roundRect(box.x - 4, box.y - 4, box.w + 8, box.h + 8, 3); ctx.fill();
+  ctx.shadowBlur = 10;
+  ctx.fillStyle = `${p.hue}24`;
+  ctx.beginPath();
+  traceMangaStationArchPath(box, 5);
+  ctx.fill();
   ctx.shadowBlur = 0;
   ctx.strokeStyle = `rgba(255,241,184,${0.38 + pulse * 0.18})`;
   ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.roundRect(box.x - 2, box.y - 2, box.w + 4, box.h + 4, 3); ctx.stroke();
+  ctx.beginPath();
+  traceMangaStationArchPath(box, 2);
+  ctx.stroke();
   ctx.strokeStyle = `${p.hue}88`;
   ctx.lineWidth = 1.2;
-  ctx.beginPath(); ctx.roundRect(box.x + 6, box.y + 6, box.w - 12, box.h - 12, 2); ctx.stroke();
+  ctx.beginPath();
+  traceMangaStationArchPath(box, -7);
+  ctx.stroke();
+  const shine = ctx.createLinearGradient(box.x, box.y, box.x + box.w, box.y + box.h);
+  shine.addColorStop(0, 'rgba(255,255,255,0.00)');
+  shine.addColorStop(0.48, `rgba(255,255,255,${0.08 + pulse * 0.04})`);
+  shine.addColorStop(0.62, 'rgba(255,255,255,0.00)');
+  ctx.fillStyle = shine;
+  ctx.beginPath();
+  traceMangaStationArchPath(box, -3);
+  ctx.fill();
   ctx.restore();
 
   drawEtchedHubLabel(p, box, true);
