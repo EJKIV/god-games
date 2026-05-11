@@ -142,7 +142,7 @@
     if (opts.frameBlend === false || opts.tween === false) return false;
     if (adaptiveEffectsDisabled(opts) || opts.crowdedActor) return false;
     if (opts.frameBlend === true || opts.tween === true) return priorityAnimation(opts) || performanceTier() !== 'low';
-    return performanceTier() !== 'low';
+    return priorityAnimation(opts) || performanceTier() !== 'low';
   }
 
   function smearEnabled(opts = {}, amount = 0) {
