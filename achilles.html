@@ -937,6 +937,7 @@ function drawMangaBattlefield(opts = {}) {
 function drawMangaArcher(a, archerIdx) {
   const art = achillesMangaArt();
   if (!art || !achillesMangaAssetReady(ACHILLES_MANGA_ARCHER_SHEET)) return false;
+  const heavy = typeof art.heavyEffects === 'function' && art.heavyEffects();
 
   const downed = a.downT > 0;
   const y = archerLineY() + Math.sin(time * 2.2 + a.x * 0.01) * 2;
@@ -975,7 +976,7 @@ function drawMangaArcher(a, archerIdx) {
   if (a.glow > 0) {
     ctx.globalAlpha = Math.min(0.85, 0.24 + a.glow);
     ctx.shadowColor = pendingSpecial === 'inferno' ? '#ff2200' : '#ffd54a';
-    ctx.shadowBlur = 28;
+    ctx.shadowBlur = heavy ? 28 : 8;
     art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, pendingSpecial === 'inferno' ? 'damageBurst' : 'bowFlare', screenX, y - 72, {
       scale: scale * 1.9,
       alpha: Math.min(0.65, a.glow * 1.4),
@@ -984,9 +985,9 @@ function drawMangaArcher(a, archerIdx) {
   }
 
   ctx.globalAlpha *= downed ? 0.62 : 0.96;
-  ctx.filter = 'sepia(0.18) saturate(1.12) brightness(0.78) contrast(1.08)';
+  if (heavy) ctx.filter = 'sepia(0.18) saturate(1.12) brightness(0.78) contrast(1.08)';
   ctx.shadowColor = 'rgba(255,100,40,0.22)';
-  ctx.shadowBlur = downed ? 0 : 7;
+  ctx.shadowBlur = downed ? 0 : (heavy ? 7 : 2);
   const drew = frame
     ? (typeof art.drawFilmFrame === 'function'
         ? art.drawFilmFrame(ctx, ACHILLES_MANGA_ARCHER_SHEET, frame, screenX, y, {
@@ -1266,11 +1267,14 @@ function drawMangaArrow(a, progress) {
     ctx.stroke();
     ctx.restore();
   }
-  ctx.filter = `sepia(0.10) saturate(1.10) brightness(${0.82 + depth * 0.24}) contrast(1.08) blur(${Math.max(0, (1 - depth) * 0.45)}px)`;
+  const heavy = typeof art.heavyEffects === 'function' && art.heavyEffects();
+  ctx.filter = heavy
+    ? `sepia(0.10) saturate(1.10) brightness(${0.82 + depth * 0.24}) contrast(1.08) blur(${Math.max(0, (1 - depth) * 0.45)}px)`
+    : `sepia(0.08) saturate(1.04) brightness(${0.86 + depth * 0.18}) contrast(1.06)`;
   if (progress > 0.42 || a.inferno) {
     const g = a.inferno ? 1 : (progress - 0.42) / 0.58;
     ctx.shadowColor = a.inferno ? '#ff1100' : (a.targeted ? '#ff2200' : '#ff8800');
-    ctx.shadowBlur = (a.inferno ? 28 : 18) * Math.max(0, g);
+    ctx.shadowBlur = (a.inferno ? 28 : 18) * Math.max(0, g) * (heavy ? 1 : 0.45);
   }
   if (a.inferno && progress > 0.45) {
     art.drawFrame(ctx, ACHILLES_MANGA_FXHUD_SHEET, 'damageBurst', screenX, drawY + 8, {
@@ -1432,6 +1436,7 @@ function drawAchillesMangaSprite() {
   const art = achillesMangaArt();
   const hasV2 = achillesMangaAssetReady(ACHILLES_MANGA_ANIM_SHEET)
     && art && typeof art.drawAnimation === 'function';
+  const heavy = art && typeof art.heavyEffects === 'function' && art.heavyEffects();
   const motion = currentAchillesMangaMotion();
 
   drawMangaContactShadow(drawX, PLAYER_Y, {
@@ -1485,12 +1490,12 @@ function drawAchillesMangaSprite() {
   if (player.iframes > 0 && Math.floor(player.iframes * 14) % 2 === 0) ctx.globalAlpha *= 0.35;
   if (player.hitFlash > 0) {
     ctx.shadowColor = '#ff3322';
-    ctx.shadowBlur = 18;
+    ctx.shadowBlur = heavy ? 18 : 6;
   } else {
     ctx.shadowColor = 'rgba(255,115,45,0.24)';
-    ctx.shadowBlur = 10;
+    ctx.shadowBlur = heavy ? 10 : 3;
   }
-  ctx.filter = 'sepia(0.10) saturate(1.08) brightness(0.94) contrast(1.06)';
+  if (heavy) ctx.filter = 'sepia(0.10) saturate(1.08) brightness(0.94) contrast(1.06)';
   let drew = false;
   if (hasV2) {
     drew = art.drawAnimation(ctx, ACHILLES_MANGA_ANIM_SHEET, motion.anim, motion.t, drawX + jitter, y, {

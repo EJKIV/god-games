@@ -139,7 +139,7 @@ god-games/
   - Member format: `${name}|${ts}` (lastIndexOf('|') splits — name may contain `|`? sanitizer strips control chars but not pipe. Names with pipe will parse as `everything-before-last-pipe | everything-after`. Acceptable.)
   - Top-25 returned via `ZRANGE`/`ZREVRANGE WITHSCORES`.
 - **Env var contract** (`api/leaderboard.js`): prefers `KV_REST_API_URL` + `KV_REST_API_TOKEN`, falls back to `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`. Provisioned on the Vercel project; pull locally with `vercel env pull`.
-- **Storage keys** in `localStorage`: `godgames_playerName` (string), `godgames_manga` (`'1'` or absent), `icarus_lastPlay` (timestamp; controls tutorial skip).
+- **Storage keys** in `localStorage`: `godgames_playerName` (string), `godgames_manga` (`'1'` or absent), `godgames_perf` (`'high' | 'balanced' | 'low'`; manga runtime defaults to balanced), `icarus_lastPlay` (timestamp; controls tutorial skip).
 
 ## Operational Boundaries
 
@@ -173,6 +173,7 @@ god-games/
 
 | Date       | Change                                                                                     | Author |
 |------------|--------------------------------------------------------------------------------------------|--------|
+| 2026-05-11 | Added manga performance tiers, cached atmosphere overlays, and lighter balanced-mode filters so film-style character motion stays fluid without overloading lower-end devices. | codex  |
 | 2026-05-11 | Added shared film-style manga sprite motion helpers and routed hub, traveler, and gameplay character sheets through sub-frame bob, sway, and breathing transforms for smoother animation. | codex  |
 | 2026-05-10 | Refined the manga hub so destination murals sit as wall paintings inside the Olympus shrine bays, labels read as etched stone, and the hub traveler uses an asset-backed manga avatar sheet. | codex  |
 | 2026-05-10 | Rebuilt the manga hub around a generated Olympus concourse backdrop and integrated destination shrine stations, replacing the old floating gate composition. | codex  |

@@ -1611,7 +1611,10 @@ function drawMangaHubAvatar(scale) {
   }
 
   ctx.save();
-  ctx.filter = 'drop-shadow(0 5px 3px rgba(0,0,0,0.45)) saturate(0.96) contrast(1.04)';
+  const heavy = art && typeof art.heavyEffects === 'function' && art.heavyEffects();
+  ctx.filter = heavy
+    ? 'drop-shadow(0 5px 3px rgba(0,0,0,0.45)) saturate(0.96) contrast(1.04)'
+    : 'saturate(0.96) contrast(1.04)';
   const drew = art && typeof art.drawFilmFrame === 'function'
     ? art.drawFilmFrame(ctx, HUB_AVATAR_ASSET, frame, drawX, drawY, {
         scale: avatarScale,

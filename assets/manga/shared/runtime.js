@@ -2,9 +2,53 @@
   const GG = (window.GodGames = window.GodGames || {});
   const Art = (GG.MangaArt = GG.MangaArt || {});
   const SCENE_ATLAS = 'godgames.shared.sceneAtlas';
+  const atmosphereCache = new Map();
+  const effectLayerCache = new Map();
+  const MAX_ATMOSPHERE_CACHE = 10;
+  const MAX_EFFECT_LAYER_CACHE = 48;
+
+  function storageValue(key) {
+    try { return localStorage.getItem(key); } catch (_) { return null; }
+  }
 
   function mangaEnabled() {
-    return (window.Engine && Engine.manga) || localStorage.getItem('godgames_manga') === '1';
+    return (window.Engine && Engine.manga) || storageValue('godgames_manga') === '1';
+  }
+
+  function performanceTier() {
+    const pref = storageValue('godgames_perf');
+    if (pref === 'high' || pref === 'balanced' || pref === 'low') return pref;
+    return 'balanced';
+  }
+
+  function qualityScale() {
+    const tier = performanceTier();
+    if (tier === 'high') return 1;
+    if (tier === 'low') return 0.48;
+    return 0.72;
+  }
+
+  function heavyEffects(opts = {}) {
+    if (opts.heavyEffects === true) return true;
+    if (opts.heavyEffects === false) return false;
+    return performanceTier() === 'high';
+  }
+
+  function frameBlendEnabled(opts = {}) {
+    if (opts.frameBlend === false || opts.tween === false) return false;
+    if (opts.frameBlend === true || opts.tween === true) return true;
+    return performanceTier() === 'high';
+  }
+
+  function smearEnabled(opts = {}, amount = 0) {
+    if (opts.smear === false) return false;
+    if (opts.smear === true || typeof opts.smear === 'number') return amount > 0.10;
+    return heavyEffects(opts) && amount > 0.26;
+  }
+
+  function clearPerformanceCaches() {
+    atmosphereCache.clear();
+    effectLayerCache.clear();
   }
 
   function assets() {
@@ -124,6 +168,7 @@
   }
 
   function drawFilmFrame(ctx, id, frame, x, y, opts = {}) {
+    const q = qualityScale();
     const amount = clamp(filmAmountForAnimation(opts.animName || frame, opts), 0, 1.4);
     const phase = cycle01(opts.phase != null
       ? opts.phase
@@ -132,19 +177,20 @@
     const lift = Math.max(0, Math.sin(phase * Math.PI));
     const settle = Math.max(0, Math.cos(phase * Math.PI * 2));
     const baseScale = typeof opts.scale === 'number' ? opts.scale : 1;
-    const bob = (opts.bob ?? 5) * amount * lift * lift;
-    const floatBob = (opts.floatBob || 0) * Math.sin((opts.floatT ?? opts.t ?? 0) * (opts.floatRate ?? 1.8) + (opts.floatPhase || 0));
-    const sway = (opts.sway ?? 0.025) * amount * wave;
-    const squash = (opts.squash ?? 0.025) * amount * settle;
+    const bob = (opts.bob ?? 5) * amount * q * lift * lift;
+    const floatBob = (opts.floatBob || 0) * q * Math.sin((opts.floatT ?? opts.t ?? 0) * (opts.floatRate ?? 1.8) + (opts.floatPhase || 0));
+    const sway = (opts.sway ?? 0.025) * amount * (0.7 + q * 0.3) * wave;
+    const squash = (opts.squash ?? 0.025) * amount * q * settle;
     const lean = opts.lean || 0;
-    const xDrift = (opts.driftX || 0) * amount * Math.sin(phase * Math.PI * 2 + 0.8);
-    const yDrift = (opts.driftY || 0) * amount * Math.cos(phase * Math.PI * 2 + 0.4);
-    const smearAlpha = opts.smear === false
-      ? 0
-      : (opts.smearAlpha ?? clamp((amount - 0.26) * 0.12, 0, 0.12));
+    const xDrift = (opts.driftX || 0) * amount * q * Math.sin(phase * Math.PI * 2 + 0.8);
+    const yDrift = (opts.driftY || 0) * amount * q * Math.cos(phase * Math.PI * 2 + 0.4);
+    const smearAlpha = smearEnabled(opts, amount)
+      ? (opts.smearAlpha ?? clamp((amount - 0.26) * 0.12, 0, 0.12)) * q
+      : 0;
+    const smearDistance = typeof opts.smear === 'number' ? opts.smear : 5;
     const smearX = opts.smearX != null
       ? opts.smearX
-      : ((opts.flipX ? 1 : -1) * (opts.smear ?? 5) * amount * (0.45 + Math.abs(wave) * 0.55));
+      : ((opts.flipX ? 1 : -1) * smearDistance * amount * (0.45 + Math.abs(wave) * 0.55));
     const smearY = opts.smearY ?? (bob * 0.22);
 
     ctx.save();
@@ -185,7 +231,7 @@
         animName: name,
         phase: opts.phase != null ? opts.phase : state.phase,
       });
-      const blendStrength = tweenAmountForAnimation(name, opts);
+      const blendStrength = frameBlendEnabled(opts) ? tweenAmountForAnimation(name, opts) : 0;
       if (blendStrength > 0 && state.nextFrame && state.nextFrame !== state.frame) {
         const alpha = opts.alpha ?? 1;
         const mix = smoothstep(0.36, 0.94, state.progress) * blendStrength;
@@ -232,23 +278,149 @@
     return drawFrameCover(ctx, SCENE_ATLAS, frameName, x, y, w, h, opts);
   }
 
-  function mangaAtmosphere(ctx, W, H, opts = {}) {
-    if (!window.Manga || !Manga.effects) return;
+  function trimCache(cache, max) {
+    while (cache.size > max) cache.delete(cache.keys().next().value);
+  }
+
+  function effectKey(kind, w, h, opts = {}) {
+    return [
+      kind,
+      Math.ceil(w),
+      Math.ceil(h),
+      opts.color || '',
+      opts.density ?? '',
+      opts.dotSize ?? '',
+      opts.alpha ?? '',
+      opts.spacing ?? '',
+      opts.strength ?? '',
+    ].join('|');
+  }
+
+  function drawCachedEffect(ctx, kind, x, y, w, h, opts = {}, drawLayer) {
+    if (!window.Manga || !Manga.effects || !window.document) return false;
+    const cw = Math.max(1, Math.ceil(w));
+    const ch = Math.max(1, Math.ceil(h));
+    if (!Number.isFinite(cw) || !Number.isFinite(ch) || cw <= 0 || ch <= 0) return false;
+    if (cw * ch > 6000000) return false;
+    const key = effectKey(kind, cw, ch, opts);
+    let layer = effectLayerCache.get(key);
+    if (!layer) {
+      layer = document.createElement('canvas');
+      layer.width = cw;
+      layer.height = ch;
+      const layerCtx = layer.getContext('2d');
+      if (!layerCtx) return false;
+      drawLayer(layerCtx, cw, ch);
+      effectLayerCache.set(key, layer);
+      trimCache(effectLayerCache, MAX_EFFECT_LAYER_CACHE);
+    }
+    ctx.drawImage(layer, x, y, w, h);
+    return true;
+  }
+
+  function halftone(ctx, x, y, w, h, opts = {}) {
+    if (!window.Manga || !Manga.effects || typeof Manga.effects.halftone !== 'function') return false;
+    const alpha = typeof opts.alpha === 'number' ? opts.alpha : null;
+    const cacheOpts = alpha == null ? opts : Object.assign({}, opts, { alpha: 1 });
+    ctx.save();
+    if (alpha != null) ctx.globalAlpha *= alpha;
+    if (opts.cache === false || !drawCachedEffect(ctx, 'halftone', x, y, w, h, cacheOpts, (layerCtx, cw, ch) => {
+      Manga.effects.halftone(layerCtx, 0, 0, cw, ch, cacheOpts);
+    })) {
+      Manga.effects.halftone(ctx, x, y, w, h, cacheOpts);
+    }
+    ctx.restore();
+    return true;
+  }
+
+  function scanlines(ctx, x, y, w, h, opts = {}) {
+    if (!window.Manga || !Manga.effects || typeof Manga.effects.scanlines !== 'function') return false;
+    const alpha = typeof opts.alpha === 'number' ? opts.alpha : null;
+    const cacheOpts = alpha == null ? opts : Object.assign({}, opts, { alpha: 1 });
+    ctx.save();
+    if (alpha != null) ctx.globalAlpha *= alpha;
+    if (opts.cache === false || !drawCachedEffect(ctx, 'scanlines', x, y, w, h, cacheOpts, (layerCtx, cw, ch) => {
+      Manga.effects.scanlines(layerCtx, cw, ch, cacheOpts);
+    })) {
+      if (x || y) ctx.translate(x, y);
+      Manga.effects.scanlines(ctx, w, h, cacheOpts);
+    }
+    ctx.restore();
+    return true;
+  }
+
+  function vignette(ctx, x, y, w, h, opts = {}) {
+    if (!window.Manga || !Manga.effects || typeof Manga.effects.vignette !== 'function') return false;
+    if (opts.cache === false || !drawCachedEffect(ctx, 'vignette', x, y, w, h, opts, (layerCtx, cw, ch) => {
+      Manga.effects.vignette(layerCtx, cw, ch, opts);
+    })) {
+      ctx.save();
+      if (x || y) ctx.translate(x, y);
+      Manga.effects.vignette(ctx, w, h, opts);
+      ctx.restore();
+    }
+    return true;
+  }
+
+  function drawAtmosphereLayer(ctx, W, H, opts = {}) {
     const ink = opts.ink || '#0a0a0a';
     if (Manga.effects.halftone) {
       Manga.effects.halftone(ctx, 0, 0, W, H, {
-        density: opts.density ?? 8,
-        dotSize: opts.dotSize ?? 1.35,
-        alpha: opts.halftoneAlpha ?? 0.12,
+        density: opts.density,
+        dotSize: opts.dotSize,
+        alpha: opts.halftoneAlpha,
         color: ink,
       });
     }
     if (Manga.effects.scanlines) {
-      Manga.effects.scanlines(ctx, W, H, { spacing: opts.scanSpacing ?? 4, alpha: opts.scanAlpha ?? 0.08 });
+      Manga.effects.scanlines(ctx, W, H, { spacing: opts.scanSpacing, alpha: opts.scanAlpha });
     }
     if (Manga.effects.vignette) {
-      Manga.effects.vignette(ctx, W, H, { strength: opts.vignette ?? 0.55 });
+      Manga.effects.vignette(ctx, W, H, { strength: opts.vignette });
     }
+  }
+
+  function mangaAtmosphere(ctx, W, H, opts = {}) {
+    if (!window.Manga || !Manga.effects) return;
+    const tier = performanceTier();
+    const q = qualityScale();
+    const settings = {
+      ink: opts.ink || '#0a0a0a',
+      density: opts.density ?? (tier === 'low' ? 11 : 8),
+      dotSize: (opts.dotSize ?? 1.35) * (0.85 + q * 0.15),
+      halftoneAlpha: (opts.halftoneAlpha ?? 0.12) * (tier === 'high' ? 1 : (tier === 'low' ? 0.45 : 0.68)),
+      scanSpacing: opts.scanSpacing ?? (tier === 'low' ? 7 : 4),
+      scanAlpha: (opts.scanAlpha ?? 0.08) * (tier === 'high' ? 1 : (tier === 'low' ? 0.35 : 0.58)),
+      vignette: opts.vignette ?? 0.55,
+    };
+    const w = Math.max(1, Math.ceil(W));
+    const h = Math.max(1, Math.ceil(H));
+    if (!window.document || w * h > 6000000) {
+      drawAtmosphereLayer(ctx, W, H, settings);
+      return;
+    }
+    const key = [
+      tier, w, h, settings.ink, settings.density, settings.dotSize.toFixed(2),
+      settings.halftoneAlpha.toFixed(3), settings.scanSpacing,
+      settings.scanAlpha.toFixed(3), settings.vignette.toFixed(2),
+    ].join('|');
+    let layer = atmosphereCache.get(key);
+    if (!layer) {
+      layer = document.createElement('canvas');
+      layer.width = w;
+      layer.height = h;
+      const layerCtx = layer.getContext('2d');
+      if (!layerCtx) {
+        drawAtmosphereLayer(ctx, W, H, settings);
+        return;
+      }
+      drawAtmosphereLayer(layerCtx, w, h, settings);
+      atmosphereCache.set(key, layer);
+      while (atmosphereCache.size > MAX_ATMOSPHERE_CACHE) {
+        atmosphereCache.delete(atmosphereCache.keys().next().value);
+      }
+    }
+    ctx.drawImage(layer, 0, 0, W, H);
   }
 
   function overlay(ctx, W, H, opts = {}) {
@@ -291,13 +463,14 @@
     g.addColorStop(1, opts.bottom || 'rgba(200,182,142,0.96)');
     ctx.fillStyle = g;
     ctx.beginPath(); rr(ctx, x, y, w, h, r); ctx.fill();
-    if (window.Manga && Manga.effects && Manga.effects.halftone && opts.tone !== false) {
+    const toneTier = performanceTier();
+    if (window.Manga && Manga.effects && Manga.effects.halftone && opts.tone !== false && toneTier !== 'low') {
       ctx.save();
       ctx.beginPath(); rr(ctx, x + 3, y + 3, w - 6, h - 6, Math.max(0, r - 2)); ctx.clip();
       Manga.effects.halftone(ctx, x, y + h * 0.42, w, h * 0.58, {
         density: opts.density ?? 7,
         dotSize: opts.dotSize ?? 1.25,
-        alpha: opts.toneAlpha ?? 0.14,
+        alpha: (opts.toneAlpha ?? 0.14) * (toneTier === 'high' ? 1 : 0.58),
         color: ink,
       });
       ctx.restore();
@@ -491,9 +664,9 @@
       ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(W * 0.5, H * 0.62, W * 0.55, Math.PI, 0); ctx.stroke();
     }
-    if (window.Manga && Manga.effects && Manga.effects.halftone) {
+    if (window.Manga && Manga.effects && Manga.effects.halftone && performanceTier() !== 'low') {
       Manga.effects.halftone(ctx, 0, H * 0.54, W, H * 0.46, {
-        density: 8, dotSize: 1.2, alpha: id === 'asphodel' ? 0.08 : 0.12, color: '#0a0a0a',
+        density: 8, dotSize: 1.2, alpha: (id === 'asphodel' ? 0.08 : 0.12) * qualityScale(), color: '#0a0a0a',
       });
     }
     ctx.restore();
@@ -574,7 +747,7 @@
     contactShadow(ctx, x, y, { scale, w: opts.shadowW || 42 * scale, h: opts.shadowH || 9 * scale, alpha: opts.shadowAlpha ?? 0.42, rim: opts.accent || '#D4AF37' });
     ctx.save();
     ctx.shadowColor = opts.accent || '#D4AF37';
-    ctx.shadowBlur = opts.glow ?? 10;
+    ctx.shadowBlur = heavyEffects() ? (opts.glow ?? 10) : Math.min(4, (opts.glow ?? 10) * 0.36);
     const drew = drawFilmFrame(ctx, id, frame, x, yy, Object.assign({}, film, {
       scale: spriteScale,
       flipX,
@@ -642,6 +815,11 @@
   Art.SCENE_ATLAS = SCENE_ATLAS;
   Art.PLACE_SCENES = PLACE_SCENES;
   Art.mangaEnabled = mangaEnabled;
+  Art.performanceTier = performanceTier;
+  Art.qualityScale = qualityScale;
+  Art.heavyEffects = heavyEffects;
+  Art.frameBlendEnabled = frameBlendEnabled;
+  Art.clearPerformanceCaches = clearPerformanceCaches;
   Art.ready = ready;
   Art.drawImage = drawImage;
   Art.drawFrame = drawFrame;
@@ -652,6 +830,9 @@
   Art.drawFilmFrame = drawFilmFrame;
   Art.drawFrameCover = drawFrameCover;
   Art.drawScene = drawScene;
+  Art.halftone = halftone;
+  Art.scanlines = scanlines;
+  Art.vignette = vignette;
   Art.mangaAtmosphere = mangaAtmosphere;
   Art.overlay = overlay;
   Art.drawPanel = drawPanel;

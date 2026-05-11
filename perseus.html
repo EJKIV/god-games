@@ -1422,6 +1422,7 @@ function drawPerseusMangaSprite() {
   const motion = currentPerseusMangaMotion();
   const art = perseusMangaArt();
   const fxReady = art && perseusMangaAssetReady(PERSEUS_FXHUD_SHEET);
+  const heavy = art && typeof art.heavyEffects === 'function' && art.heavyEffects();
   const shield = mangaPlayerShieldPoint();
   const runAmount = Math.min(1, Math.abs(player.visualVx || player.vx) / 310);
   const stride = Math.sin(player.walkPhase);
@@ -1476,12 +1477,12 @@ function drawPerseusMangaSprite() {
 
   ctx.save();
   if (player.hitFlash > 0) {
-    ctx.filter = 'brightness(2.5)';
+    ctx.filter = heavy ? 'brightness(2.5)' : 'brightness(1.8)';
     ctx.shadowColor = '#d6fbff';
-    ctx.shadowBlur = 16;
+    ctx.shadowBlur = heavy ? 16 : 5;
   } else if (player.shield > 0.55 || mirrorFocus > 0.02) {
     ctx.shadowColor = '#d6fbff';
-    ctx.shadowBlur = 12 + mirrorFocus * 12;
+    ctx.shadowBlur = heavy ? 12 + mirrorFocus * 12 : 4 + mirrorFocus * 5;
   }
   if (runAmount > 0.42 || slashArc > 0.12) {
     ctx.save();
@@ -1845,6 +1846,7 @@ function drawMedusaMangaSprite(t) {
   const x = mangaActorX(medusa);
   const y = drawY + 8;
   const art = perseusMangaArt();
+  const heavy = art && typeof art.heavyEffects === 'function' && art.heavyEffects();
   const gaze = medusa.visualGaze || 0;
   const hurt = medusa.visualHurt || 0;
   const idleBob = Math.sin(t * 1.35 + levelIndex * 0.7) * (2.2 + gaze * 1.4);
@@ -1857,9 +1859,9 @@ function drawMedusaMangaSprite(t) {
   ctx.save();
   if (medusa.phase === 'gaze') {
     ctx.shadowColor = '#dcff9b';
-    ctx.shadowBlur = 22;
+    ctx.shadowBlur = heavy ? 22 : 6;
   }
-  if (medusa.hurtFlash > 0) ctx.filter = 'brightness(2.8) saturate(0.2)';
+  if (medusa.hurtFlash > 0) ctx.filter = heavy ? 'brightness(2.8) saturate(0.2)' : 'brightness(1.85)';
   if (gaze > 0.48) {
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
