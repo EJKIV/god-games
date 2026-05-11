@@ -391,7 +391,7 @@ function drawCurrentOmenPanel(rect, journal, current, layout, wordReady) {
     ctx.textAlign = 'left';
     ctx.font = `bold ${layout.veryShort ? 9 : 10}px monospace`;
     ctx.fillStyle = MANGA_ON ? '#6d3f14' : 'rgba(255,213,74,0.78)';
-    ctx.fillText(ellipsize(kicker || 'ACTIVE SIGN', w), x, y);
+    ctx.fillText(ellipsize(kicker || 'CURRENT INSCRIPTION', w), x, y);
     y += layout.veryShort ? 19 : 25;
 
     const titleFontBase = MANGA_ON ? `900 ${titleSize}px Georgia, serif` : `bold ${titleSize}px serif`;
@@ -483,7 +483,7 @@ function drawMarkRow(x, y, w, h, clue, layout) {
     ctx.textAlign = 'left';
     ctx.font = 'bold 10px monospace';
     ctx.fillStyle = MANGA_ON ? '#6d3f14' : 'rgba(255,213,74,0.78)';
-    const status = clue.foundEarly ? 'EARLY MARK' : (clue.resolved ? 'OPENED' : 'ACTIVE');
+    const status = markStatusLabel(clue, false);
     ctx.fillText(ellipsize(status, tw), tx, ty);
     ty += 17;
     const bodyFont = MANGA_ON ? 'bold 13px Georgia, serif' : '13px serif';
@@ -503,7 +503,7 @@ function drawMarkTile(x, y, w, h, clue, layout) {
     ctx.textAlign = 'left';
     ctx.font = `bold ${layout.veryShort ? 9 : 10}px monospace`;
     ctx.fillStyle = MANGA_ON ? '#6d3f14' : 'rgba(255,213,74,0.78)';
-    const status = clue.foundEarly ? 'EARLY' : (clue.resolved ? 'OPENED' : 'ACTIVE');
+    const status = markStatusLabel(clue, true);
     ctx.fillText(ellipsize(status, w - badge - 22), x + badge + 16, y + h * 0.58);
     ctx.restore();
   });
@@ -584,6 +584,11 @@ function markSummary(clue) {
   if (!clue) return '';
   if (clue.foundEarly) return 'Recovered early; earlier signs still govern the route.';
   return clue.uncoveredText || clue.text || clue.riddle || '';
+}
+
+function markStatusLabel(clue, compact) {
+  if (clue && clue.foundEarly) return compact ? 'EARLY' : 'EARLY MARK';
+  return compact ? 'RECOVERED' : 'MARK RECOVERED';
 }
 
 function earnedLetterSet(journal) {

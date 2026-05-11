@@ -72,6 +72,7 @@ const PERSEUS_ACCENT = '#3db0c6';
 const PERSEUS_MANGA_SHEET = 'godgames.perseus.gorgonSheet';
 const PERSEUS_CHAMBER_ATLAS = 'godgames.perseus.chambers';
 const PERSEUS_FXHUD_SHEET = 'godgames.perseus.fxHudSheet';
+const SIGMA_SEAL_SECONDS = 2.0;
 const LEVELS = [
   {
     title: 'CHAMBER I',
@@ -878,17 +879,13 @@ function updateHazards(dt) {
 
 function updateSerpentSeal(dt, shieldHeld) {
   if (sealSolved || levelIndex < LEVELS.length - 1 || Engine.state !== 'playing') {
-    sealProgress = Math.max(0, sealProgress - dt * 0.8);
     return;
   }
   const onSeal = Math.abs(player.x - sealX()) < 42;
   const facingAway = player.facing < 0;
-  const timedWithGaze = medusa.phase === 'gaze';
-  if (onSeal && shieldHeld && facingAway && timedWithGaze && mirrorDullT <= 0) {
-    sealProgress = Math.min(1.05, sealProgress + dt * 0.85);
+  if (onSeal && shieldHeld && facingAway) {
+    sealProgress = Math.min(1.05, sealProgress + dt / SIGMA_SEAL_SECONDS);
     if (sealProgress >= 1) triggerSerpentSeal();
-  } else {
-    sealProgress = Math.max(0, sealProgress - dt * 0.55);
   }
 }
 
