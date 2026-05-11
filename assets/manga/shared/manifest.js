@@ -64,6 +64,28 @@
       },
     });
 
+    M.assets.define('godgames.shared.hubConcourseIdleV3', {
+      src: 'assets/manga/shared/hub-concourse-idle-v3.jpg',
+      meta: {
+        usage: 'Authored manga hub idle scene with destination portals, recessed wall insets, and etched game names baked into the hall art.',
+      },
+    });
+
+    [
+      ['godgames.shared.hubConcourseOrionSelectedV3', 'assets/manga/shared/hub-concourse-orion-selected-v3.jpg', 'Orion'],
+      ['godgames.shared.hubConcourseAchillesSelectedV3', 'assets/manga/shared/hub-concourse-achilles-selected-v3.jpg', 'Achilles'],
+      ['godgames.shared.hubConcourseOlympusSelectedV3', 'assets/manga/shared/hub-concourse-olympus-selected-v3.jpg', 'Olympus'],
+      ['godgames.shared.hubConcoursePerseusSelectedV3', 'assets/manga/shared/hub-concourse-perseus-selected-v3.jpg', 'Perseus'],
+      ['godgames.shared.hubConcourseIcarusSelectedV3', 'assets/manga/shared/hub-concourse-icarus-selected-v3.jpg', 'Icarus'],
+    ].forEach(([id, src, portal]) => {
+      M.assets.define(id, {
+        src,
+        meta: {
+          usage: `${portal} selected-state manga hub scene with portal art, wall lighting, dimmed neighboring portals, floor spill, and embedded game name authored into the background.`,
+        },
+      });
+    });
+
     const hubPanelW = 1983 / 5;
     const hubPanel = (idx) => ({ x: idx * hubPanelW + 28, y: 42, w: hubPanelW - 56, h: 662 });
     M.assets.define('godgames.shared.hubDestinationPanelsV2', {

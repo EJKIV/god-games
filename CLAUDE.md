@@ -179,6 +179,7 @@ god-games/
 
 | Date       | Change                                                                                     | Author |
 |------------|--------------------------------------------------------------------------------------------|--------|
+| 2026-05-11 | Added authored manga hub idle/selected background states so portal lighting, dimmed neighboring bays, and game names are baked into the hall art. | codex  |
 | 2026-05-11 | Replaced the manga hub's separate destination overlays with an integrated wall-mural concourse asset and centered Olympus in the game-selection hall. | codex  |
 | 2026-05-11 | Added shared-surface QA coverage for normal/manga pages, canvas output, rotate overlays, hub portal click/tap routing, and destination returns; added adaptive manga effect gating for bad frame time. | codex  |
 | 2026-05-11 | Added shared hitbox/sprite-bound debug coverage and a Puppeteer performance/fairness harness with frame, error, 404, and drift gates. | codex  |

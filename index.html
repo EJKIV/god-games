@@ -201,6 +201,14 @@ const GOLD = '#D4AF37';
 const MANGA_KEY = 'godgames_manga';
 const HUB_CONCOURSE_ASSET = 'godgames.shared.hubConcourseV2';
 const HUB_CONCOURSE_MURALS_ASSET = 'godgames.shared.hubConcourseMuralsV1';
+const HUB_CONCOURSE_IDLE_ASSET = 'godgames.shared.hubConcourseIdleV3';
+const HUB_CONCOURSE_SELECTED_ASSETS = Object.freeze({
+  ORION: 'godgames.shared.hubConcourseOrionSelectedV3',
+  ACHILLES: 'godgames.shared.hubConcourseAchillesSelectedV3',
+  OLYMPUS: 'godgames.shared.hubConcourseOlympusSelectedV3',
+  PERSEUS: 'godgames.shared.hubConcoursePerseusSelectedV3',
+  ICARUS: 'godgames.shared.hubConcourseIcarusSelectedV3',
+});
 const HUB_DESTINATION_PANELS_ASSET = 'godgames.shared.hubDestinationPanelsV2';
 const HUB_AVATAR_ASSET = 'godgames.shared.hubAvatarV2';
 const HUB_MANGA_STATION_X = [0.145, 0.322, 0.500, 0.678, 0.855];
@@ -216,6 +224,8 @@ const GY   = H * 0.73;   // ground y
 let _mangaHubStaticLayer = null;
 let _mangaHubStaticKey = '';
 let _mangaHubMuralsDrawn = false;
+let _mangaHubAuthoredSceneDrawn = false;
+let _mangaHubStaticAuthoredScene = false;
 
 function mangaOn() { return localStorage.getItem(MANGA_KEY) === '1'; }
 function syncMangaClass() { document.body.classList.toggle('manga-mode', mangaOn()); }
@@ -1221,17 +1231,29 @@ function drawPortal(p) {
   }
 }
 
-function drawMangaHubBackdrop() {
+function mangaHubAuthoredSceneAsset(portal) {
+  return portal && HUB_CONCOURSE_SELECTED_ASSETS[portal.name]
+    ? HUB_CONCOURSE_SELECTED_ASSETS[portal.name]
+    : HUB_CONCOURSE_IDLE_ASSET;
+}
+
+function drawMangaHubBackdrop(selectedPortal = null) {
   const art = window.GodGames && GodGames.MangaArt;
   let drewAsset = false;
   let drewMurals = false;
+  let drewAuthoredScene = false;
   if (art && typeof art.drawImage === 'function') {
-    drewMurals = art.drawImage(ctx, HUB_CONCOURSE_MURALS_ASSET, 0, 0, W, H, {
+    drewAuthoredScene = art.drawImage(ctx, mangaHubAuthoredSceneAsset(selectedPortal), 0, 0, W, H, {
       fit: 'cover',
       focusX: HUB_CONCOURSE_SOURCE.focusX,
       focusY: HUB_CONCOURSE_SOURCE.focusY,
     });
-    drewAsset = drewMurals || art.drawImage(ctx, HUB_CONCOURSE_ASSET, 0, 0, W, H, {
+    drewMurals = !drewAuthoredScene && art.drawImage(ctx, HUB_CONCOURSE_MURALS_ASSET, 0, 0, W, H, {
+      fit: 'cover',
+      focusX: HUB_CONCOURSE_SOURCE.focusX,
+      focusY: HUB_CONCOURSE_SOURCE.focusY,
+    });
+    drewAsset = drewAuthoredScene || drewMurals || art.drawImage(ctx, HUB_CONCOURSE_ASSET, 0, 0, W, H, {
       fit: 'cover',
       focusX: HUB_CONCOURSE_SOURCE.focusX,
       focusY: HUB_CONCOURSE_SOURCE.focusY,
@@ -1243,12 +1265,13 @@ function drawMangaHubBackdrop() {
   }
 
   if (art && art.overlay) art.overlay(ctx, W, H, {
-    top: 'rgba(0,0,0,0.08)',
-    mid: 'rgba(0,0,0,0.02)',
-    bottom: drewMurals ? 'rgba(0,0,0,0.15)' : 'rgba(0,0,0,0.24)',
+    top: drewAuthoredScene ? 'rgba(0,0,0,0.03)' : 'rgba(0,0,0,0.08)',
+    mid: drewAuthoredScene ? 'rgba(0,0,0,0.00)' : 'rgba(0,0,0,0.02)',
+    bottom: drewAuthoredScene ? 'rgba(0,0,0,0.04)' : (drewMurals ? 'rgba(0,0,0,0.15)' : 'rgba(0,0,0,0.24)'),
   });
+  _mangaHubAuthoredSceneDrawn = drewAuthoredScene;
   _mangaHubMuralsDrawn = drewMurals;
-  drawMangaHubStageUnderlay(drewAsset, drewMurals);
+  if (!drewAuthoredScene) drawMangaHubStageUnderlay(drewAsset, drewMurals);
   return true;
 }
 
@@ -1259,8 +1282,12 @@ function mangaHubAssetReady(id) {
 function mangaHubStaticKey() {
   const art = window.GodGames && GodGames.MangaArt;
   const tier = art && typeof art.basePerformanceTier === 'function' ? art.basePerformanceTier() : 'base';
+  const selectedPortal = player.nearPortal || null;
+  const authoredSceneAsset = mangaHubAuthoredSceneAsset(selectedPortal);
   return [
     W, H, tier,
+    selectedPortal ? selectedPortal.name : 'idle',
+    mangaHubAssetReady(authoredSceneAsset) ? 1 : 0,
     mangaHubAssetReady(HUB_CONCOURSE_MURALS_ASSET) ? 1 : 0,
     mangaHubAssetReady(HUB_CONCOURSE_ASSET) ? 1 : 0,
     mangaHubAssetReady(HUB_DESTINATION_PANELS_ASSET) ? 1 : 0,
@@ -1278,17 +1305,17 @@ function drawMangaHubCachedBase() {
     if (!layerCtx) return false;
 
     const prevCtx = ctx;
-    const prevNear = player.nearPortal;
+    const selectedPortal = player.nearPortal || null;
     try {
       ctx = layerCtx;
-      player.nearPortal = null;
-      drawMangaHubBackdrop();
+      drawMangaHubBackdrop(selectedPortal);
       for (const p of portals) {
-        if (_mangaHubMuralsDrawn) drawMangaIntegratedStationChrome(p);
+        if (_mangaHubAuthoredSceneDrawn) drawMangaAuthoredStationChrome(p);
+        else if (_mangaHubMuralsDrawn) drawMangaIntegratedStationChrome(p);
         else drawMangaDestinationStation(p);
       }
+      _mangaHubStaticAuthoredScene = _mangaHubAuthoredSceneDrawn;
     } finally {
-      player.nearPortal = prevNear;
       ctx = prevCtx;
     }
 
@@ -1298,7 +1325,7 @@ function drawMangaHubCachedBase() {
 
   ctx.drawImage(_mangaHubStaticLayer, 0, 0, W, H);
   for (const p of portals) p._btn = hubPortalHitRegion(p);
-  if (player.nearPortal) drawMangaDestinationHighlight(player.nearPortal);
+  if (player.nearPortal && !_mangaHubStaticAuthoredScene) drawMangaDestinationHighlight(player.nearPortal);
   return true;
 }
 
@@ -1460,6 +1487,10 @@ function drawMangaDestinationStation(p) {
 function drawMangaIntegratedStationChrome(p) {
   const box = hubStationBox(p);
   drawEtchedHubLabel(p, box, false);
+  p._btn = hubPortalHitRegion(p);
+}
+
+function drawMangaAuthoredStationChrome(p) {
   p._btn = hubPortalHitRegion(p);
 }
 
