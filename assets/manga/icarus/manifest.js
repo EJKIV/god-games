@@ -37,7 +37,7 @@
     const cell = 418;
     const sheetFrame = (col, row) => ({ x: cell * col, y: cell * row, w: cell, h: cell, anchorX: 209, anchorY: 209 });
     M.assets.define('godgames.icarus.flightSheet', {
-      src: 'assets/manga/icarus/icarus-flight-loops-v1.png',
+      src: 'assets/manga/icarus/icarus-flight-film-v2.png',
       frames: {
         flap1:    sheetFrame(0, 0),
         flap2:    sheetFrame(1, 0),
@@ -66,11 +66,11 @@
         speed:    sheetFrame(4, 1),
       },
       meta: {
-        sourcePrompt: '3x3 chroma-key manga/anime Icarus gameplay sprite sheet, generated to match the Icarus hero art.',
+        sourcePrompt: '8x4 chroma-key manga/anime Icarus film-motion gameplay sprite sheet with flap, glide, speed, dive, burn, wet, falling, and recovery states.',
         animations: {
-          flap: { frames: ['flap1', 'flap2', 'flap3', 'flap4', 'flap5', 'flap6', 'flap7', 'flap8'], fps: 14, loop: true },
-          glide: { frames: ['glide1', 'glide2', 'glide3', 'glide4'], fps: 5, loop: true },
-          speed: { frames: ['speed1', 'speed2', 'speed3', 'speed4'], fps: 8, loop: true },
+          flap: { frames: ['flap1', 'flap2', 'flap3', 'flap4', 'flap5', 'flap6', 'flap7', 'flap8'], fps: 12, loop: true },
+          glide: { frames: ['glide1', 'glide2', 'glide3', 'glide4'], fps: 4, loop: true },
+          speed: { frames: ['speed1', 'speed2', 'speed3', 'speed4'], fps: 7, loop: true },
           dive: { frames: ['dive'], fps: 1, loop: false },
           burn: { frames: ['burn'], fps: 1, loop: false },
           wet: { frames: ['wet'], fps: 1, loop: false },
@@ -88,7 +88,7 @@
     });
 
     M.assets.define('godgames.icarus.stageAtlasV2', {
-      src: 'assets/manga/icarus/icarus-stage-atlas-loops-v1.png',
+      src: 'assets/manga/icarus/icarus-creatures-film-v2.png',
       frames: {
         eagleFly1:      atlasFrame(0, 0),
         eagleFly2:      atlasFrame(1, 0),
@@ -110,23 +110,23 @@
         daedalusFly2:   atlasFrame(1, 2, atlasCell * 0.62),
         daedalusFly3:   atlasFrame(2, 2, atlasCell * 0.62),
         daedalusFly4:   atlasFrame(3, 2, atlasCell * 0.62),
-        daedalusRescue: atlasFrame(0, 3, atlasCell * 0.82),
-        islandReady:    atlasFrame(1, 3, atlasCell * 0.78),
-        islandSinking:  atlasFrame(2, 3, atlasCell * 0.76),
-        featherBurst:   atlasFrame(3, 3),
-        burnFlare:      atlasFrame(4, 3),
-        waterDrips:     atlasFrame(5, 3),
-        diveAura:       atlasFrame(6, 3),
-        eagleCruise:    atlasFrame(0, 4),
-        eagleAttack:    atlasFrame(1, 4),
-        orcaBreach:     atlasFrame(2, 4, atlasCell * 0.76),
-        orcaBite:       atlasFrame(3, 4, atlasCell * 0.78),
-        daedalusFly:    atlasFrame(4, 4, atlasCell * 0.62),
+        daedalusRescue: atlasFrame(4, 2, atlasCell * 0.82),
+        islandReady:    atlasFrame(0, 3, atlasCell * 0.78),
+        islandSinking:  atlasFrame(1, 3, atlasCell * 0.76),
+        featherBurst:   atlasFrame(2, 3),
+        burnFlare:      atlasFrame(3, 3),
+        waterDrips:     atlasFrame(4, 3),
+        diveAura:       atlasFrame(5, 3),
+        eagleCruise:    atlasFrame(1, 0),
+        eagleAttack:    atlasFrame(6, 0),
+        orcaBreach:     atlasFrame(3, 1, atlasCell * 0.76),
+        orcaBite:       atlasFrame(4, 1, atlasCell * 0.78),
+        daedalusFly:    atlasFrame(0, 2, atlasCell * 0.62),
       },
       meta: {
-        usage: 'Icarus manga gameplay enemies, Daedalus rescue, islands, and hazard FX.',
+        usage: 'Icarus manga film-motion enemies, Daedalus rescue, islands, and hazard FX in one shared flight-stage style.',
         animations: {
-          eagleFly:   { frames: ['eagleFly1', 'eagleFly2', 'eagleFly3', 'eagleFly4', 'eagleFly5', 'eagleFly6'], fps: 11, loop: true },
+          eagleFly:   { frames: ['eagleFly1', 'eagleFly2', 'eagleFly3', 'eagleFly4', 'eagleFly5', 'eagleFly6'], fps: 10, loop: true },
           eagleDive:  { frames: ['eagleDive'], fps: 1, loop: false },
           eagleHit:   { frames: ['eagleHit'], fps: 1, loop: false },
           orcaBreach: { frames: ['orcaBreach1', 'orcaBreach2', 'orcaBreach3', 'orcaBreach4', 'orcaBreach5', 'orcaBreach6'], fps: 10, loop: false },

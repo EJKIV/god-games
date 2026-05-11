@@ -24,7 +24,7 @@
     const frame = (col, row, anchorY) => ({ x: col * cell, y: row * cell, w: cell, h: cell, anchorX: cell / 2, anchorY: anchorY || cell * 0.78 });
 
     M.assets.define('godgames.perseus.gorgonSheet', {
-      src: 'assets/manga/perseus/perseus-gorgon-loops-v1.png',
+      src: 'assets/manga/perseus/perseus-gorgon-film-v2.png',
       frames: {
         perseusIdle:     frame(0, 0),
         perseusIdle1:    frame(0, 0),
@@ -78,21 +78,21 @@
         snakeReflect4:   frame(7, 4, cell * 0.64),
       },
       meta: {
-        usage: 'Manga-mode Perseus, Medusa, serpent, and cave hazard gameplay poses.',
+        usage: 'Manga-mode Perseus, Medusa, serpent, and cave hazard film-motion gameplay poses.',
         animations: {
-          perseusIdle:    { frames: ['perseusIdle1', 'perseusIdle2', 'perseusIdle3', 'perseusIdle4'], fps: 5, loop: true },
-          perseusRun:     { frames: ['perseusRun1', 'perseusRun2', 'perseusRun3', 'perseusRun4', 'perseusRun5', 'perseusRun6', 'perseusRun7', 'perseusRun8'], fps: 14, loop: true },
+          perseusIdle:    { frames: ['perseusIdle1', 'perseusIdle2', 'perseusIdle3', 'perseusIdle4'], fps: 4, loop: true },
+          perseusRun:     { frames: ['perseusRun1', 'perseusRun2', 'perseusRun3', 'perseusRun4', 'perseusRun5', 'perseusRun6', 'perseusRun7', 'perseusRun8'], fps: 12, loop: true },
           perseusMirror:  { frames: ['perseusMirror1', 'perseusMirror2'], fps: 4, loop: true },
-          perseusSlash:   { frames: ['perseusSlash1', 'perseusSlash2', 'perseusSlash3', 'perseusSlash4'], fps: 14, loop: false },
-          perseusHit:     { frames: ['perseusStone', 'perseusIdle'], fps: 9, loop: false },
+          perseusSlash:   { frames: ['perseusSlash1', 'perseusSlash2', 'perseusSlash3', 'perseusSlash4'], fps: 12, loop: false },
+          perseusHit:     { frames: ['perseusStone', 'perseusIdle'], fps: 8, loop: false },
           perseusStone:   { frames: ['perseusStone'], fps: 1, loop: false },
           perseusVictory: { frames: ['perseusVictory'], fps: 1, loop: true },
-          medusaIdle:     { frames: ['medusaIdle1', 'medusaIdle2', 'medusaIdle3', 'medusaIdle4'], fps: 5, loop: true },
+          medusaIdle:     { frames: ['medusaIdle1', 'medusaIdle2', 'medusaIdle3', 'medusaIdle4'], fps: 4, loop: true },
           medusaWatch:    { frames: ['medusaIdle1', 'medusaIdle2', 'medusaIdle3', 'medusaIdle4', 'medusaGaze1', 'medusaGaze2'], fps: 4, loop: true },
           medusaGaze:     { frames: ['medusaGaze1', 'medusaGaze2'], fps: 5, loop: true },
-          medusaHurt:     { frames: ['medusaHurt1', 'medusaHurt2', 'medusaGaze1'], fps: 8, loop: false },
-          snakeFly:       { frames: ['snake1', 'snake2', 'snake3', 'snake4'], fps: 10, loop: true },
-          snakeReflect:   { frames: ['snakeReflect1', 'snakeReflect2', 'snakeReflect3', 'snakeReflect4'], fps: 10, loop: true },
+          medusaHurt:     { frames: ['medusaHurt1', 'medusaHurt2', 'medusaGaze1'], fps: 7, loop: false },
+          snakeFly:       { frames: ['snake1', 'snake2', 'snake3', 'snake4'], fps: 9, loop: true },
+          snakeReflect:   { frames: ['snakeReflect1', 'snakeReflect2', 'snakeReflect3', 'snakeReflect4'], fps: 9, loop: true },
           caveHazard:     { frames: ['hazard1', 'hazard2', 'hazard3', 'hazard4'], fps: 7, loop: true },
         },
       },

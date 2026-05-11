@@ -1249,18 +1249,22 @@ function drawOrionMangaSprite() {
   let drew = false;
   if (hasAnim) {
     const motion = currentOrionMangaMotion();
+    const stridePhase = ((orion.walkPhase / (Math.PI * 2)) % 1 + 1) % 1;
+    const drawHeroAnim = art.drawActedAnimation || art.drawAnimation;
     const actionAmount = motion.anim === 'run'
       ? runAmount
       : (motion.anim === 'dodge' ? 0.62 : (/stab|throw|jump|hit|prone/.test(motion.anim) ? 0.36 : 0.20));
-    drew = art.drawAnimation(ctx, ORION_MANGA_ORION_SHEET, motion.anim, motion.t, drawX + jitter, y, {
+    drew = drawHeroAnim(ctx, ORION_MANGA_ORION_SHEET, motion.anim, motion.t, drawX + jitter, y, {
       scale,
       flipX: motion.flipX,
       rotate: motion.rotate || 0,
-      phase: motion.anim === 'run' ? orion.walkPhase / (Math.PI * 2) : undefined,
+      phase: motion.anim === 'run' ? stridePhase : undefined,
+      phaseTime: motion.anim === 'run' ? stridePhase : undefined,
       amount: actionAmount,
       bob: motion.anim === 'run' ? 5.4 : 3.4,
       sway: motion.anim === 'run' ? 0.030 : 0.020,
       squash: motion.anim === 'run' ? 0.030 : 0.018,
+      frameBlendStrength: motion.anim === 'run' ? 0.26 : 0.20,
       hero: true,
     });
   } else {
@@ -1409,7 +1413,8 @@ function drawScorpionMangaSprite() {
   let drew = false;
   if (hasAnim) {
     const motion = currentScorpionMangaMotion();
-    drew = art.drawAnimation(ctx, ORION_MANGA_SCORPION_SHEET, motion.anim, motion.t, drawX, drawY + 12, {
+    const drawBossAnim = art.drawActedAnimation || art.drawAnimation;
+    drew = drawBossAnim(ctx, ORION_MANGA_SCORPION_SHEET, motion.anim, motion.t, drawX, drawY + 12, {
       scale,
       flipX: boss.facing < 0,
       rotate: motion.rotate || 0,
@@ -1417,6 +1422,7 @@ function drawScorpionMangaSprite() {
       bob: motion.anim === 'charge' ? 7 : 5.6,
       sway: motion.anim === 'charge' ? 0.040 : 0.024,
       squash: motion.anim === 'charge' ? 0.036 : 0.026,
+      frameBlendStrength: /crawl|charge/.test(motion.anim) ? 0.24 : 0.18,
       hero: true,
     });
   } else {
@@ -2157,9 +2163,11 @@ function drawMangaOrionPose(anim, x, y, opts = {}) {
   if (opts.filter || heavy) ctx.filter = opts.filter || 'saturate(1.04) contrast(1.05)';
   ctx.shadowColor = opts.shadowColor || 'rgba(170,215,255,0.22)';
   ctx.shadowBlur = opts.shadowBlur ?? (heavy ? 10 : 3);
-  const drew = art.drawAnimation(ctx, ORION_MANGA_ORION_SHEET, anim, opts.t ?? Engine.time, x, y + 8, {
+  const drawPoseAnim = art.drawActedAnimation || art.drawAnimation;
+  const drew = drawPoseAnim(ctx, ORION_MANGA_ORION_SHEET, anim, opts.t ?? Engine.time, x, y + 8, {
     scale,
     flipX: !!opts.flipX,
+    frameBlendStrength: 0.18,
   });
   ctx.restore();
   return drew;
@@ -2181,9 +2189,11 @@ function drawMangaScorpionPose(anim, x, y, opts = {}) {
   if (opts.filter || heavy) ctx.filter = opts.filter || 'saturate(1.06) contrast(1.06)';
   ctx.shadowColor = opts.shadowColor || (anim === 'enraged' ? '#ff3300' : 'rgba(255,120,30,0.24)');
   ctx.shadowBlur = opts.shadowBlur ?? (heavy ? (anim === 'enraged' ? 22 : 12) : (anim === 'enraged' ? 6 : 3));
-  const drew = art.drawAnimation(ctx, ORION_MANGA_SCORPION_SHEET, anim, opts.t ?? Engine.time, x, y + 12, {
+  const drawPoseAnim = art.drawActedAnimation || art.drawAnimation;
+  const drew = drawPoseAnim(ctx, ORION_MANGA_SCORPION_SHEET, anim, opts.t ?? Engine.time, x, y + 12, {
     scale,
     flipX: !!opts.flipX,
+    frameBlendStrength: 0.18,
   });
   ctx.restore();
   return drew;

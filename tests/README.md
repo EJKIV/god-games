@@ -71,11 +71,11 @@ Useful env overrides: `QA_SETTLE_MS`, `QA_FRAME_WARMUP_MS`,
   shell and every `earnHint()` silently failed).
 - Progress sync waits for first-time name entry, then pulls remote unlocks
   after the name modal saves `localStorage.godgames_playerName`.
-- Icarus → `hint.z` earned by touching peak altitude (Sun's Embrace).
-- Orion → `hint.e` earned by standing still beneath the constellation.
-- Achilles → `hint.u` earned by counter-shooting 3 archers in 6.5s.
+- Icarus → `hint.v2.z` earned by touching peak altitude (Sun's Embrace).
+- Orion → `hint.v2.e` earned by standing still beneath the constellation.
+- Achilles → `hint.v2.u` earned by counter-shooting 3 archers in 6.5s.
 - Perseus → three chambers can be cleared, then the hidden sigma seal earns
-  `hint.s`.
+  `hint.v2.s`.
 - Hub mysteries panel reflects earned-hint state.
 - `shankle` dev bypass unlocks manga mode.
 - Typing `zeus` after Z+E+U+S are earned summons the lightning bolt.

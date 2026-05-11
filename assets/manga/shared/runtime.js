@@ -362,6 +362,48 @@
     return animationState(id, name, t, opts).frame;
   }
 
+  function animationSecondsFromPhase(phase, id, name, opts = {}) {
+    const state = animationState(id, name, 0, opts);
+    const fps = Math.max(0.01, opts.fps ?? state.fps ?? 8);
+    return cycle01(phase) * state.frames.length / fps;
+  }
+
+  function motionSeconds(id, name, t = 0, opts = {}) {
+    if (typeof opts.phaseTime === 'number') return animationSecondsFromPhase(opts.phaseTime, id, name, opts);
+    return t || 0;
+  }
+
+  function actedMotionDefaults(name, opts = {}) {
+    const n = String(name || '').toLowerCase();
+    const active = /run|walk|crawl|charge|fly|flap|hop|breach/.test(n);
+    const action = /dodge|jump|speed|dive|attack|claw|sting|stab|throw|bash|bow|strike|slash|release|hurt|hit/.test(n);
+    return {
+      amount: opts.amount ?? (active ? 0.38 : (action ? 0.26 : 0.12)),
+      bob: opts.bob ?? (active ? 4.8 : 1.0),
+      sway: opts.sway ?? (active ? 0.020 : 0.008),
+      squash: opts.squash ?? (active ? 0.022 : 0.010),
+      frameBlendStrength: opts.frameBlendStrength ?? (opts.hero || opts.cinematic ? 0.24 : undefined),
+    };
+  }
+
+  function drawActedAnimation(ctx, id, name, t, x, y, opts = {}) {
+    const animT = motionSeconds(id, name, t, opts);
+    const phase = opts.phase != null
+      ? opts.phase
+      : (typeof opts.phaseTime === 'number' ? cycle01(opts.phaseTime) : undefined);
+    const defaults = actedMotionDefaults(name, opts);
+    const drawOpts = Object.assign({}, opts, {
+      t: animT,
+      phase,
+      animName: opts.animName || name,
+    });
+    Object.keys(defaults).forEach((key) => {
+      if (drawOpts[key] == null && defaults[key] != null) drawOpts[key] = defaults[key];
+    });
+    delete drawOpts.phaseTime;
+    return drawAnimation(ctx, id, name, animT, x, y, drawOpts);
+  }
+
   function filmAmountForAnimation(name, opts = {}) {
     if (typeof opts.amount === 'number') return opts.amount;
     const n = String(name || '').toLowerCase();
@@ -815,13 +857,12 @@
       const toadAsset = 'godgames.shared.hubToadV1';
       if (A && typeof A.ready === 'function' && A.ready(toadAsset) && typeof drawAnimation === 'function') {
         const anim = amount > 0.04 ? 'hop' : (ready > 0.35 ? 'ready' : 'idle');
-        const animT = anim === 'hop' ? phase : (state.t || 0);
+        const animT = state.t || 0;
         ctx.save();
-        const drew = drawAnimation(ctx, toadAsset, anim, animT, x, y, {
-          scale: scale * 0.35,
+        const drew = drawActedAnimation(ctx, toadAsset, anim, animT, x, y, {
+          scale: scale * 0.16,
           flipX: (state.facing || 1) < 0,
-          phase,
-          fps: anim === 'hop' ? 8 : undefined,
+          phaseTime: anim === 'hop' ? phase : undefined,
           amount: amount > 0.04 ? 0.30 : 0.12,
           bob: amount > 0.04 ? 5.5 * scale : 0.6 * scale,
           floatBob: 0,
@@ -1036,9 +1077,9 @@
       id = ready('godgames.achilles.animSheet') ? 'godgames.achilles.animSheet' : 'godgames.achilles.actionSheet';
       if (id === 'godgames.achilles.animSheet') {
         anim = Math.abs(vx) > 1 ? (facing < 0 ? 'runLeft' : 'runRight') : 'idle';
-        frame = animationFrame(id, anim, Math.abs(vx) > 1 ? walkCycle : t, { fps: Math.abs(vx) > 1 ? 8 : undefined });
-        animT = Math.abs(vx) > 1 ? walkCycle : t;
-        animFps = Math.abs(vx) > 1 ? 8 : undefined;
+        frame = animationFrame(id, anim, Math.abs(vx) > 1 ? animationSecondsFromPhase(walkCycle, id, anim) : t);
+        animT = t;
+        animFps = undefined;
         flipX = false; spriteScale *= 0.36; film.animName = anim;
       } else {
         frame = Math.abs(vx) > 1 ? (facing < 0 ? 'runLeft' : 'runRight') : 'idle'; flipX = frame === 'idle' && facing < 0; spriteScale *= 0.30;
@@ -1048,9 +1089,9 @@
       id = ready('godgames.orion.orionAnimV1') ? 'godgames.orion.orionAnimV1' : 'godgames.orion.scorpionSheet';
       if (id === 'godgames.orion.orionAnimV1') {
         anim = Math.abs(vx) > 1 ? 'run' : 'idle';
-        frame = animationFrame(id, anim, Math.abs(vx) > 1 ? walkCycle : t, { fps: Math.abs(vx) > 1 ? 8 : undefined });
-        animT = Math.abs(vx) > 1 ? walkCycle : t;
-        animFps = Math.abs(vx) > 1 ? 8 : undefined;
+        frame = animationFrame(id, anim, Math.abs(vx) > 1 ? animationSecondsFromPhase(walkCycle, id, anim) : t);
+        animT = t;
+        animFps = undefined;
         flipX = facing < 0; spriteScale *= 0.34; film.animName = anim;
       } else {
         frame = Math.abs(vx) > 1 ? 'orionRun' : 'orionIdle'; flipX = facing < 0; spriteScale *= 0.31;
@@ -1059,9 +1100,9 @@
     } else if (game === 'perseus') {
       id = 'godgames.perseus.gorgonSheet';
       anim = Math.abs(Math.sin(opts.walkPhase || t)) > 0.18 ? 'perseusRun' : 'perseusIdle';
-      animT = anim === 'perseusRun' ? walkCycle : t;
-      animFps = anim === 'perseusRun' ? 8 : undefined;
-      frame = animationFrame(id, anim, animT, { fps: animFps });
+      animT = t;
+      animFps = undefined;
+      frame = animationFrame(id, anim, anim === 'perseusRun' ? animationSecondsFromPhase(walkCycle, id, anim) : t);
       spriteScale *= 0.32;
       yy += 3 * scale;
       film.animName = anim;
@@ -1079,9 +1120,10 @@
       cinematic: true,
       film: true,
       fps: animFps,
+      phaseTime: game === 'icarus' ? film.phase : (anim && /run|walk/.test(anim) ? walkCycle : undefined),
     });
     const drew = anim && animation(id, anim)
-      ? drawAnimation(ctx, id, anim, animT, x, yy, drawOpts)
+      ? drawActedAnimation(ctx, id, anim, animT, x, yy, drawOpts)
       : drawFilmFrame(ctx, id, frame, x, yy, drawOpts);
     ctx.restore();
     return drew;
@@ -1359,7 +1401,10 @@
   Art.animation = animation;
   Art.animationState = animationState;
   Art.animationFrame = animationFrame;
+  Art.animationSecondsFromPhase = animationSecondsFromPhase;
+  Art.motionSeconds = motionSeconds;
   Art.drawAnimation = drawAnimation;
+  Art.drawActedAnimation = drawActedAnimation;
   Art.drawFilmFrame = drawFilmFrame;
   Art.drawFrameCover = drawFrameCover;
   Art.drawScene = drawScene;

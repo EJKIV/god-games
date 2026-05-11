@@ -256,6 +256,7 @@ function drawMangaFrameTransformed(art, id, frame, x, y, opts = {}) {
 
 function drawMangaAnimationTransformed(art, id, anim, t, x, y, opts = {}) {
   if (!art || typeof art.drawAnimation !== 'function') return false;
+  const drawAnim = art.drawActedAnimation || art.drawAnimation;
   const drawOpts = Object.assign({}, opts);
   delete drawOpts.rotate;
   delete drawOpts.scaleX;
@@ -264,7 +265,7 @@ function drawMangaAnimationTransformed(art, id, anim, t, x, y, opts = {}) {
   ctx.translate(x, y);
   if (opts.rotate) ctx.rotate(opts.rotate);
   ctx.scale(opts.scaleX ?? 1, opts.scaleY ?? 1);
-  const drew = art.drawAnimation(ctx, id, anim, t, 0, 0, drawOpts);
+  const drew = drawAnim(ctx, id, anim, t, 0, 0, drawOpts);
   ctx.restore();
   return drew;
 }
@@ -1539,12 +1540,14 @@ function drawPerseusMangaSprite() {
   if (heavy && (runAmount > 0.42 || slashArc > 0.12)) {
     ctx.save();
     ctx.globalCompositeOperation = 'screen';
+    const stridePhase = ((player.walkPhase / (Math.PI * 2)) % 1 + 1) % 1;
     drawMangaAnimationTransformed(art, PERSEUS_MANGA_SHEET, motion.anim, motion.t, x - moveFacing * (10 + runAmount * 14), spriteY + 2, {
       scale,
       flipX: motion.flipX,
       rotate: motionRotate * 0.42,
       alpha: Math.min(0.26, 0.06 + runAmount * 0.11 + slashArc * 0.16),
-      phase: player.walkPhase / (Math.PI * 2),
+      phase: stridePhase,
+      phaseTime: motion.anim === 'perseusRun' ? stridePhase : undefined,
       amount: filmAmount * 0.65,
       bob: 2.5,
       sway: 0.018,
@@ -1555,11 +1558,14 @@ function drawPerseusMangaSprite() {
     });
     ctx.restore();
   }
-  const drew = art.drawAnimation(ctx, PERSEUS_MANGA_SHEET, motion.anim, motion.t, x + actionOffsetX, spriteY + actionOffsetY, {
+  const stridePhase = ((player.walkPhase / (Math.PI * 2)) % 1 + 1) % 1;
+  const drawHeroAnim = art.drawActedAnimation || art.drawAnimation;
+  const drew = drawHeroAnim(ctx, PERSEUS_MANGA_SHEET, motion.anim, motion.t, x + actionOffsetX, spriteY + actionOffsetY, {
     scale,
     flipX: motion.flipX,
     rotate: motionRotate,
-    phase: runAmount > 0.05 ? player.walkPhase / (Math.PI * 2) : Engine.time * 0.11,
+    phase: runAmount > 0.05 ? stridePhase : Engine.time * 0.11,
+    phaseTime: motion.anim === 'perseusRun' ? stridePhase : undefined,
     amount: filmAmount,
     bob: 5.2,
     sway: 0.030,
@@ -1570,6 +1576,7 @@ function drawPerseusMangaSprite() {
       : Math.min(0.07, 0.012 + runAmount * 0.025 + slashArc * 0.03),
     filmScaleX: bodyScaleX,
     filmScaleY: bodyScaleY,
+    frameBlendStrength: motion.anim === 'perseusRun' ? 0.26 : 0.20,
     hero: true,
   });
   ctx.restore();
@@ -1939,7 +1946,8 @@ function drawMedusaMangaSprite(t) {
     });
     ctx.restore();
   }
-  const drew = art.drawAnimation(ctx, PERSEUS_MANGA_SHEET, motion.anim, motion.t, x - gaze * 3 + hurt * 5, y + idleBob, {
+  const drawMedusaAnim = art.drawActedAnimation || art.drawAnimation;
+  const drew = drawMedusaAnim(ctx, PERSEUS_MANGA_SHEET, motion.anim, motion.t, x - gaze * 3 + hurt * 5, y + idleBob, {
     scale,
     flipX: motion.flipX,
     rotate: motion.rotate || 0,
@@ -1954,6 +1962,7 @@ function drawMedusaMangaSprite(t) {
       : Math.min(0.055, 0.012 + gaze * 0.020 + hurt * 0.018),
     filmScaleX: bodyScaleX,
     filmScaleY: bodyScaleY,
+    frameBlendStrength: 0.20,
     hero: true,
   });
   ctx.restore();
@@ -2125,7 +2134,8 @@ function drawHazards(t) {
         });
       }
       if (!drew && art && typeof art.drawAnimation === 'function') {
-        drew = art.drawAnimation(ctx, PERSEUS_MANGA_SHEET, 'caveHazard', t + h.phase, sx, sy + (1 - emerge) * 6, {
+        const drawHazardAnim = art.drawActedAnimation || art.drawAnimation;
+        drew = drawHazardAnim(ctx, PERSEUS_MANGA_SHEET, 'caveHazard', t + h.phase, sx, sy + (1 - emerge) * 6, {
           scale,
           rotate: Math.sin(h.phase + t) * 0.12,
           phase: t * 0.28 + h.phase,

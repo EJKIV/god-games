@@ -70,10 +70,13 @@ const params  = new URLSearchParams(location.search);
 const placeId = params.get('id')   || 'oceanus';
 const fromGame= params.get('from') || 'icarus';
 const clueId  = params.get('clue') || null;
+const hintId  = params.get('hint') || null;
 
 const place = (window.GodGames && window.GodGames.places && window.GodGames.places[placeId]) || null;
-const clue  = (window.GodGames && window.GodGames.Mysteries && window.GodGames.Mysteries.findClue)
-  ? window.GodGames.Mysteries.findClue(clueId)
+const Mystery = window.GodGames && window.GodGames.Mysteries;
+const clue  = Mystery
+  ? ((Mystery.findClue && Mystery.findClue(clueId))
+    || (Mystery.clueForHint && hintId && Mystery.decorateClue && Mystery.decorateClue(Mystery.clueForHint(hintId))))
   : null;
 
 // Fallback if the place isn't registered (defensive — shouldn't happen).
@@ -120,6 +123,9 @@ const CHARACTER_MAP = { icarus: 'icarus', orion: 'orion', achilles: 'achilles', 
 if (params.get('testHooks') === '1') {
   window.GodGames.PlaceTest = {
     fromGame,
+    clueId,
+    hintId,
+    clue: clue ? clue.id : null,
     character: CHARACTER_MAP[fromGame] || null,
     hasPerseusTraveler: typeof drawPerseusTraveler === 'function',
   };
@@ -225,8 +231,8 @@ function drawAssetTraveler(char, x, y, scale, facing, walkPhase, t) {
     id = canAnimate && A.ready('godgames.achilles.animSheet') ? 'godgames.achilles.animSheet' : 'godgames.achilles.actionSheet';
     anim = Math.abs(vx) > 1 ? (facing < 0 ? 'runLeft' : 'runRight') : 'idle';
     frame = Math.abs(vx) > 1 ? (facing < 0 ? 'runLeft' : 'runRight') : 'idle';
-    animT = Math.abs(vx) > 1 ? phase : t;
-    animFps = Math.abs(vx) > 1 ? 8 : undefined;
+    animT = t;
+    animFps = undefined;
     spriteScale *= id === 'godgames.achilles.animSheet' ? 0.36 : 0.30;
     y += 4;
   } else if (char === 'orion') {
@@ -235,16 +241,16 @@ function drawAssetTraveler(char, x, y, scale, facing, walkPhase, t) {
     frame = id === 'godgames.orion.orionAnimV1'
       ? (Math.abs(vx) > 1 ? 'run1' : 'idle1')
       : (Math.abs(vx) > 1 ? 'orionRun' : 'orionIdle');
-    animT = Math.abs(vx) > 1 ? phase : t;
-    animFps = Math.abs(vx) > 1 ? 8 : undefined;
+    animT = t;
+    animFps = undefined;
     spriteScale *= id === 'godgames.orion.orionAnimV1' ? 0.34 : 0.31;
     y += 2;
   } else if (char === 'perseus') {
     id = 'godgames.perseus.gorgonSheet';
     anim = Math.abs(Math.sin(walkPhase)) > 0.18 ? 'perseusRun' : 'perseusIdle';
     frame = anim;
-    animT = anim === 'perseusRun' ? phase : t;
-    animFps = anim === 'perseusRun' ? 8 : undefined;
+    animT = t;
+    animFps = undefined;
     spriteScale *= 0.32;
     y += 3;
   }
@@ -267,9 +273,12 @@ function drawAssetTraveler(char, x, y, scale, facing, walkPhase, t) {
         cinematic: true,
         film: true,
         fps: animFps,
+        phaseTime: char === 'icarus' ? (((t * 0.76) % 1 + 1) % 1) : (/run|walk/.test(anim || '') ? phase : undefined),
+        frameBlendStrength: 0.22,
       };
+  const drawAnim = art && (art.drawActedAnimation || art.drawAnimation);
   const drew = canAnimate && anim
-    ? art.drawAnimation(ctx, id, anim, animT, x, y, drawOpts)
+    ? drawAnim(ctx, id, anim, animT, x, y, drawOpts)
     : (art && typeof art.drawFilmFrame === 'function'
       ? art.drawFilmFrame(ctx, id, frame, x, y, drawOpts)
     : A.drawFrame(ctx, id, frame, x, y, {
@@ -539,39 +548,52 @@ function render() {
   ctx.stroke();
   ctx.restore();
 
-  // Clue banner — fades in starting at t=2.4s. Bottom-third of the screen.
-  if (clue && clue.text) {
+  // Clue banner — fades in starting at t=2.4s. It explains why this realm
+  // appeared and how its myth points toward the next hidden action.
+  if (clue && (clue.text || clue.realmUncoveringText)) {
     const a = Math.max(0, Math.min(1, (elapsed() - 2.4) / 1.0));
     if (a > 0) {
       ctx.save();
       ctx.globalAlpha = a;
-      // Soft scrim behind the text
+      const banner = clueBannerRect(W, H);
+      const accent = P.palette.accent || clue.color || '#D4AF37';
+      const main = clue.realmUncoveringText || clue.text || '';
+      const nudge = clue.journalNudge || clue.riddle || '';
+      const mainLines = wrapText(main, banner.w - 54, MANGA_ON ? 'bold 16px Georgia, serif' : 'italic 16px serif', 3);
+      const nudgeLines = wrapText(nudge, banner.w - 54, '12px monospace', 2);
       if (MANGA_ON && art && art.drawPanel) {
-        const bw = Math.min(W * 0.78, 880);
-        art.drawPanel(ctx, (W - bw) / 2, H * 0.93 - 104, bw, 96, {
+        art.drawPanel(ctx, banner.x, banner.y, banner.w, banner.h, {
           paper: 'rgba(244,235,210,0.94)',
           bottom: 'rgba(204,186,150,0.94)',
-          accent: P.palette.accent || '#D4AF37',
+          accent,
           lineWidth: 4,
           toneAlpha: 0.12,
           shadow: 'rgba(0,0,0,0.48)',
         });
       } else {
         ctx.fillStyle = 'rgba(2, 0, 6, 0.55)';
-        ctx.fillRect(0, H * 0.93 - 92, W, 84);
+        ctx.fillRect(banner.x, banner.y, banner.w, banner.h);
+        ctx.strokeStyle = accent;
+        ctx.lineWidth = 1.4;
+        ctx.strokeRect(banner.x, banner.y, banner.w, banner.h);
       }
-      // Heading
       ctx.textAlign = 'center';
       ctx.font = 'bold 12px monospace';
       ctx.fillStyle = MANGA_ON ? '#0a0a0a' : '#D4AF37';
       ctx.shadowColor = '#D4AF37'; ctx.shadowBlur = MANGA_ON ? 0 : 6;
-      ctx.fillText('A CLUE IS REVEALED', W / 2, H * 0.93 - 64);
+      const head = clue.letter
+        ? `${clue.letter} UNCOVERED / ${String(clue.realm || P.name).toUpperCase()}`
+        : 'A CLUE IS REVEALED';
+      ctx.fillText(head, W / 2, banner.y + 25);
       ctx.shadowBlur = 0;
-      // Clue text
-      ctx.font = MANGA_ON ? 'bold 18px Georgia, serif' : 'italic 18px serif';
+      ctx.font = MANGA_ON ? 'bold 16px Georgia, serif' : 'italic 16px serif';
       ctx.fillStyle = MANGA_ON ? '#21170d' : 'rgba(240,235,210,0.95)';
-      const lines = wrapText(clue.text, W * 0.7, ctx.font);
-      lines.forEach((l, i) => ctx.fillText(l, W / 2, H * 0.93 - 38 + i * 22));
+      mainLines.forEach((l, i) => ctx.fillText(l, W / 2, banner.y + 52 + i * 20));
+      if (nudgeLines.length) {
+        ctx.font = '12px monospace';
+        ctx.fillStyle = MANGA_ON ? 'rgba(48,31,15,0.78)' : 'rgba(220,200,150,0.72)';
+        nudgeLines.forEach((l, i) => ctx.fillText(l, W / 2, banner.y + 62 + mainLines.length * 20 + i * 15));
+      }
       ctx.restore();
     }
   } else {
@@ -587,9 +609,9 @@ function render() {
       if (MANGA_ON) {
         ctx.strokeStyle = '#0a0a0a';
         ctx.lineWidth = 4;
-        ctx.strokeText('You have learned something the gods do not give twice.', W / 2, H * 0.91);
+        ctx.strokeText('You have learned something the gods do not give twice.', W / 2, H * 0.78);
       }
-      ctx.fillText('You have learned something the gods do not give twice.', W / 2, H * 0.91);
+      ctx.fillText('You have learned something the gods do not give twice.', W / 2, H * 0.78);
       ctx.restore();
     }
   }
@@ -639,28 +661,33 @@ function drawPlaceDebugOverlay(tf) {
   }
   const returnRect = domRectOnCanvas(returnBtn);
   if (returnRect) items.push(Object.assign({ role: 'hotspot', center: false, label: 'return button', alpha: 0.62 }, returnRect));
-  const bannerY = H * 0.93 - 104;
-  items.push({
-    role: 'visual',
-    x: W * 0.11,
-    y: bannerY,
-    w: W * 0.78,
-    h: 96,
-    center: false,
-    label: 'clue banner',
-    alpha: 0.34,
-  });
+  const banner = clueBannerRect(W, H);
+  items.push(Object.assign({ role: 'visual', center: false, label: 'clue banner', alpha: 0.34 }, banner));
   debug.draw(ctx, { game: `place:${placeId}`, items });
 }
 
+function clueBannerRect(W, H) {
+  const w = Math.min(W * 0.82, 920);
+  const h = Math.max(126, Math.min(148, H * 0.20));
+  const y = Math.min(H * 0.72, H - h - 88);
+  return { x: (W - w) / 2, y, w, h };
+}
+
 // Tiny text wrapper (we don't have wrapText globally on this page).
-function wrapText(text, maxW, font) {
+function wrapText(text, maxW, font, maxLines) {
   ctx.save(); ctx.font = font;
   const words = String(text).split(' ');
   const out = []; let line = '';
   for (const w of words) {
     const test = line ? line + ' ' + w : w;
-    if (ctx.measureText(test).width > maxW && line) { out.push(line); line = w; }
+    if (ctx.measureText(test).width > maxW && line) {
+      if (maxLines && out.length >= maxLines - 1) {
+        out.push((line + ' ...').trim());
+        line = '';
+        break;
+      }
+      out.push(line); line = w;
+    }
     else line = test;
   }
   if (line) out.push(line);

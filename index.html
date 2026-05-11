@@ -416,6 +416,8 @@ const TOAD_JUMP_V = -640; // toad jump initial velocity (negative = up)
 const TOAD_GRAVITY = 1400;
 const HUB_TURN_DUR = 0.18;
 const HUB_LAND_DUR = 0.18;
+const HUB_MANGA_HUMAN_STRIDE_PX = 88;
+const HUB_MANGA_TOAD_STRIDE_PX = 96;
 
 let keys = {}, time = 0, mouse = {x:0, y:0};
 let lastHopCycle = 0; // tracks toad's hop cycle to fire one ribbit per hop
@@ -477,9 +479,18 @@ function update(dt) {
       player.turnT = HUB_TURN_DUR;
     }
     player.facing = nextFacing;
-    player.walkPhase += dt * (player.isToad ? 8.4 : 7.2);
   }
-  player.x = Math.max(lane.minX, Math.min(lane.maxX, player.x + player.vx*dt));
+  const prevX = player.x;
+  const nextX = Math.max(lane.minX, Math.min(lane.maxX, player.x + player.vx*dt));
+  if (player.vx !== 0) {
+    if (mangaOn()) {
+      const stride = player.isToad ? HUB_MANGA_TOAD_STRIDE_PX : HUB_MANGA_HUMAN_STRIDE_PX;
+      player.walkPhase += (Math.abs(nextX - prevX) / stride) * Math.PI * 2;
+    } else {
+      player.walkPhase += dt * (player.isToad ? 8.4 : 7.2);
+    }
+  }
+  player.x = nextX;
 
   // Toad jump physics — Up or Space launches when on ground; gravity pulls
   // back to GY. Only the toad form gets vertical control. Space in human
@@ -1858,21 +1869,23 @@ function drawMangaHubAvatar(scale) {
         scale: avatarScale,
         flipX: facing < 0,
         phase: walkPhase,
-        amount: moving ? Math.min(1, Math.abs(drawVx) / 220) : 0.12 + ready * 0.12,
-        bob: moving ? 3.0 * scale : 0.7 * scale,
-        sway: 0.022,
-        squash: 0.026 + landing * 0.06,
+        amount: moving ? 0.30 + Math.min(0.18, Math.abs(drawVx) / 900) : 0.10 + ready * 0.10,
+        bob: moving ? 1.15 * scale : 0.55 * scale,
+        sway: 0.008,
+        squash: 0.010 + landing * 0.045,
         filmScaleX: turnSqueeze,
         filmScaleY: 1 + landing * 0.05,
         lean: (player.visualLean || 0) + ready * facing * -0.012,
-        smear: moving ? 5 : false,
+        smear: false,
+        frameBlendStrength: moving ? 0.28 : 0.16,
         animName: anim,
         hero: true,
         film: true,
-        fps: moving ? 8 : undefined,
+        phaseTime: moving ? walkPhase : undefined,
       };
-  const drew = art && typeof art.drawAnimation === 'function'
-    ? art.drawAnimation(ctx, HUB_AVATAR_ASSET, anim, moving ? walkPhase : time, drawX, drawY, frameOpts)
+  const drawAnim = art && (art.drawActedAnimation || art.drawAnimation);
+  const drew = drawAnim
+    ? drawAnim(ctx, HUB_AVATAR_ASSET, anim, time, drawX, drawY, frameOpts)
     : (art && typeof art.drawFilmFrame === 'function'
       ? art.drawFilmFrame(ctx, HUB_AVATAR_ASSET, frame, drawX, drawY, frameOpts)
     : Manga.assets.drawFrame(ctx, HUB_AVATAR_ASSET, frame, drawX, drawY - bob, {
@@ -2540,8 +2553,14 @@ window.addEventListener('keydown', e => {
       _typedBuf = '';
     }
     if (_typedBuf.endsWith('wipemysteries')) {
-      localStorage.removeItem('tns.unlocks');
-      localStorage.removeItem('tns.counters');
+      if (window.GodGames && GodGames.Mysteries && typeof GodGames.Mysteries.resetLocalChainForTesting === 'function') {
+        GodGames.Mysteries.resetLocalChainForTesting();
+      } else {
+        localStorage.removeItem('tns.unlocks');
+        localStorage.removeItem('tns.counters');
+      }
+      localStorage.removeItem(MANGA_KEY);
+      syncMangaClass();
       showMangaToast('MYSTERIES WIPED', '#ff88cc');
       _typedBuf = '';
     }

@@ -56,7 +56,7 @@
     });
 
     M.assets.define('godgames.achilles.animSheet', {
-      src: 'assets/manga/achilles/achilles-anim-loops-v1.png',
+      src: 'assets/manga/achilles/achilles-film-v2.png',
       frames: {
         idle1:       animFrame(0, 0),
         idle2:       animFrame(1, 0),
@@ -92,15 +92,15 @@
         victory:     animFrame(7, 3),
       },
       meta: {
-        usage: 'Manga/anime Achilles gameplay animation sheet.',
+        usage: 'Manga/anime Achilles film-motion gameplay animation sheet.',
         animations: {
-          idle:       { frames: ['idle1', 'idle2', 'idle3', 'idle4'], fps: 5, loop: true },
-          runRight:   { frames: ['runRight1', 'runRight2', 'runRight3', 'runRight4', 'runRight5', 'runRight6', 'runRight7', 'runRight8'], fps: 14, loop: true },
-          runLeft:    { frames: ['runLeft1', 'runLeft2', 'runLeft3', 'runLeft4', 'runLeft5', 'runLeft6', 'runLeft7', 'runLeft8'], fps: 14, loop: true },
-          bash:       { frames: ['bashWindup', 'bashImpact'], fps: 14, loop: false },
+          idle:       { frames: ['idle1', 'idle2', 'idle3', 'idle4'], fps: 4, loop: true },
+          runRight:   { frames: ['runRight1', 'runRight2', 'runRight3', 'runRight4', 'runRight5', 'runRight6', 'runRight7', 'runRight8'], fps: 12, loop: true },
+          runLeft:    { frames: ['runLeft1', 'runLeft2', 'runLeft3', 'runLeft4', 'runLeft5', 'runLeft6', 'runLeft7', 'runLeft8'], fps: 12, loop: true },
+          bash:       { frames: ['bashWindup', 'bashImpact'], fps: 12, loop: false },
           bow:        { frames: ['bowDraw', 'bowAim'], fps: 8, loop: false },
           bowRelease: { frames: ['bowRelease'], fps: 1, loop: false },
-          strike:     { frames: ['heelWindup', 'heelSlash'], fps: 12, loop: false },
+          strike:     { frames: ['heelWindup', 'heelSlash'], fps: 10, loop: false },
           hit:        { frames: ['hit'], fps: 1, loop: false },
           guarded:    { frames: ['guarded'], fps: 1, loop: false },
           fallen:     { frames: ['fall1', 'fallen'], fps: 5, loop: false },
@@ -117,7 +117,7 @@
     });
 
     M.assets.define('godgames.achilles.archerSheet', {
-      src: 'assets/manga/achilles/archers-loops-v1.png',
+      src: 'assets/manga/achilles/archers-film-v2.png',
       frames: {
         idle1:          archerFrame(0, 0),
         idle2:          archerFrame(1, 0),
@@ -139,13 +139,13 @@
         eliteRelease:   archerFrame(4, 2),
       },
       meta: {
-        usage: 'Manga/anime Achilles archer gameplay sprites.',
+        usage: 'Manga/anime Achilles archer film-motion gameplay sprites.',
         animations: {
-          idle:      { frames: ['idle1', 'idle2', 'idle3', 'idle4'], fps: 5, loop: true },
-          draw:      { frames: ['draw', 'aim'], fps: 8, loop: false },
-          release:   { frames: ['release', 'recoil'], fps: 12, loop: false },
+          idle:      { frames: ['idle1', 'idle2', 'idle3', 'idle4'], fps: 4, loop: true },
+          draw:      { frames: ['draw', 'aim'], fps: 7, loop: false },
+          release:   { frames: ['release', 'recoil'], fps: 10, loop: false },
           downed:    { frames: ['down1', 'down2'], fps: 4, loop: false },
-          telegraph: { frames: ['telegraph1', 'telegraph2', 'telegraph3', 'telegraph4'], fps: 8, loop: true },
+          telegraph: { frames: ['telegraph1', 'telegraph2', 'telegraph3', 'telegraph4'], fps: 7, loop: true },
         },
       },
     });

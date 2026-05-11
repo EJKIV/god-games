@@ -14,7 +14,8 @@
 //   • All operations are merges, never replaces. A divergent device never
 //     loses progress; both sides converge to the union.
 //   • Mysteries are forever-state. Counters never decrease (Engine.unlock has
-//     no decrement). So max-merge is correct.
+//     no decrement). So max-merge is correct. Puzzle resets are handled by
+//     versioned keys in mysteries.js, which filters obsolete chain keys.
 //   • Player name is the only identity. No accounts, no auth. The Workshop
 //     usage pattern: kid types name once, progress follows them across
 //     devices on the same name.
@@ -43,7 +44,15 @@
     let unlocks = {}, counters = {};
     try { unlocks  = JSON.parse(localStorage.getItem('tns.unlocks')  || '{}') || {}; } catch (_e) {}
     try { counters = JSON.parse(localStorage.getItem('tns.counters') || '{}') || {}; } catch (_e) {}
-    return { unlocks, counters };
+    return filterProgressState({ unlocks, counters });
+  }
+
+  function filterProgressState(state) {
+    const M = window.GodGames && window.GodGames.Mysteries;
+    if (M && typeof M.filterProgressState === 'function') {
+      return M.filterProgressState(state);
+    }
+    return state || { unlocks: {}, counters: {} };
   }
 
   function hasAnyState(state) {
@@ -56,6 +65,7 @@
   // merge actually changed anything locally (so we know whether to POST).
   function mergeRemoteIntoLocal(remote) {
     if (!window.Engine || !Engine.unlock) return false;
+    remote = filterProgressState(remote);
     let changed = false;
     if (remote.unlocks) {
       for (const id of Object.keys(remote.unlocks)) {

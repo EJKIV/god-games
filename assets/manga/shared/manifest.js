@@ -113,7 +113,7 @@
       anchorY: 768,
     });
     M.assets.define('godgames.shared.hubAvatarV2', {
-      src: 'assets/manga/shared/hub-avatar-loops-v1.png',
+      src: 'assets/manga/shared/hub-avatar-film-v2.png',
       frames: {
         idle:  avatarFrame(0, 0),
         walkA: avatarFrame(0, 1),
@@ -137,27 +137,27 @@
         walk8: avatarFrame(7, 1),
       },
       meta: {
-        usage: 'Transparent manga/anime hub traveler sprite sheet for the Mount Olympus concourse.',
+        usage: 'Transparent manga/anime hub traveler film-motion sprite sheet for the Mount Olympus concourse.',
         animations: {
-          idle: { frames: ['idle1', 'idle2', 'idle3', 'idle4'], fps: 5, loop: true },
-          ready: { frames: ['ready1', 'ready2', 'ready3', 'ready4'], fps: 5, loop: true },
-          walk: { frames: ['walk1', 'walk2', 'walk3', 'walk4', 'walk5', 'walk6', 'walk7', 'walk8'], fps: 12, loop: true },
+          idle: { frames: ['idle1', 'idle2', 'idle3', 'idle4'], fps: 4, loop: true },
+          ready: { frames: ['ready1', 'ready2', 'ready3', 'ready4'], fps: 4, loop: true },
+          walk: { frames: ['walk1', 'walk2', 'walk3', 'walk4', 'walk5', 'walk6', 'walk7', 'walk8'], fps: 10, loop: true },
         },
       },
     });
 
-    const toadCellW = 2048 / 8;
-    const toadCellH = 384 / 2;
+    const toadCellW = 1774 / 8;
+    const toadCellH = 887 / 2;
     const toadFrame = (col, row) => ({
       x: col * toadCellW,
       y: row * toadCellH,
       w: toadCellW,
       h: toadCellH,
       anchorX: toadCellW / 2,
-      anchorY: 160,
+      anchorY: toadCellH * 0.88,
     });
     M.assets.define('godgames.shared.hubToadV1', {
-      src: 'assets/manga/shared/hub-toad-loops-v1.png',
+      src: 'assets/manga/shared/hub-toad-film-v2.png',
       frames: {
         idle: toadFrame(0, 0),
         ready: toadFrame(4, 0),
@@ -180,11 +180,11 @@
         hop8: toadFrame(7, 1),
       },
       meta: {
-        usage: 'Transparent manga/anime hub toad sprite loops for clue entrance traversal.',
+        usage: 'Transparent manga/anime hub toad film-motion loops for clue entrance traversal.',
         animations: {
           idle: { frames: ['idle1', 'idle2', 'idle3', 'idle4'], fps: 4, loop: true },
           ready: { frames: ['ready1', 'ready2', 'ready3', 'ready4'], fps: 4, loop: true },
-          hop: { frames: ['hop1', 'hop2', 'hop3', 'hop4', 'hop5', 'hop6', 'hop7', 'hop8'], fps: 9, loop: true },
+          hop: { frames: ['hop1', 'hop2', 'hop3', 'hop4', 'hop5', 'hop6', 'hop7', 'hop8'], fps: 8, loop: true },
         },
       },
     });

@@ -1026,7 +1026,9 @@ function drawMangaArcher(a, archerIdx) {
     bob: heavy ? 1.8 : 1.1,
     sway: heavy ? 0.014 : 0.006,
     squash: heavy ? 0.014 : 0.006,
+    frameBlendStrength: downed ? 0.08 : 0.18,
   };
+  const drawArcherAnim = art.drawActedAnimation || art.drawAnimation;
   const drew = frame
     ? (typeof art.drawFilmFrame === 'function'
         ? art.drawFilmFrame(ctx, ACHILLES_MANGA_ARCHER_SHEET, frame, screenX, y, {
@@ -1035,7 +1037,7 @@ function drawMangaArcher(a, archerIdx) {
             animName: anim,
           })
         : art.drawFrame(ctx, ACHILLES_MANGA_ARCHER_SHEET, frame, screenX, y, { scale, rotate: recoil }))
-    : art.drawAnimation(ctx, ACHILLES_MANGA_ARCHER_SHEET, anim, animT, screenX, y, actorOpts);
+    : drawArcherAnim(ctx, ACHILLES_MANGA_ARCHER_SHEET, anim, animT, screenX, y, actorOpts);
   if (heavy) ctx.filter = 'none';
   ctx.shadowBlur = 0;
 
@@ -1532,16 +1534,20 @@ function drawAchillesMangaSprite() {
   if (heavy) ctx.filter = 'sepia(0.10) saturate(1.08) brightness(0.94) contrast(1.06)';
   let drew = false;
   if (hasV2) {
-    drew = art.drawAnimation(ctx, ACHILLES_MANGA_ANIM_SHEET, motion.anim, motion.t, drawX + jitter, y, {
+    const stridePhase = ((player.walkPhase / (Math.PI * 2)) % 1 + 1) % 1;
+    const drawHeroAnim = art.drawActedAnimation || art.drawAnimation;
+    drew = drawHeroAnim(ctx, ACHILLES_MANGA_ANIM_SHEET, motion.anim, motion.t, drawX + jitter, y, {
       scale,
       flipX: motion.flipX,
       rotate: motion.rotate || 0,
-      phase: player.walkPhase / (Math.PI * 2),
+      phase: stridePhase,
+      phaseTime: motion.anim === 'runLeft' || motion.anim === 'runRight' ? stridePhase : undefined,
       amount: Math.min(1, Math.abs(player.visualVx || player.vx) / SPD),
       bob: 4.8,
       sway: 0.026,
       squash: 0.026,
       smear: false,
+      frameBlendStrength: 0.26,
       hero: true,
     });
   } else {

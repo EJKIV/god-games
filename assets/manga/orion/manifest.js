@@ -59,7 +59,7 @@
     });
 
     M.assets.define('godgames.orion.orionAnimV1', {
-      src: 'assets/manga/orion/orion-anim-loops-v1.png',
+      src: 'assets/manga/orion/orion-film-v2.png',
       frames: {
         idle1:        orionFrame(0, 0),
         idle2:        orionFrame(1, 0),
@@ -86,13 +86,13 @@
         fallen:       orionFrame(6, 2, oh * 0.66),
       },
       meta: {
-        usage: 'Manga/anime Orion gameplay, title, death, and victory animation sheet.',
+        usage: 'Manga/anime Orion film-motion gameplay, title, death, and victory animation sheet.',
         animations: {
-          idle:    { frames: ['idle1', 'idle2', 'idle3', 'idle4'], fps: 5, loop: true },
-          run:     { frames: ['run1', 'run2', 'run3', 'run4', 'run5', 'run6', 'run7', 'run8'], fps: 14, loop: true },
+          idle:    { frames: ['idle1', 'idle2', 'idle3', 'idle4'], fps: 4, loop: true },
+          run:     { frames: ['run1', 'run2', 'run3', 'run4', 'run5', 'run6', 'run7', 'run8'], fps: 12, loop: true },
           jump:    { frames: ['jump'], fps: 1, loop: false },
-          throw:   { frames: ['spearWindup', 'spearRelease'], fps: 12, loop: false },
-          stab:    { frames: ['stabWindup', 'stabThrust', 'stabRecover'], fps: 16, loop: false },
+          throw:   { frames: ['spearWindup', 'spearRelease'], fps: 10, loop: false },
+          stab:    { frames: ['stabWindup', 'stabThrust', 'stabRecover'], fps: 13, loop: false },
           dodge:   { frames: ['dodge'], fps: 1, loop: false },
           hit:     { frames: ['hit'], fps: 1, loop: false },
           prone:   { frames: ['prone'], fps: 1, loop: false },
@@ -111,7 +111,7 @@
     });
 
     M.assets.define('godgames.orion.scorpionAnimV1', {
-      src: 'assets/manga/orion/scorpion-anim-loops-v1.png',
+      src: 'assets/manga/orion/scorpion-film-v2.png',
       frames: {
         idle1:        scorpionFrame(0, 0),
         idle2:        scorpionFrame(1, 0),
@@ -145,13 +145,13 @@
         stingRecover: scorpionFrame(5, 3),
       },
       meta: {
-        usage: 'Manga/anime giant scorpion gameplay animation sheet.',
+        usage: 'Manga/anime giant scorpion film-motion gameplay animation sheet.',
         animations: {
-          idle:    { frames: ['idle1', 'idle2', 'idle3', 'idle4'], fps: 5, loop: true },
-          crawl:   { frames: ['crawl1', 'crawl2', 'crawl3', 'crawl4', 'crawl5', 'crawl6', 'crawl7', 'crawl8'], fps: 12, loop: true },
-          claw:    { frames: ['clawWindup', 'clawSnap', 'clawRecover'], fps: 12, loop: false },
-          sting:   { frames: ['stingCurl', 'stingRelease', 'stingRecover'], fps: 11, loop: false },
-          charge:  { frames: ['charge1', 'charge2', 'charge3', 'charge4', 'charge5', 'charge6', 'charge7', 'charge8'], fps: 13, loop: true },
+          idle:    { frames: ['idle1', 'idle2', 'idle3', 'idle4'], fps: 4, loop: true },
+          crawl:   { frames: ['crawl1', 'crawl2', 'crawl3', 'crawl4', 'crawl5', 'crawl6', 'crawl7', 'crawl8'], fps: 10, loop: true },
+          claw:    { frames: ['clawWindup', 'clawSnap', 'clawRecover'], fps: 10, loop: false },
+          sting:   { frames: ['stingCurl', 'stingRelease', 'stingRecover'], fps: 9, loop: false },
+          charge:  { frames: ['charge1', 'charge2', 'charge3', 'charge4', 'charge5', 'charge6', 'charge7', 'charge8'], fps: 11, loop: true },
           hurt:    { frames: ['hurt'], fps: 1, loop: false },
           enraged: { frames: ['enraged'], fps: 1, loop: false },
           dead:    { frames: ['dead1', 'dead2'], fps: 4, loop: false },

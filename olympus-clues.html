@@ -44,7 +44,7 @@
 <script>
 // olympus-clues.html — the toad's secret journal. Reached by jumping onto
 // the mushroom that appears at the base of Mt. Olympus when in toad form
-// on the hub. Lists every clue earned + a masked riddle for the next.
+// on the hub. Interprets the current mythic omen and stores uncovered clues.
 
 const canvas = document.getElementById('c');
 const ctx    = canvas.getContext('2d');
@@ -67,25 +67,13 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
-// Mask a future-clue text into a vague riddle so we hint without spoiling.
-// We keep the first few words intact (so it has a poetic shape) and replace
-// the rest with em-dashes. Future clues earn their full text only after
-// their mystery solves.
-function maskRiddle(text) {
-  if (!text) return '';
-  const words = text.split(' ');
-  const keep = Math.min(4, Math.max(2, Math.floor(words.length * 0.35)));
-  const visible = words.slice(0, keep).join(' ');
-  return visible + ' ——— ———— ————.';
-}
-
 function render() {
   const W = canvas.width, H = canvas.height;
   const t = performance.now() / 1000;
-  const tabW = Math.min(720, W * 0.82);
-  const tabH = Math.min(440, H * 0.58);
+  const tabW = Math.min(760, W * 0.86);
+  const tabH = Math.min(520, H * 0.66);
   const tx = (W - tabW) / 2;
-  const ty = Math.max(86, (H - tabH) * 0.52);
+  const ty = Math.max(72, Math.min((H - tabH) * 0.48, H - tabH - 96));
 
   const art = window.GodGames && GodGames.MangaArt;
   const mangaBackdrop = MANGA_ON && art && typeof art.drawScene === 'function'
@@ -220,71 +208,86 @@ function render() {
     }, { scale: 0.78, shadowAlpha: 0.28 });
   }
 
-  // Clues earned — list them
+  // Journal state — current omen, uncovered fragments, and early finds.
   const M = window.GodGames && window.GodGames.Mysteries;
-  const earned = M ? M.revealedClues() : [];
-  const next   = M ? M.nextRiddle() : null;
+  const journal = M && typeof M.journalState === 'function'
+    ? M.journalState()
+    : { earned: [], early: [], current: null, future: null, complete: false, codeword: 'ZEUS' };
+  const current = journal.current || journal.prologue || null;
+  const earned = journal.earned || [];
 
   ctx.save();
   ctx.textAlign = 'left';
   let y = ty + 100;
-  if (earned.length === 0) {
+
+  if (current) {
+    ctx.font = 'bold 12px monospace';
+    ctx.fillStyle = MANGA_ON ? '#6d3f14' : '#ffd54a';
+    ctx.fillText(current.id === 'clue.toad' ? 'FIRST OMEN' : 'CURRENT OMEN', tx + 28, y);
+    y += 20;
+    y = drawJournalBox({
+      x: tx + 24,
+      y: y - 12,
+      w: tabW - 48,
+      title: current.title || 'AN OMEN',
+      kicker: current.realm ? String(current.realm).toUpperCase() : '',
+      body: current.riddle || current.text || '',
+      note: current.journalNudge || current.mythBasis || '',
+      accent: current.id === 'clue.toad' ? GOLD : (current.foundEarly ? '#cc88ff' : GOLD),
+      maxBodyLines: earned.length ? 2 : 3,
+      maxNoteLines: earned.length ? 1 : 2,
+    }) + 10;
+  } else {
     ctx.font = MANGA_ON ? 'bold 16px Georgia, serif' : 'italic 16px serif';
     ctx.fillStyle = MANGA_ON ? '#2f2114' : 'rgba(240,230,200,0.78)';
-    const empty = 'The toad sees only stone — no clues yet. Listen for whispers in the games.';
-    wrapAndDraw(empty, tx + tabW / 2, y, tabW - 60, 22, 'center');
-  } else {
+    wrapAndDraw('The toad has no omen left to read.', tx + tabW / 2, y, tabW - 60, 22, 'center');
+    y += 36;
+  }
+
+  if (earned.length > 0) {
     ctx.font = 'bold 12px monospace';
     ctx.fillStyle = MANGA_ON ? '#0a0a0a' : '#ffd54a';
-    ctx.fillText('CLUES EARNED', tx + 28, y);
+    ctx.fillText('FRAGMENTS UNCOVERED', tx + 28, y);
     y += 22;
-    ctx.font = '15px serif';
-    ctx.fillStyle = MANGA_ON ? '#21170d' : 'rgba(240,230,200,0.95)';
-    for (const c of earned) {
-      const lines = wrap(c.text, tabW - 94);
-      if (MANGA_ON && art && art.drawPanel) {
-        const boxH = Math.max(38, lines.length * 20 + 15);
-        art.drawPanel(ctx, tx + 24, y - 16, tabW - 48, boxH, {
-          paper: 'rgba(255,248,220,0.70)',
-          bottom: 'rgba(220,204,166,0.70)',
-          accent: '#ffd54a',
-          lineWidth: 2.4,
-          toneAlpha: 0.07,
-          shadow: 'rgba(0,0,0,0.18)',
-        });
-      }
-      // Bullet + clue text
-      ctx.fillStyle = MANGA_ON ? '#0a0a0a' : '#ffd54a';
-      ctx.fillText('✦', tx + 28, y);
-      ctx.fillStyle = MANGA_ON ? '#21170d' : 'rgba(240,230,200,0.92)';
-      lines.forEach((l, i) => ctx.fillText(l, tx + 50, y + i * 20));
-      y += lines.length * 20 + 10;
+    const available = Math.max(56, ty + tabH - 118 - y);
+    const maxRows = Math.max(1, Math.min(4, Math.floor(available / 72)));
+    const visible = earned.slice(Math.max(0, earned.length - maxRows));
+    for (const c of visible) {
+      const status = c.foundEarly ? 'FOUND EARLY' : (c.resolved ? 'FULFILLED' : 'ACTIVE');
+      const head = `${c.letter || '?'} / ${String(c.realm || c.targetGame || '').toUpperCase()} / ${status}`;
+      const body = c.foundEarly
+        ? 'A later fragment has surfaced before its omen. The toad keeps it, but the path still begins earlier.'
+        : (c.uncoveredText || c.text || '');
+      y = drawMiniEntry(tx + 26, y - 8, tabW - 52, head, body, c.foundEarly ? '#cc88ff' : GOLD) + 8;
     }
+    if (earned.length > visible.length) {
+      ctx.font = 'bold 11px monospace';
+      ctx.fillStyle = MANGA_ON ? 'rgba(30,20,12,0.66)' : 'rgba(240,230,200,0.58)';
+      ctx.fillText(`${earned.length - visible.length} older fragment(s) are carved higher on the stone`, tx + 28, y + 4);
+    }
+  } else if (current) {
+    ctx.font = MANGA_ON ? 'bold 14px Georgia, serif' : 'italic 14px serif';
+    ctx.fillStyle = MANGA_ON ? '#2f2114' : 'rgba(240,230,200,0.78)';
+    wrapAndDraw(current.purpose || 'The first clue is a direction, not a reward.', tx + 28, y, tabW - 56, 20, 'left');
   }
   ctx.restore();
 
-  // What remains — masked next riddle
-  if (next && earned.length > 0) {
-    ctx.save();
-    ctx.textAlign = 'left';
-    const rY = ty + tabH - 100;
-    ctx.font = 'bold 12px monospace';
-    ctx.fillStyle = MANGA_ON ? '#5c2776' : '#cc88ff';
-    ctx.fillText('WHAT REMAINS', tx + 28, rY);
-    ctx.font = 'italic 14px serif';
-    ctx.fillStyle = MANGA_ON ? '#43204f' : 'rgba(204,136,255,0.85)';
-    const masked = maskRiddle(next.text);
-    wrapAndDraw(masked, tx + 28, rY + 22, tabW - 56, 20, 'left');
-    ctx.restore();
-  } else if (earned.length >= 4) {
-    // All chain clues earned — show the call-to-action.
+  // What remains — purpose and final invocation.
+  if (journal.complete && !journal.current) {
     ctx.save();
     ctx.textAlign = 'center';
     ctx.font = 'bold 14px monospace';
     ctx.fillStyle = MANGA_ON ? '#8f204f' : '#ff88cc';
     ctx.shadowColor = '#ff88cc'; ctx.shadowBlur = MANGA_ON ? 0 : 6;
-    wrapAndDraw('SPEAK THE KING\'S NAME ON THE MOUNTAIN', W / 2, ty + tabH - 64, tabW - 56, 18, 'center');
+    wrapAndDraw(`SPEAK ${journal.codeword || 'ZEUS'} ON THE MOUNTAIN`, W / 2, ty + tabH - 64, tabW - 56, 18, 'center');
     ctx.shadowBlur = 0;
+    ctx.restore();
+  } else if (journal.future && earned.length > 0) {
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.font = 'italic 13px Georgia, serif';
+    ctx.fillStyle = MANGA_ON ? 'rgba(67,32,79,0.82)' : 'rgba(204,136,255,0.78)';
+    wrapAndDraw('A lower mark is still sealed. Answer the current omen before the stone will read it clearly.', W / 2, ty + tabH - 66, tabW - 70, 18, 'center');
     ctx.restore();
   }
 
@@ -299,6 +302,89 @@ function render() {
   drawCluesDebugOverlay({ x: tx, y: ty, w: tabW, h: tabH });
 
   if (MANGA_ON) requestAnimationFrame(render);
+}
+
+function drawJournalBox(opts) {
+  const art = window.GodGames && GodGames.MangaArt;
+  const x = opts.x, y = opts.y, w = opts.w;
+  const bodyLines = linesFor(opts.body || '', w - 34, MANGA_ON ? 'bold 15px Georgia, serif' : 'italic 15px serif', opts.maxBodyLines || 3);
+  const noteLines = linesFor(opts.note || '', w - 34, '12px monospace', opts.maxNoteLines || 2);
+  const boxH = 56 + bodyLines.length * 19 + (noteLines.length ? 12 + noteLines.length * 15 : 0);
+  ctx.save();
+  if (MANGA_ON && art && art.drawPanel) {
+    art.drawPanel(ctx, x, y, w, boxH, {
+      paper: 'rgba(255,248,220,0.82)',
+      bottom: 'rgba(214,196,152,0.80)',
+      accent: opts.accent || GOLD,
+      lineWidth: 2.8,
+      toneAlpha: 0.08,
+      shadow: 'rgba(0,0,0,0.24)',
+    });
+  } else {
+    ctx.fillStyle = 'rgba(18,12,18,0.62)';
+    ctx.beginPath(); ctx.roundRect(x, y, w, boxH, 8); ctx.fill();
+    ctx.strokeStyle = opts.accent || GOLD;
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+  }
+  ctx.textAlign = 'left';
+  ctx.font = 'bold 10px monospace';
+  ctx.fillStyle = MANGA_ON ? '#6d3f14' : 'rgba(255,213,74,0.78)';
+  ctx.fillText(opts.kicker || '', x + 17, y + 21);
+  ctx.font = MANGA_ON ? '900 17px Georgia, serif' : 'bold 17px serif';
+  ctx.fillStyle = MANGA_ON ? '#0a0a0a' : '#f4e8c4';
+  ctx.fillText(opts.title || 'AN OMEN', x + 17, y + 41);
+  ctx.font = MANGA_ON ? 'bold 15px Georgia, serif' : 'italic 15px serif';
+  ctx.fillStyle = MANGA_ON ? '#21170d' : 'rgba(240,230,200,0.92)';
+  bodyLines.forEach((line, i) => ctx.fillText(line, x + 17, y + 66 + i * 19));
+  if (noteLines.length) {
+    ctx.font = '12px monospace';
+    ctx.fillStyle = MANGA_ON ? 'rgba(48,31,15,0.78)' : 'rgba(220,200,150,0.72)';
+    noteLines.forEach((line, i) => ctx.fillText(line, x + 17, y + 66 + bodyLines.length * 19 + 12 + i * 15));
+  }
+  ctx.restore();
+  return y + boxH;
+}
+
+function drawMiniEntry(x, y, w, title, body, accent) {
+  const art = window.GodGames && GodGames.MangaArt;
+  const bodyLines = linesFor(body || '', w - 28, MANGA_ON ? 'bold 13px Georgia, serif' : '13px serif', 2);
+  const h = 34 + bodyLines.length * 16;
+  ctx.save();
+  if (MANGA_ON && art && art.drawPanel) {
+    art.drawPanel(ctx, x, y, w, h, {
+      paper: 'rgba(255,248,220,0.66)',
+      bottom: 'rgba(218,200,160,0.64)',
+      accent: accent || GOLD,
+      lineWidth: 2,
+      toneAlpha: 0.05,
+      shadow: 'rgba(0,0,0,0.12)',
+    });
+  } else {
+    ctx.fillStyle = 'rgba(2,0,6,0.42)';
+    ctx.beginPath(); ctx.roundRect(x, y, w, h, 6); ctx.fill();
+    ctx.strokeStyle = accent || GOLD;
+    ctx.globalAlpha = 0.82;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  ctx.textAlign = 'left';
+  ctx.font = 'bold 11px monospace';
+  ctx.fillStyle = MANGA_ON ? '#0a0a0a' : accent || GOLD;
+  ctx.fillText(title, x + 14, y + 19);
+  ctx.font = MANGA_ON ? 'bold 13px Georgia, serif' : '13px serif';
+  ctx.fillStyle = MANGA_ON ? '#21170d' : 'rgba(240,230,200,0.88)';
+  bodyLines.forEach((line, i) => ctx.fillText(line, x + 14, y + 38 + i * 16));
+  ctx.restore();
+  return y + h;
+}
+
+function linesFor(text, maxW, font, maxLines) {
+  ctx.save();
+  ctx.font = font;
+  const lines = wrap(text, maxW, maxLines);
+  ctx.restore();
+  return lines;
 }
 
 function domRectOnCanvas(el) {
@@ -324,13 +410,20 @@ function drawCluesDebugOverlay(tablet) {
   debug.draw(ctx, { game: 'clue-journal', items });
 }
 
-function wrap(text, maxW) {
+function wrap(text, maxW, maxLines) {
   ctx.save();
   const words = String(text).split(' ');
   const out = []; let line = '';
   for (const w of words) {
     const test = line ? line + ' ' + w : w;
-    if (ctx.measureText(test).width > maxW && line) { out.push(line); line = w; }
+    if (ctx.measureText(test).width > maxW && line) {
+      if (maxLines && out.length >= maxLines - 1) {
+        out.push((line + ' ...').trim());
+        line = '';
+        break;
+      }
+      out.push(line); line = w;
+    }
     else line = test;
   }
   if (line) out.push(line);

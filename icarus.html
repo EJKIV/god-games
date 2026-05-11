@@ -3319,7 +3319,8 @@ function drawMangaAtlasFrame(frame, x, y, opts = {}) {
 function drawMangaAtlasAnimation(name, t, x, y, opts = {}) {
   const art = icarusMangaArt();
   if (!art || !mangaAtlasReady() || typeof art.drawAnimation !== 'function') return false;
-  return art.drawAnimation(ctx, ICARUS_MANGA_ATLAS_ASSET, name, t, x, y, opts);
+  const drawAnim = art.drawActedAnimation || art.drawAnimation;
+  return drawAnim(ctx, ICARUS_MANGA_ATLAS_ASSET, name, t, x, y, opts);
 }
 
 function drawMangaFxFrame(frame, x, y, opts = {}) {
@@ -3337,7 +3338,8 @@ function drawMangaFxFrame(frame, x, y, opts = {}) {
 function drawMangaFxAnimation(name, t, x, y, opts = {}) {
   const art = icarusMangaArt();
   if (!art || !mangaFxReady() || typeof art.drawAnimation !== 'function') return false;
-  return art.drawAnimation(ctx, ICARUS_MANGA_FX_ASSET, name, t, x, y, opts);
+  const drawAnim = art.drawActedAnimation || art.drawAnimation;
+  return drawAnim(ctx, ICARUS_MANGA_FX_ASSET, name, t, x, y, opts);
 }
 
 function drawIcarusSheetFrame(frame, x, y, opts = {}) {
@@ -3921,16 +3923,19 @@ function drawMangaOrca(o, W, H) {
       bob: 2.2,
     });
     drew = (o.vy > -80
-      ? drawMangaFxFrame('orcaBite', ox, drawY, biteOpts)
-      : drawMangaFxAnimation('orcaBreach', breachT, ox, drawY, drawOpts))
-      || drawMangaAtlasAnimation('orcaBreach', breachT, ox, drawY, drawOpts);
+      ? (drawMangaAtlasFrame('orcaBite', ox, drawY, biteOpts)
+          || drawMangaFxFrame('orcaBite', ox, drawY, biteOpts))
+      : (drawMangaAtlasAnimation('orcaBreach', breachT, ox, drawY, drawOpts)
+          || drawMangaFxAnimation('orcaBreach', breachT, ox, drawY, drawOpts)));
   } else {
-    drew = drawMangaFxAnimation('orcaSplash', o.splashT || 0, ox, drawY, Object.assign({}, drawOpts, {
+    const splashOpts = Object.assign({}, drawOpts, {
       film: true,
       phase: Math.min(1, (o.splashT || 0) * 2.2),
       amount: 0.12,
       bob: 1.2,
-    })) || drawMangaAtlasFrame(frame, ox, drawY, drawOpts);
+    });
+    drew = drawMangaAtlasFrame(frame, ox, drawY, splashOpts)
+      || drawMangaFxAnimation('orcaSplash', o.splashT || 0, ox, drawY, splashOpts);
   }
   if (heavy) ctx.filter = 'none';
   ctx.restore();
@@ -3956,8 +3961,8 @@ function drawMangaDaedalusFly(x, y, opts = {}) {
     floatBob: 2.0,
     sway: 0.018,
   };
-  const drew = drawMangaFxAnimation('daedalusFly', time, x, y, drawOpts)
-    || drawMangaAtlasAnimation('daedalusFly', time, x, y, drawOpts);
+  const drew = drawMangaAtlasAnimation('daedalusFly', time, x, y, drawOpts)
+    || drawMangaFxAnimation('daedalusFly', time, x, y, drawOpts);
   if (heavy) ctx.filter = 'none';
   ctx.restore();
   return drew;
@@ -3996,8 +4001,8 @@ function drawMangaDaedalusRescue(x, y, opts = {}) {
     floatBob: standing ? 0.6 : 2.2,
     sway: standing ? 0.010 : 0.020,
   };
-  const drew = drawMangaFxAnimation('daedalusRescue', time, x, drawY, drawOpts)
-    || drawMangaAtlasFrame('daedalusRescue', x, drawY, drawOpts);
+  const drew = drawMangaAtlasFrame('daedalusRescue', x, drawY, drawOpts)
+    || drawMangaFxAnimation('daedalusRescue', time, x, drawY, drawOpts);
   ctx.restore();
   return drew;
 }
@@ -4145,10 +4150,12 @@ function drawIcarusMangaSprite() {
         animName: anim,
         hero: true,
         film: true,
-        fps: anim === 'flap' ? 8 : undefined,
+        phaseTime: anim === 'flap' ? wingCycle : undefined,
+        frameBlendStrength: anim === 'flap' ? 0.26 : undefined,
       };
-  const drew = art && typeof art.drawAnimation === 'function'
-    ? art.drawAnimation(ctx, ICARUS_MANGA_SHEET_ASSET, anim, anim === 'flap' ? wingCycle : time, drawX, drawY, frameOpts)
+  const drawAnim = art && (art.drawActedAnimation || art.drawAnimation);
+  const drew = drawAnim
+    ? drawAnim(ctx, ICARUS_MANGA_SHEET_ASSET, anim, time, drawX, drawY, frameOpts)
     : (art && typeof art.drawFilmFrame === 'function'
       ? art.drawFilmFrame(ctx, ICARUS_MANGA_SHEET_ASSET, frame, drawX, drawY, frameOpts)
     : Manga.assets.drawFrame(ctx, ICARUS_MANGA_SHEET_ASSET, frame, drawX, drawY, {
