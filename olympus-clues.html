@@ -91,15 +91,14 @@ function render() {
     : { earned: [], early: [], current: null, future: null, complete: false, codeword: 'ZEUS' };
   const current = journal.current || (!journal.complete ? journal.prologue : null);
   const wordReady = wordAssembled(journal);
-  const steps = buildJournalSteps(M, journal, current);
   const layout = journalLayout(W, H);
 
   drawJournalSurface(layout.board, art, t);
-  drawJournalHeader(layout, journal, current, art, t, wordReady);
-  drawPathRail(layout.path, steps, journal, current, layout.pathHorizontal);
-  drawCurrentOmenPanel(layout.main, journal, current, steps, art, layout.veryShort, wordReady);
-  drawFragmentLedger(layout.ledger, journal, current, art, layout.veryShort);
-  drawJournalFooter(layout, journal, current, wordReady);
+  drawJournalHeader(layout, journal, art, wordReady);
+  drawSealStrip(layout.seals, journal);
+  drawCurrentOmenPanel(layout.active, journal, current, layout, wordReady);
+  drawRecoveredMarks(layout.marks, journal, layout);
+  drawJournalFooter(layout, journal, wordReady);
 
   drawCluesDebugOverlay(layout.board);
 
@@ -177,270 +176,414 @@ function drawClueBackdrop(W, H, t, art) {
 }
 
 function journalLayout(W, H) {
-  const side = Math.max(14, Math.min(46, W * 0.045));
-  const bottomReserve = H < 460 ? 86 : 108;
-  const boardW = Math.max(320, Math.min(1060, W - side * 2));
-  const boardH = Math.max(276, Math.min(620, H - bottomReserve - 22));
+  const side = Math.max(14, Math.min(50, W * 0.045));
+  const bottomReserve = H < 460 ? 78 : 108;
+  const boardW = Math.max(320, Math.min(1080, W - side * 2));
+  const boardH = Math.max(270, Math.min(620, H - bottomReserve - 20));
   const boardX = (W - boardW) / 2;
-  const boardY = Math.max(16, Math.min(66, (H - boardH - bottomReserve) * 0.48));
-  const compact = boardW < 810 || boardH < 440;
+  const boardY = Math.max(14, Math.min(66, (H - boardH - bottomReserve) * 0.48));
+  const compact = boardW < 820 || boardH < 430;
   const veryShort = boardH < 340;
-  const pad = veryShort ? 12 : (compact ? 16 : 24);
-  const headerH = veryShort ? 40 : (compact ? 56 : 78);
-  const gap = veryShort ? 6 : 12;
+  const pad = veryShort ? 14 : (compact ? 18 : 28);
+  const gap = veryShort ? 8 : 16;
+  const headerH = veryShort ? 54 : (compact ? 70 : 88);
+  const footerH = veryShort ? 0 : 26;
   const innerX = boardX + pad;
   const innerY = boardY + pad;
   const innerW = boardW - pad * 2;
   const innerH = boardH - pad * 2;
   const header = { x: innerX, y: innerY, w: innerW, h: headerH };
+  const sealW = Math.min(compact ? 122 : 176, innerW * 0.36);
+  const seals = {
+    x: header.x + header.w - sealW,
+    y: header.y + (veryShort ? 4 : 10),
+    w: sealW,
+    h: veryShort ? 30 : 38,
+  };
+  const bodyY = header.y + headerH + gap;
+  const bodyH = Math.max(120, innerY + innerH - bodyY - footerH - (footerH ? gap : 0));
 
   if (compact) {
-    const pathH = veryShort ? 38 : 58;
-    const minMainH = veryShort ? 102 : 138;
-    const ledgerH = Math.max(48, Math.min(veryShort ? 52 : 92, innerH - headerH - pathH - minMainH - gap * 3));
-    const path = { x: innerX, y: header.y + headerH + gap, w: innerW, h: pathH };
-    const mainY = path.y + pathH + gap;
-    const mainH = Math.max(minMainH, innerY + innerH - mainY - ledgerH - gap);
-    const ledger = { x: innerX, y: mainY + mainH + gap, w: innerW, h: Math.max(42, innerY + innerH - (mainY + mainH + gap)) };
-    return { board: { x: boardX, y: boardY, w: boardW, h: boardH }, header, path, main: { x: innerX, y: mainY, w: innerW, h: mainH }, ledger, compact, veryShort, pathHorizontal: true };
+    const marksH = Math.max(veryShort ? 46 : 78, Math.min(veryShort ? 56 : 128, bodyH * (veryShort ? 0.24 : 0.34)));
+    const activeH = Math.max(106, bodyH - marksH - gap);
+    return {
+      board: { x: boardX, y: boardY, w: boardW, h: boardH },
+      header,
+      seals,
+      active: { x: innerX, y: bodyY, w: innerW, h: activeH },
+      marks: { x: innerX, y: bodyY + activeH + gap, w: innerW, h: Math.max(42, bodyH - activeH - gap) },
+      footer: { x: innerX, y: innerY + innerH - footerH, w: innerW, h: footerH },
+      compact,
+      veryShort,
+    };
   }
 
-  const railW = Math.min(240, Math.max(212, innerW * 0.25));
-  const ledgerH = Math.min(150, Math.max(124, innerH * 0.25));
-  const path = { x: innerX, y: header.y + headerH + gap, w: railW, h: innerH - headerH - gap };
-  const main = { x: innerX + railW + gap, y: header.y + headerH + gap, w: innerW - railW - gap, h: innerH - headerH - ledgerH - gap * 2 };
-  const ledger = { x: main.x, y: main.y + main.h + gap, w: main.w, h: ledgerH };
-  return { board: { x: boardX, y: boardY, w: boardW, h: boardH }, header, path, main, ledger, compact, veryShort, pathHorizontal: false };
-}
-
-function buildJournalSteps(M, journal, current) {
-  const steps = [];
-  if (journal && journal.prologue) steps.push(journal.prologue);
-  const sourceClues = M && Array.isArray(M.clues) ? M.clues : [];
-  for (const c of sourceClues) {
-    const decorated = M && typeof M.findClue === 'function' ? M.findClue(c.id) : c;
-    if (decorated && !steps.some(step => step.id === decorated.id)) steps.push(decorated);
-  }
-  if (!steps.length && current) steps.push(current);
-  return steps;
+  const marksW = Math.min(342, Math.max(292, innerW * 0.34));
+  const activeW = innerW - marksW - gap;
+  return {
+    board: { x: boardX, y: boardY, w: boardW, h: boardH },
+    header,
+    seals,
+    active: { x: innerX, y: bodyY, w: activeW, h: bodyH },
+    marks: { x: innerX + activeW + gap, y: bodyY, w: marksW, h: bodyH },
+    footer: { x: innerX, y: innerY + innerH - footerH, w: innerW, h: footerH },
+    compact,
+    veryShort,
+  };
 }
 
 function drawJournalSurface(board, art, t) {
   ctx.save();
   if (MANGA_ON && art && art.drawPanel) {
     art.drawPanel(ctx, board.x, board.y, board.w, board.h, {
-      paper: 'rgba(238,228,198,0.97)',
-      bottom: 'rgba(156,137,103,0.97)',
+      paper: 'rgba(239,229,199,0.97)',
+      bottom: 'rgba(164,145,108,0.96)',
       accent: GOLD,
-      lineWidth: 3.8,
-      toneAlpha: 0.10,
+      lineWidth: 3.4,
+      toneAlpha: 0.07,
       shadow: 'rgba(0,0,0,0.50)',
     });
   } else {
     ctx.fillStyle = 'rgba(8,7,7,0.95)';
     ctx.beginPath();
-    ctx.roundRect(board.x, board.y, board.w, board.h, 12);
+    ctx.roundRect(board.x, board.y, board.w, board.h, 10);
     ctx.fill();
     const inner = ctx.createLinearGradient(0, board.y, 0, board.y + board.h);
-    inner.addColorStop(0, 'rgba(50,39,25,0.86)');
-    inner.addColorStop(1, 'rgba(18,12,18,0.92)');
+    inner.addColorStop(0, 'rgba(48,38,24,0.90)');
+    inner.addColorStop(1, 'rgba(16,11,17,0.94)');
     ctx.fillStyle = inner;
     ctx.beginPath();
-    ctx.roundRect(board.x + 8, board.y + 8, board.w - 16, board.h - 16, 8);
+    ctx.roundRect(board.x + 7, board.y + 7, board.w - 14, board.h - 14, 7);
     ctx.fill();
     ctx.strokeStyle = GOLD;
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 1.35;
     ctx.shadowColor = GOLD;
-    ctx.shadowBlur = 12;
+    ctx.shadowBlur = 10;
     ctx.beginPath();
-    ctx.roundRect(board.x, board.y, board.w, board.h, 12);
+    ctx.roundRect(board.x, board.y, board.w, board.h, 10);
     ctx.stroke();
     ctx.shadowBlur = 0;
   }
 
-  ctx.globalAlpha = MANGA_ON ? 0.11 : 0.11;
+  ctx.globalAlpha = MANGA_ON ? 0.10 : 0.09;
   ctx.strokeStyle = MANGA_ON ? '#0a0a0a' : GOLD;
   ctx.lineWidth = 1;
-  for (let i = 0; i < 11; i++) {
-    const x = board.x + 34 + i * (board.w - 68) / 10;
+  const cx = board.x + board.w * 0.56;
+  const cy = board.y + board.h * 0.52;
+  for (let i = 0; i < 5; i++) {
+    const a = t * 0.05 + i * Math.PI * 0.42;
+    const r = board.w * (0.13 + i * 0.045);
     ctx.beginPath();
-    ctx.moveTo(x, board.y + 18);
-    ctx.lineTo(x + Math.sin(t + i) * 4, board.y + board.h - 18);
+    ctx.ellipse(cx, cy, r, r * 0.42, a, 0, Math.PI * 2);
     ctx.stroke();
   }
-  for (let i = 0; i < 6; i++) {
-    const y = board.y + 36 + i * (board.h - 72) / 5;
-    ctx.beginPath();
-    ctx.moveTo(board.x + 18, y);
-    ctx.lineTo(board.x + board.w - 18, y + Math.cos(t * 0.7 + i) * 3);
-    ctx.stroke();
-  }
+  ctx.globalAlpha = MANGA_ON ? 0.16 : 0.12;
+  ctx.beginPath();
+  ctx.moveTo(board.x + 24, board.y + 98);
+  ctx.lineTo(board.x + board.w - 24, board.y + 98);
+  ctx.stroke();
   ctx.restore();
 }
 
-function drawJournalHeader(layout, journal, current, art, t, wordReady) {
+function drawJournalHeader(layout, journal, art, wordReady) {
   const h = layout.header;
-  const titleSize = layout.veryShort ? 15 : (layout.compact ? 20 : 27);
-  const subSize = layout.veryShort ? 10 : 12;
+  const titleSize = layout.veryShort ? 18 : (layout.compact ? 23 : 31);
+  const kickerFont = `bold ${layout.veryShort ? 9 : 10}px monospace`;
+  const subtitleFont = `${MANGA_ON ? 'bold' : 'italic'} ${layout.veryShort ? 10 : 12}px ${MANGA_ON ? 'monospace' : 'serif'}`;
+  const titleMaxW = Math.max(120, layout.seals.x - h.x - 16);
+  const title = 'THE MOUNTAIN ARCHIVE';
+  const titleY = h.y + (layout.veryShort ? 34 : 43);
+
   ctx.save();
   ctx.textAlign = 'left';
-  ctx.font = 'bold 10px monospace';
+  ctx.font = kickerFont;
   ctx.fillStyle = MANGA_ON ? '#6d3f14' : 'rgba(255,213,74,0.78)';
-  ctx.fillText('WHAT YOU HAVE LEARNED', h.x, h.y + 13);
+  ctx.fillText('WHAT YOU HAVE LEARNED', h.x, h.y + 12);
   if (MANGA_ON && art && art.inkText) {
-    art.inkText(ctx, 'THE MOUNTAIN ARCHIVE', h.x, h.y + titleSize + (layout.veryShort ? 17 : 20), {
+    const fitted = fitText(title, `900 ${titleSize}px "Impact", "Arial Black", sans-serif`, titleMaxW, titleSize, 15);
+    art.inkText(ctx, title, h.x, titleY, {
       align: 'left',
-      font: `900 ${titleSize}px "Impact", "Arial Black", sans-serif`,
+      font: `900 ${fitted.size}px "Impact", "Arial Black", sans-serif`,
       fill: '#fff1b8',
       shadow: GOLD,
-      shadowBlur: 6,
-      strokeWidth: layout.veryShort ? 3 : 4,
+      shadowBlur: 5,
+      strokeWidth: layout.veryShort ? 2.6 : 3.6,
     });
   } else {
-    ctx.font = `bold ${titleSize}px serif`;
+    const fitted = fitText(title, `bold ${titleSize}px serif`, titleMaxW, titleSize, 15);
+    ctx.font = `bold ${fitted.size}px serif`;
     ctx.fillStyle = GOLD;
     ctx.shadowColor = GOLD;
-    ctx.shadowBlur = 9;
-    ctx.fillText('THE MOUNTAIN ARCHIVE', h.x, h.y + titleSize + (layout.veryShort ? 17 : 20));
+    ctx.shadowBlur = 8;
+    ctx.fillText(title, h.x, titleY);
     ctx.shadowBlur = 0;
   }
   if (!layout.veryShort) {
-    ctx.font = `${MANGA_ON ? 'bold' : 'italic'} ${subSize}px ${MANGA_ON ? 'monospace' : 'serif'}`;
-    ctx.fillStyle = MANGA_ON ? 'rgba(35,22,12,0.78)' : 'rgba(230,210,160,0.72)';
-    const status = wordReady
-      ? 'the four marks now read as one name'
-      : 'each sign opens only after its myth is answered';
-    ctx.fillText(status, h.x, h.y + h.h - 6);
-  }
-
-  const meterX = h.x + h.w - (layout.compact ? 118 : 176);
-  const meterY = h.y + (layout.veryShort ? 5 : 10);
-  const slotW = layout.compact ? 21 : 32;
-  const letters = String(journal.codeword || 'ZEUS').split('');
-  const earnedLetters = earnedLetterSet(journal);
-  for (let i = 0; i < 4; i++) {
-    const x = meterX + i * (slotW + 6);
-    const solved = earnedLetters.has(letters[i]);
-    ctx.fillStyle = solved ? (MANGA_ON ? '#fff1b8' : 'rgba(212,175,55,0.20)') : (MANGA_ON ? 'rgba(255,248,220,0.32)' : 'rgba(0,0,0,0.26)');
-    ctx.strokeStyle = solved ? GOLD : (MANGA_ON ? 'rgba(10,10,10,0.38)' : 'rgba(212,175,55,0.34)');
-    ctx.lineWidth = solved ? 2 : 1;
-    ctx.beginPath();
-    ctx.roundRect(x, meterY, slotW, layout.veryShort ? 22 : 30, 4);
-    ctx.fill();
-    ctx.stroke();
-    ctx.font = `bold ${layout.veryShort ? 12 : 16}px monospace`;
-    ctx.textAlign = 'center';
-    ctx.fillStyle = solved ? (MANGA_ON ? '#0a0a0a' : GOLD) : (MANGA_ON ? 'rgba(10,10,10,0.36)' : 'rgba(220,200,150,0.42)');
-    ctx.fillText(solved ? letters[i] : '?', x + slotW / 2, meterY + (layout.veryShort ? 16 : 21));
+    ctx.font = subtitleFont;
+    ctx.fillStyle = MANGA_ON ? 'rgba(35,22,12,0.76)' : 'rgba(230,210,160,0.72)';
+    const subtitle = wordReady
+      ? 'four recovered marks now read as one name'
+      : 'each mark appears only when its myth answers back';
+    ctx.fillText(ellipsize(subtitle, titleMaxW), h.x, h.y + h.h - 10);
   }
   ctx.restore();
 }
 
-function drawPathRail(rect, steps, journal, current, horizontal) {
-  const accent = MANGA_ON ? '#0a0a0a' : GOLD;
-  const tight = horizontal && rect.h < 50;
-  drawInsetPanel(rect, tight ? '' : 'PATH OF SIGNS', accent);
-
-  const lead = tight ? 48 : 23;
-  const trail = tight ? 20 : 23;
-  const usable = horizontal ? Math.max(1, rect.w - lead - trail) : Math.max(1, rect.h - 62);
-  const count = Math.max(1, steps.length);
-  const start = horizontal ? rect.x + lead : rect.y + 46;
-  const gap = count > 1 ? usable / (count - 1) : 0;
-  const nodeR = horizontal ? Math.min(15, Math.max(10, rect.h * 0.22)) : 17;
-
+function drawSealStrip(rect, journal) {
+  const code = String(journal.codeword || 'ZEUS').toUpperCase().split('');
+  const earned = earnedLetterSet(journal);
+  const gap = rect.w < 140 ? 6 : 8;
+  const slot = Math.min(rect.h, (rect.w - gap * (code.length - 1)) / Math.max(1, code.length));
+  const startX = rect.x + rect.w - (slot * code.length + gap * (code.length - 1));
   ctx.save();
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = MANGA_ON ? 'rgba(10,10,10,0.42)' : 'rgba(212,175,55,0.36)';
-  ctx.beginPath();
-  if (horizontal) {
-    ctx.moveTo(start, rect.y + rect.h * 0.50);
-    ctx.lineTo(start + usable, rect.y + rect.h * 0.50);
-  } else {
-    ctx.moveTo(rect.x + 29, start);
-    ctx.lineTo(rect.x + 29, start + usable);
-  }
-  ctx.stroke();
-
-  for (let i = 0; i < steps.length; i++) {
-    const step = steps[i];
-    const x = horizontal ? start + i * gap : rect.x + 29;
-    const y = horizontal ? rect.y + rect.h * 0.50 : start + i * gap;
-    drawPathNode(x, y, nodeR, step, clueStepState(step, journal, current), i, horizontal, rect);
+  for (let i = 0; i < code.length; i++) {
+    const letter = code[i];
+    const known = earned.has(letter);
+    const x = startX + i * (slot + gap);
+    const y = rect.y + (rect.h - slot) / 2;
+    drawSealSlot(x, y, slot, letter, known);
   }
   ctx.restore();
 }
 
-function drawPathNode(x, y, r, step, state, index, horizontal, bounds) {
-  const stateColor = {
-    current: GOLD,
-    resolved: '#84d68a',
-    early: '#cc88ff',
-    final: '#ff88cc',
-    locked: MANGA_ON ? 'rgba(10,10,10,0.34)' : 'rgba(210,190,150,0.38)',
-    available: GOLD,
-  }[state] || GOLD;
-  const known = stepKnown(step, state);
-  const label = known
-    ? (step && step.letter ? step.letter : romanMark(index + 1))
-    : '?';
+function drawSealSlot(x, y, size, letter, known) {
   ctx.save();
-  ctx.fillStyle = MANGA_ON ? '#fff6d6' : 'rgba(6,4,10,0.92)';
-  if (state === 'locked') ctx.fillStyle = MANGA_ON ? 'rgba(255,248,220,0.52)' : 'rgba(6,4,10,0.58)';
-  ctx.strokeStyle = stateColor;
-  ctx.lineWidth = state === 'current' ? 3.2 : 2;
-  ctx.shadowColor = state === 'current' && !MANGA_ON ? GOLD : 'transparent';
-  ctx.shadowBlur = state === 'current' && !MANGA_ON ? 10 : 0;
+  ctx.fillStyle = known
+    ? (MANGA_ON ? '#fff1b8' : 'rgba(212,175,55,0.18)')
+    : (MANGA_ON ? 'rgba(255,248,220,0.24)' : 'rgba(0,0,0,0.22)');
+  ctx.strokeStyle = known ? GOLD : (MANGA_ON ? 'rgba(10,10,10,0.34)' : 'rgba(212,175,55,0.28)');
+  ctx.lineWidth = known ? 1.8 : 1;
   ctx.beginPath();
-  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.roundRect(x, y, size, size, 5);
   ctx.fill();
   ctx.stroke();
-  ctx.shadowBlur = 0;
-
-  ctx.textAlign = 'center';
-  ctx.font = `bold ${Math.max(11, r * 0.72)}px monospace`;
-  ctx.fillStyle = state === 'locked' ? (MANGA_ON ? 'rgba(10,10,10,0.44)' : 'rgba(220,200,150,0.50)') : (MANGA_ON ? '#0a0a0a' : stateColor);
-  ctx.fillText(label, x, y + 4);
-
-  const realm = known
-    ? (step && step.id === 'clue.toad' ? 'opening sign' : String(step && (step.realm || step.targetGame) || 'opened'))
-    : 'unread sign';
-  ctx.font = `bold ${horizontal ? 9 : 10}px monospace`;
-  ctx.fillStyle = state === 'current' ? (MANGA_ON ? '#6d3f14' : GOLD) : (MANGA_ON ? 'rgba(35,22,12,0.62)' : 'rgba(235,220,180,0.58)');
-  if (horizontal) {
-    if (bounds.h >= 50) {
-      const maxW = Math.max(46, bounds.w / Math.max(5, step ? 5 : 1) - 6);
-      ctx.fillText(ellipsize(realm, maxW), x, y + r + 14);
-    }
+  if (known) {
+    ctx.font = `bold ${Math.max(12, size * 0.52)}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = MANGA_ON ? '#0a0a0a' : GOLD;
+    ctx.fillText(letter, x + size / 2, y + size * 0.67);
   } else {
-    ctx.textAlign = 'left';
-    if (known) {
-      ctx.fillText(ellipsize(realm, bounds.w - 58), x + r + 10, y - 2);
-      ctx.font = '9px monospace';
-      const status = state === 'current' ? 'active' : (state === 'resolved' ? 'opened' : (state === 'early' ? 'kept early' : 'opened'));
-      ctx.fillStyle = MANGA_ON ? 'rgba(35,22,12,0.50)' : 'rgba(235,220,180,0.46)';
-      ctx.fillText(status, x + r + 10, y + 12);
-    } else {
-      ctx.fillStyle = MANGA_ON ? 'rgba(35,22,12,0.34)' : 'rgba(235,220,180,0.34)';
-      ctx.fillText(ellipsize(realm, bounds.w - 58), x + r + 10, y + 4);
-    }
+    ctx.globalAlpha *= 0.46;
+    ctx.strokeStyle = MANGA_ON ? '#0a0a0a' : GOLD;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x + size * 0.36, y + size * 0.50);
+    ctx.lineTo(x + size * 0.64, y + size * 0.50);
+    ctx.stroke();
   }
   ctx.restore();
 }
 
-function clueStepState(step, journal, current) {
-  if (!step) return 'locked';
-  if (step.id !== 'clue.toad' && !step.unlocked) return 'locked';
-  if (journal.complete && !current && step.order === 4) return 'final';
-  if (current && step.id === current.id) return 'current';
-  if (step.resolved) return 'resolved';
-  if (step.foundEarly) return 'early';
-  if (step.unlocked) return 'available';
-  return 'locked';
+function drawCurrentOmenPanel(rect, journal, current, layout, wordReady) {
+  const active = wordReady ? finalArchiveEntry(journal) : archiveViewForClue(current || journal.prologue || {});
+  drawSoftPanel(rect, { accent: wordReady ? '#8f204f' : GOLD });
+  clipRect(rect, () => {
+    const pad = layout.veryShort ? 14 : 20;
+    const x = rect.x + pad;
+    const w = rect.w - pad * 2;
+    let y = rect.y + (layout.veryShort ? 24 : 32);
+    const titleSize = layout.veryShort ? 17 : (layout.compact ? 21 : 26);
+    const bodySize = layout.veryShort ? 13 : (layout.compact ? 15 : 17);
+    const noteSize = layout.compact ? 10 : 11;
+    const kicker = wordReady ? 'THE NAME IS WHOLE' : [active.realm, active.actionVerb].filter(Boolean).join(' / ').toUpperCase();
+
+    ctx.save();
+    ctx.textAlign = 'left';
+    ctx.font = `bold ${layout.veryShort ? 9 : 10}px monospace`;
+    ctx.fillStyle = MANGA_ON ? '#6d3f14' : 'rgba(255,213,74,0.78)';
+    ctx.fillText(ellipsize(kicker || 'ACTIVE SIGN', w), x, y);
+    y += layout.veryShort ? 19 : 25;
+
+    const titleFontBase = MANGA_ON ? `900 ${titleSize}px Georgia, serif` : `bold ${titleSize}px serif`;
+    const fittedTitle = fitText(active.title || 'AN OMEN', titleFontBase, w, titleSize, layout.veryShort ? 14 : 18);
+    ctx.font = MANGA_ON ? `900 ${fittedTitle.size}px Georgia, serif` : `bold ${fittedTitle.size}px serif`;
+    ctx.fillStyle = MANGA_ON ? '#0a0a0a' : '#f4e8c4';
+    ctx.fillText(ellipsize(active.title || 'AN OMEN', w), x, y);
+    y += fittedTitle.size + (layout.veryShort ? 8 : 11);
+
+    const bodyFont = MANGA_ON ? `bold ${bodySize}px Georgia, serif` : `italic ${bodySize}px serif`;
+    ctx.font = bodyFont;
+    ctx.fillStyle = MANGA_ON ? '#21170d' : 'rgba(240,230,200,0.94)';
+    const noteReserve = layout.veryShort ? 0 : 42;
+    const maxBodyLines = Math.max(1, Math.floor((rect.y + rect.h - pad - y - noteReserve) / (bodySize + 5)));
+    y = drawTextBlock(active.riddle || active.text || '', x, y, w, bodySize + 5, maxBodyLines, bodyFont, ctx.fillStyle);
+
+    if (!layout.veryShort) {
+      y += 12;
+      const noteFont = `bold ${noteSize}px monospace`;
+      ctx.font = noteFont;
+      ctx.fillStyle = MANGA_ON ? 'rgba(48,31,15,0.72)' : 'rgba(220,200,150,0.70)';
+      const note = active.journalNudge || active.mythBasis || active.purpose || '';
+      drawTextBlock(note, x, y, w, noteSize + 4, 2, noteFont, ctx.fillStyle);
+    }
+    ctx.restore();
+  });
 }
 
-function stepKnown(step, state) {
-  return !!step && (step.id === 'clue.toad' || state === 'current' || state === 'resolved' || state === 'early' || state === 'available' || state === 'final');
+function drawRecoveredMarks(rect, journal, layout) {
+  drawSoftPanel(rect, { accent: GOLD });
+  clipRect(rect, () => {
+    const earned = journal.earned || [];
+    const pad = layout.veryShort ? 12 : 16;
+    let y = rect.y + (layout.veryShort ? 21 : 28);
+    const titleFont = `bold ${layout.veryShort ? 9 : 10}px monospace`;
+    ctx.save();
+    ctx.textAlign = 'left';
+    ctx.font = titleFont;
+    ctx.fillStyle = MANGA_ON ? '#6d3f14' : 'rgba(255,213,74,0.72)';
+    ctx.fillText('RECOVERED MARKS', rect.x + pad, rect.y + (layout.veryShort ? 15 : 18));
+
+    if (!earned.length) {
+      const empty = 'No marks have been recovered yet. The first inscription points toward Icarus.';
+      const font = MANGA_ON ? `bold ${layout.veryShort ? 12 : 14}px Georgia, serif` : `italic ${layout.veryShort ? 12 : 14}px serif`;
+      ctx.fillStyle = MANGA_ON ? 'rgba(33,23,13,0.72)' : 'rgba(240,230,200,0.72)';
+      drawTextBlock(empty, rect.x + pad, y + 6, rect.w - pad * 2, layout.veryShort ? 15 : 18, layout.veryShort ? 2 : 3, font, ctx.fillStyle);
+      ctx.restore();
+      return;
+    }
+
+    if (layout.compact) {
+      drawCompactMarkStrip(rect, earned, layout, y);
+      ctx.restore();
+      return;
+    }
+
+    const visible = earned.slice(-4);
+    const gap = 10;
+    const rowH = Math.max(62, Math.min(94, (rect.y + rect.h - pad - y - gap * (visible.length - 1)) / visible.length));
+    for (let i = 0; i < visible.length; i++) {
+      drawMarkRow(rect.x + pad, y + i * (rowH + gap), rect.w - pad * 2, rowH, visible[i], layout);
+    }
+    ctx.restore();
+  });
+}
+
+function drawCompactMarkStrip(rect, earned, layout, y) {
+  const pad = layout.veryShort ? 12 : 16;
+  const visible = earned.slice(-4);
+  const gap = 8;
+  const availableW = rect.w - pad * 2;
+  const tileW = (availableW - gap * (visible.length - 1)) / Math.max(1, visible.length);
+  const tileH = Math.max(26, rect.y + rect.h - y - pad);
+  for (let i = 0; i < visible.length; i++) {
+    drawMarkTile(rect.x + pad + i * (tileW + gap), y, tileW, tileH, visible[i], layout);
+  }
+}
+
+function drawMarkRow(x, y, w, h, clue, layout) {
+  const accent = clue.foundEarly ? '#cc88ff' : (clue.resolved ? '#84d68a' : GOLD);
+  drawSoftPanel({ x, y, w, h }, { accent, subtle: true });
+  clipRect({ x, y, w, h }, () => {
+    const badge = Math.min(42, h - 20);
+    drawLetterBadge(x + 12, y + 10, badge, clue.letter || '?', accent);
+    const tx = x + 12 + badge + 12;
+    const tw = w - (tx - x) - 12;
+    let ty = y + 21;
+    ctx.save();
+    ctx.textAlign = 'left';
+    ctx.font = 'bold 10px monospace';
+    ctx.fillStyle = MANGA_ON ? '#6d3f14' : 'rgba(255,213,74,0.78)';
+    const status = clue.foundEarly ? 'EARLY MARK' : (clue.resolved ? 'OPENED' : 'ACTIVE');
+    ctx.fillText(ellipsize(status, tw), tx, ty);
+    ty += 17;
+    const bodyFont = MANGA_ON ? 'bold 13px Georgia, serif' : '13px serif';
+    ctx.fillStyle = MANGA_ON ? '#21170d' : 'rgba(240,230,200,0.88)';
+    drawTextBlock(markSummary(clue), tx, ty, tw, 16, Math.max(1, Math.floor((y + h - ty - 8) / 16)), bodyFont, ctx.fillStyle);
+    ctx.restore();
+  });
+}
+
+function drawMarkTile(x, y, w, h, clue, layout) {
+  const accent = clue.foundEarly ? '#cc88ff' : (clue.resolved ? '#84d68a' : GOLD);
+  drawSoftPanel({ x, y, w, h }, { accent, subtle: true });
+  clipRect({ x, y, w, h }, () => {
+    const badge = Math.min(layout.veryShort ? 24 : 30, h - 10);
+    drawLetterBadge(x + 8, y + (h - badge) / 2, badge, clue.letter || '?', accent);
+    ctx.save();
+    ctx.textAlign = 'left';
+    ctx.font = `bold ${layout.veryShort ? 9 : 10}px monospace`;
+    ctx.fillStyle = MANGA_ON ? '#6d3f14' : 'rgba(255,213,74,0.78)';
+    const status = clue.foundEarly ? 'EARLY' : (clue.resolved ? 'OPENED' : 'ACTIVE');
+    ctx.fillText(ellipsize(status, w - badge - 22), x + badge + 16, y + h * 0.58);
+    ctx.restore();
+  });
+}
+
+function drawLetterBadge(x, y, size, letter, accent) {
+  ctx.save();
+  ctx.fillStyle = MANGA_ON ? '#fff6d6' : 'rgba(6,4,10,0.84)';
+  ctx.strokeStyle = accent || GOLD;
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.roundRect(x, y, size, size, 5);
+  ctx.fill();
+  ctx.stroke();
+  ctx.font = `bold ${Math.max(13, size * 0.56)}px monospace`;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = MANGA_ON ? '#0a0a0a' : accent || GOLD;
+  ctx.fillText(letter, x + size / 2, y + size * 0.68);
+  ctx.restore();
+}
+
+function drawJournalFooter(layout, journal, wordReady) {
+  if (layout.veryShort || !layout.footer.h) return;
+  const f = layout.footer;
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 10px monospace';
+  ctx.fillStyle = MANGA_ON ? 'rgba(30,20,12,0.56)' : 'rgba(180,180,180,0.44)';
+  let text = 'press T or ESC to return';
+  if (wordReady) text = 'the summit waits for the name';
+  else if (journal.future && (journal.earned || []).length > 0) text = 'more ink waits below the surface';
+  ctx.fillText(ellipsize(text.toUpperCase(), f.w), f.x + f.w / 2, f.y + Math.max(14, f.h - 7));
+  ctx.restore();
+}
+
+function drawSoftPanel(rect, opts = {}) {
+  const accent = opts.accent || GOLD;
+  ctx.save();
+  ctx.fillStyle = opts.subtle
+    ? (MANGA_ON ? 'rgba(255,248,220,0.24)' : 'rgba(0,0,0,0.18)')
+    : (MANGA_ON ? 'rgba(255,248,220,0.32)' : 'rgba(0,0,0,0.24)');
+  ctx.strokeStyle = MANGA_ON ? 'rgba(10,10,10,0.62)' : 'rgba(212,175,55,0.46)';
+  ctx.lineWidth = opts.subtle ? 1 : 1.2;
+  ctx.beginPath();
+  ctx.roundRect(rect.x, rect.y, rect.w, rect.h, opts.subtle ? 6 : 8);
+  ctx.fill();
+  ctx.stroke();
+  ctx.globalAlpha *= opts.subtle ? 0.48 : 0.64;
+  ctx.strokeStyle = accent;
+  ctx.beginPath();
+  ctx.moveTo(rect.x + 12, rect.y + rect.h - 8);
+  ctx.lineTo(rect.x + rect.w - 12, rect.y + rect.h - 8);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function archiveViewForClue(clue) {
+  if (!clue || clue.id !== 'clue.toad') return clue || {};
+  return Object.assign({}, clue, {
+    title: 'THE FIRST SIGN POINTS TO ICARUS',
+    riddle: 'Begin with the boy of wax. Seek the middle path he refused, then rise until the golden eye starts to burn.',
+    text: 'Begin with the boy of wax. Seek the middle path he refused, then rise until the golden eye starts to burn.',
+    journalNudge: 'The clue is not in winning. It is in repeating the mistake Daedalus warned against.',
+  });
+}
+
+function finalArchiveEntry(journal) {
+  return {
+    title: 'THE CIRCLE CLOSES ABOVE',
+    realm: 'Olympus',
+    actionVerb: 'return',
+    riddle: 'A king\'s name is complete. It belongs where thunder gathers, above the roads and outside every arena.',
+    journalNudge: 'No altar asks for it. At the summit, names are answered when they are given to the air.',
+  };
+}
+
+function markSummary(clue) {
+  if (!clue) return '';
+  if (clue.foundEarly) return 'Recovered early; earlier signs still govern the route.';
+  return clue.uncoveredText || clue.text || clue.riddle || '';
 }
 
 function earnedLetterSet(journal) {
@@ -457,216 +600,37 @@ function wordAssembled(journal) {
   return letters.length > 0 && letters.every(letter => earned.has(letter));
 }
 
-function romanMark(n) {
-  return ['I', 'II', 'III', 'IV', 'V'][Math.max(0, Math.min(4, n - 1))] || String(n);
-}
-
-function drawCurrentOmenPanel(rect, journal, current, steps, art, veryShort, wordReady) {
-  drawInsetPanel(rect, wordReady ? 'THE NAME IS WHOLE' : 'ACTIVE SIGN', current && current.foundEarly ? '#cc88ff' : GOLD);
-  const final = wordReady;
-  const active = final
-    ? {
-        title: 'THE CIRCLE CLOSES ABOVE',
-        realm: 'Olympus',
-        actionVerb: 'return',
-        riddle: 'A king\'s name is complete. It belongs where thunder gathers, above the roads and outside every arena.',
-        journalNudge: 'No altar asks for it. At the summit, names are answered when they are given to the air.',
-        mythBasis: 'Zeus is the Olympian king who overthrew the Titans and rules through the thunderbolt.',
-      }
-    : archiveViewForClue(current || steps[0] || {});
-  const pad = veryShort ? 14 : 18;
-  const x = rect.x + pad;
-  let y = rect.y + (veryShort ? 32 : 42);
-  const w = rect.w - pad * 2;
-  const kicker = [active.realm, active.actionVerb].filter(Boolean).join(' / ').toUpperCase();
-  const titleFont = MANGA_ON ? `900 ${veryShort ? 17 : 22}px Georgia, serif` : `bold ${veryShort ? 17 : 22}px serif`;
-  const bodyFont = MANGA_ON ? `bold ${veryShort ? 13 : 16}px Georgia, serif` : `italic ${veryShort ? 13 : 16}px serif`;
-  const noteFont = `bold ${veryShort ? 10 : 12}px monospace`;
-
+function clipRect(rect, fn) {
   ctx.save();
-  ctx.textAlign = 'left';
-  ctx.font = 'bold 10px monospace';
-  ctx.fillStyle = MANGA_ON ? '#6d3f14' : 'rgba(255,213,74,0.78)';
-  ctx.fillText(kicker || 'OLYMPUS', x, y);
-  y += veryShort ? 20 : 25;
-  ctx.font = titleFont;
-  ctx.fillStyle = MANGA_ON ? '#0a0a0a' : '#f4e8c4';
-  ctx.fillText(ellipsize(active.title || 'AN OMEN', w), x, y);
-  y += veryShort ? 20 : 27;
-  ctx.font = bodyFont;
-  ctx.fillStyle = MANGA_ON ? '#21170d' : 'rgba(240,230,200,0.94)';
-  const bodyMax = veryShort ? 2 : Math.max(3, Math.floor((rect.y + rect.h - y - 42) / (veryShort ? 16 : 20)));
-  const bodyLines = linesFor(active.riddle || active.text || '', w, bodyFont, bodyMax);
-  bodyLines.forEach((line, i) => ctx.fillText(line, x, y + i * (veryShort ? 16 : 20)));
-  y += bodyLines.length * (veryShort ? 16 : 20) + (veryShort ? 8 : 14);
-  ctx.font = noteFont;
-  ctx.fillStyle = MANGA_ON ? 'rgba(48,31,15,0.76)' : 'rgba(220,200,150,0.72)';
-  if (!veryShort) {
-    const note = active.journalNudge || active.mythBasis || active.purpose || '';
-    const noteLines = linesFor(note, w, noteFont, 2);
-    noteLines.forEach((line, i) => ctx.fillText(line, x, y + i * 15));
-  }
-  ctx.restore();
-
-  if (MANGA_ON && art && art.inkText && !veryShort && active.letter) {
-    ctx.save();
-    ctx.globalAlpha = 0.13;
-    art.inkText(ctx, active.letter || '?', rect.x + rect.w - 52, rect.y + rect.h - 24, {
-      align: 'center',
-      font: '900 82px "Impact", "Arial Black", sans-serif',
-      fill: '#0a0a0a',
-      strokeWidth: 0,
-    });
-    ctx.restore();
-  }
-}
-
-function drawFragmentLedger(rect, journal, current, art, veryShort) {
-  const earned = journal.earned || [];
-  drawInsetPanel(rect, 'RECOVERED MARKS', earned.length ? GOLD : (MANGA_ON ? '#0a0a0a' : GOLD));
-  const pad = veryShort ? 8 : 14;
-  const bodyTop = rect.y + (veryShort ? 22 : 34);
-  ctx.save();
-  if (!earned.length) {
-    ctx.font = MANGA_ON ? `bold ${veryShort ? 12 : 14}px Georgia, serif` : `italic ${veryShort ? 12 : 14}px serif`;
-    ctx.fillStyle = MANGA_ON ? 'rgba(33,23,13,0.78)' : 'rgba(240,230,200,0.78)';
-    wrapAndDraw((current && current.purpose) || 'The first recovered marks will gather here.', rect.x + pad, bodyTop, rect.w - pad * 2, veryShort ? 15 : 18, 'left', veryShort ? 2 : 3);
-    ctx.restore();
-    return;
-  }
-
-  const count = veryShort ? Math.min(4, earned.length) : Math.min(3, earned.length);
-  const visible = earned.slice(Math.max(0, earned.length - count));
-  const gap = 8;
-  const cardW = (rect.w - pad * 2 - gap * (visible.length - 1)) / visible.length;
-  const cardH = Math.max(veryShort ? 26 : 36, rect.y + rect.h - bodyTop - pad);
-  visible.forEach((clue, i) => {
-    drawFragmentCard(rect.x + pad + i * (cardW + gap), bodyTop, cardW, cardH, clue, art, veryShort);
-  });
-  if (earned.length > visible.length && !veryShort) {
-    ctx.font = 'bold 10px monospace';
-    ctx.textAlign = 'right';
-    ctx.fillStyle = MANGA_ON ? 'rgba(35,22,12,0.56)' : 'rgba(235,220,180,0.52)';
-    ctx.fillText(`${earned.length - visible.length} earlier mark(s) archived`, rect.x + rect.w - pad, rect.y + 23);
-  }
+  ctx.beginPath();
+  ctx.rect(rect.x, rect.y, rect.w, rect.h);
+  ctx.clip();
+  fn();
   ctx.restore();
 }
 
-function archiveViewForClue(clue) {
-  if (!clue || clue.id !== 'clue.toad') return clue || {};
-  return Object.assign({}, clue, {
-    title: 'THE FIRST SIGN POINTS TO ICARUS',
-    riddle: 'Begin with the boy of wax. Seek the middle path he refused, then rise until the golden eye starts to burn.',
-    text: 'Begin with the boy of wax. Seek the middle path he refused, then rise until the golden eye starts to burn.',
-    journalNudge: 'The clue is not in winning. It is in repeating the mistake Daedalus warned against.',
-  });
-}
-
-function drawFragmentCard(x, y, w, h, clue, art, veryShort) {
-  const accent = clue.foundEarly ? '#cc88ff' : (clue.resolved ? '#84d68a' : GOLD);
-  ctx.save();
-  if (MANGA_ON && art && art.drawPanel) {
-    art.drawPanel(ctx, x, y, w, h, {
-      paper: 'rgba(255,248,220,0.66)',
-      bottom: 'rgba(218,200,160,0.66)',
-      accent,
-      lineWidth: 1.3,
-      toneAlpha: 0.025,
-      shadow: 'rgba(0,0,0,0.07)',
-    });
-  } else {
-    ctx.fillStyle = 'rgba(2,0,6,0.34)';
-    ctx.beginPath();
-    ctx.roundRect(x, y, w, h, 6);
-    ctx.fill();
-    ctx.strokeStyle = accent;
-    ctx.globalAlpha = 0.82;
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-  }
-
-  ctx.textAlign = 'left';
-  ctx.font = `bold ${veryShort ? 16 : 22}px monospace`;
-  ctx.fillStyle = MANGA_ON ? '#0a0a0a' : accent;
-  ctx.fillText(clue.letter || '?', x + 10, y + (veryShort ? 23 : 29));
-  ctx.font = `bold ${veryShort ? 9 : 10}px monospace`;
-  ctx.fillStyle = MANGA_ON ? '#6d3f14' : 'rgba(255,213,74,0.78)';
-  const status = clue.foundEarly ? 'EARLY' : (clue.resolved ? 'OPENED' : 'ACTIVE');
-  ctx.fillText(status, x + 36, y + (veryShort ? 15 : 18));
-  if (veryShort) {
-    ctx.restore();
-    return;
-  }
-  ctx.font = MANGA_ON ? `bold ${veryShort ? 11 : 13}px Georgia, serif` : `${veryShort ? 11 : 13}px serif`;
-  ctx.fillStyle = MANGA_ON ? '#21170d' : 'rgba(240,230,200,0.88)';
-  const text = clue.foundEarly
-    ? 'Kept in the archive, though earlier signs still govern the route.'
-    : (clue.uncoveredText || clue.text || '');
-  const lines = linesFor(text, w - 46, ctx.font, veryShort ? 1 : 2);
-  lines.forEach((line, i) => ctx.fillText(line, x + 36, y + (veryShort ? 31 : 38) + i * (veryShort ? 13 : 15)));
-  ctx.restore();
-}
-
-function drawJournalFooter(layout, journal, current, wordReady) {
-  if (layout.veryShort) return;
-  const board = layout.board;
-  ctx.save();
-  ctx.textAlign = 'center';
-  if (wordReady) {
-    ctx.font = `bold ${layout.veryShort ? 11 : 13}px monospace`;
-    ctx.fillStyle = MANGA_ON ? '#8f204f' : '#ff88cc';
-    ctx.shadowColor = '#ff88cc';
-    ctx.shadowBlur = MANGA_ON ? 0 : 6;
-    ctx.fillText('THE SUMMIT WAITS FOR THE NAME', board.x + board.w / 2, board.y + board.h - 12);
-  } else if (journal.future && (journal.earned || []).length > 0 && !layout.veryShort) {
-    ctx.font = 'italic 12px Georgia, serif';
-    ctx.fillStyle = MANGA_ON ? 'rgba(67,32,79,0.80)' : 'rgba(204,136,255,0.76)';
-    wrapAndDraw('Another mark exists below the ink, but it will not read before its myth is answered.', board.x + board.w / 2, board.y + board.h - 15, board.w - 60, 16, 'center', 1);
-  } else {
-    ctx.font = '10px monospace';
-    ctx.fillStyle = MANGA_ON ? 'rgba(30,20,12,0.58)' : 'rgba(180,180,180,0.46)';
-    ctx.fillText('press T or ESC to return', board.x + board.w / 2, board.y + board.h - 12);
-  }
-  ctx.restore();
-}
-
-function drawInsetPanel(rect, label, accent) {
-  const art = window.GodGames && GodGames.MangaArt;
-  ctx.save();
-  if (MANGA_ON && art && art.drawPanel) {
-    art.drawPanel(ctx, rect.x, rect.y, rect.w, rect.h, {
-      paper: 'rgba(255,248,220,0.50)',
-      bottom: 'rgba(215,197,157,0.46)',
-      accent,
-      lineWidth: 1.35,
-      toneAlpha: 0.025,
-      shadow: 'rgba(0,0,0,0.08)',
-    });
-  } else {
-    ctx.fillStyle = 'rgba(2,0,6,0.34)';
-    ctx.beginPath();
-    ctx.roundRect(rect.x, rect.y, rect.w, rect.h, 7);
-    ctx.fill();
-    ctx.strokeStyle = accent || GOLD;
-    ctx.globalAlpha = 0.72;
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-  }
-  if (label) {
-    ctx.font = 'bold 10px monospace';
-    ctx.textAlign = 'left';
-    ctx.fillStyle = MANGA_ON ? 'rgba(35,22,12,0.68)' : 'rgba(255,213,74,0.64)';
-    ctx.fillText(label, rect.x + 12, rect.y + 18);
-  }
-  ctx.restore();
-}
-
-function linesFor(text, maxW, font, maxLines) {
+function drawTextBlock(text, x, y, maxW, lh, maxLines, font, fill) {
   ctx.save();
   ctx.font = font;
+  ctx.fillStyle = fill;
+  ctx.textAlign = 'left';
   const lines = wrap(text, maxW, maxLines);
+  lines.forEach((line, i) => ctx.fillText(line, x, y + i * lh));
   ctx.restore();
-  return lines;
+  return y + lines.length * lh;
+}
+
+function fitText(text, font, maxW, maxSize, minSize) {
+  const family = String(font).replace(/\b\d+(?:\.\d+)?px\b/, '__SIZE__px');
+  let size = maxSize;
+  ctx.save();
+  while (size > minSize) {
+    ctx.font = family.replace('__SIZE__', String(size));
+    if (ctx.measureText(String(text || '')).width <= maxW) break;
+    size -= 1;
+  }
+  ctx.restore();
+  return { size };
 }
 
 function ellipsize(text, maxW) {
@@ -702,21 +666,32 @@ function drawCluesDebugOverlay(tablet) {
 
 function wrap(text, maxW, maxLines) {
   ctx.save();
-  const words = String(text).split(' ');
-  const out = []; let line = '';
+  const words = String(text || '').trim().split(/\s+/).filter(Boolean);
+  const out = [];
+  let line = '';
   for (const w of words) {
     const test = line ? line + ' ' + w : w;
     if (ctx.measureText(test).width > maxW && line) {
       if (maxLines && out.length >= maxLines - 1) {
-        out.push((line + ' ...').trim());
-        line = '';
-        break;
+        out.push(ellipsize(line, maxW));
+        ctx.restore();
+        return out;
       }
-      out.push(line); line = w;
+      out.push(line);
+      line = ctx.measureText(w).width > maxW ? ellipsize(w, maxW) : w;
+    } else if (ctx.measureText(test).width > maxW) {
+      if (maxLines && out.length >= maxLines - 1) {
+        out.push(ellipsize(test, maxW));
+        ctx.restore();
+        return out;
+      }
+      out.push(ellipsize(test, maxW));
+      line = '';
+    } else {
+      line = test;
     }
-    else line = test;
   }
-  if (line) out.push(line);
+  if (line && (!maxLines || out.length < maxLines)) out.push(line);
   ctx.restore();
   return out;
 }
