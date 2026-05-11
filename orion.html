@@ -813,7 +813,7 @@ function updatePhantoms(dt){
 
 function drawOrionDebugOverlay() {
   const debug = window.GodGames && GodGames.Debug;
-  if (!debug || typeof debug.draw !== 'function') return;
+  if (!debug || typeof debug.draw !== 'function' || (typeof debug.enabled === 'function' && !debug.enabled())) return;
   const items = [];
   const drifts = [];
   if (orion) {
