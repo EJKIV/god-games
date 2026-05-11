@@ -3287,6 +3287,9 @@ function drawMangaFlightStageBackground(W, H, opts = {}) {
 
 function renderMangaSunZone(W, H) {
   const s = icarusMangaStage();
+  const art = icarusMangaArt();
+  const tier = art && typeof art.performanceTier === 'function' ? art.performanceTier() : 'balanced';
+  const rayCount = tier === 'high' ? 34 : (tier === 'low' ? 10 : 18);
   const heat = player ? dangerHeat() : 0.22;
   const pulse = 0.5 + Math.sin(time * 2.1) * 0.5;
   const r = H * (0.18 + pulse * 0.015);
@@ -3304,8 +3307,8 @@ function renderMangaSunZone(W, H) {
   ctx.strokeStyle = '#0a0a0a';
   ctx.lineWidth = 1.5 + heat * 1.6;
   ctx.lineCap = 'round';
-  for (let i = 0; i < 34; i++) {
-    const t = i / 33;
+  for (let i = 0; i < rayCount; i++) {
+    const t = i / Math.max(1, rayCount - 1);
     const ex = -W * 0.10 + t * W * 1.20;
     const ey = s.sunZoneY + Math.sin(time * 0.5 + i) * 10 + (i % 5) * H * 0.025;
     ctx.beginPath();
@@ -3330,6 +3333,9 @@ function renderMangaSunZone(W, H) {
 
 function renderMangaSeaLayer(W, H) {
   const s = icarusMangaStage();
+  const art = icarusMangaArt();
+  const tier = art && typeof art.performanceTier === 'function' ? art.performanceTier() : 'balanced';
+  const waveStep = tier === 'high' ? 10 : (tier === 'low' ? 24 : 16);
   const oY = s.seaY;
   const wet = player ? clamp01(player.wetDmg / 100) : 0;
   const nearWater = player ? clamp01((player.y + 14 - (oY - 76)) / 76) : 0;
@@ -3342,7 +3348,7 @@ function renderMangaSeaLayer(W, H) {
 
   ctx.beginPath();
   ctx.moveTo(0, oY + 5);
-  for (let x = 0; x <= W; x += 10) {
+  for (let x = 0; x <= W; x += waveStep) {
     const y = oY
       + Math.sin(x * 0.018 + time * 1.8) * 8
       + Math.sin(x * 0.043 - time * 2.3) * 4;
@@ -3357,7 +3363,7 @@ function renderMangaSeaLayer(W, H) {
   ctx.strokeStyle = 'rgba(255,255,245,0.74)';
   ctx.lineWidth = 3;
   ctx.beginPath();
-  for (let x = 0; x <= W; x += 10) {
+  for (let x = 0; x <= W; x += waveStep) {
     const y = oY
       + Math.sin(x * 0.018 + time * 1.8) * 8
       + Math.sin(x * 0.043 - time * 2.3) * 4;
@@ -3373,7 +3379,6 @@ function renderMangaSeaLayer(W, H) {
     ctx.beginPath();
     ctx.rect(0, oY - 10, W, H - oY + 10);
     ctx.clip();
-    const art = icarusMangaArt();
     const opts = {
       density: 8,
       dotSize: 1.25,
@@ -3397,6 +3402,8 @@ function renderMangaSeaLayer(W, H) {
 function renderMangaClouds() {
   if (!clouds || !clouds.length) return false;
   const s = icarusMangaStage();
+  const art = icarusMangaArt();
+  const heavy = art && typeof art.heavyEffects === 'function' && art.heavyEffects();
   for (const c of clouds) {
     if (c.y > s.seaY - 42) continue;
     const depth = 1 - icarusSkyDepth(c.y);
@@ -3418,14 +3425,16 @@ function renderMangaClouds() {
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
-    ctx.globalAlpha *= 0.28;
-    ctx.strokeStyle = '#0a0a0a';
-    for (let i = 0; i < 4; i++) {
-      const yy = -c.h * 0.02 + i * c.h * 0.10;
-      ctx.beginPath();
-      ctx.moveTo(-c.w * 0.42 + i * 6, yy);
-      ctx.quadraticCurveTo(0, yy + Math.sin(time + i) * 3, c.w * 0.42 - i * 5, yy + 1);
-      ctx.stroke();
+    if (heavy) {
+      ctx.globalAlpha *= 0.28;
+      ctx.strokeStyle = '#0a0a0a';
+      for (let i = 0; i < 4; i++) {
+        const yy = -c.h * 0.02 + i * c.h * 0.10;
+        ctx.beginPath();
+        ctx.moveTo(-c.w * 0.42 + i * 6, yy);
+        ctx.quadraticCurveTo(0, yy + Math.sin(time + i) * 3, c.w * 0.42 - i * 5, yy + 1);
+        ctx.stroke();
+      }
     }
     ctx.restore();
   }
