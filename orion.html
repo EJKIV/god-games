@@ -811,6 +811,53 @@ function updatePhantoms(dt){
   }
 }
 
+function drawOrionDebugOverlay() {
+  const debug = window.GodGames && GodGames.Debug;
+  if (!debug || typeof debug.draw !== 'function') return;
+  const items = [];
+  const drifts = [];
+  if (orion) {
+    const ox = orion.x;
+    const oy = orion.y;
+    const vx = typeof orion.visualX === 'number' ? orion.visualX : ox;
+    const vy = typeof orion.visualY === 'number' ? orion.visualY : oy;
+    items.push({ role: 'player', x: ox, y: oy - 34, w: 44, h: 68, label: 'orion hit' });
+    items.push({ role: 'visual', x: vx, y: vy - 54, w: orion.proneT > 0 ? 94 : 78, h: orion.proneT > 0 ? 42 : 112, label: 'orion sprite' });
+  }
+  if (boss) {
+    const bx = boss.x;
+    const by = boss.y;
+    const vx = typeof boss.visualX === 'number' ? boss.visualX : bx;
+    const vy = typeof boss.visualY === 'number' ? boss.visualY : by;
+    items.push({ role: 'danger', x: bx, y: by, w: 150, h: 160, label: boss.state === 'charge' ? 'charge hit' : 'charge body', alpha: boss.state === 'charge' ? 0.82 : 0.24 });
+    const clawX = bx + boss.facing * 115;
+    const clawY = groundY() - 15;
+    items.push({ role: 'danger', x: clawX, y: clawY, w: 180, h: 130, label: boss.state === 'claw' ? 'claw hit' : 'claw reach', alpha: boss.state === 'claw' ? 0.82 : 0.22 });
+    items.push({ role: 'visual', x: vx, y: vy - 68, w: 210, h: 156, label: 'scorpion sprite' });
+    drifts.push({
+      label: 'scorpion',
+      x: bx,
+      y: by,
+      visualX: vx,
+      visualY: vy,
+      radius: 75,
+      maxDrift: 24,
+    });
+  }
+  for (const v of venoms) {
+    items.push({ role: 'danger', x: v.x, y: v.y, w: 44, h: 68, label: 'venom hit' });
+    items.push({ role: 'visual', x: v.x, y: v.y, w: 38, h: 38, label: 'venom sprite' });
+  }
+  for (const p of phantoms) {
+    items.push({ role: 'danger', x: p.x, y: p.y, w: 64, h: 84, label: 'phantom hit' });
+    items.push({ role: 'visual', x: p.x, y: p.y, w: 90, h: 70, label: 'phantom sprite' });
+  }
+  for (const s of spears) {
+    items.push({ role: 'hotspot', x: s.x, y: s.y, w: 36, h: 16, label: s.active ? 'spear hit' : 'spear' });
+  }
+  debug.draw(ctx, { game: 'orion', items, drifts });
+}
+
 function orionMangaHandPoint(kind = 'throw', facing = null) {
   const f = facing || (orion ? orion.facing : 1);
   if (!orion) return { x:0, y:0 };
@@ -2457,6 +2504,8 @@ Engine.boot({
   onRender() {
     if (Engine.manga) {
       drawOrionMangaWorldFrame();
+      if (window.GodGames && GodGames.MythCinematic) GodGames.MythCinematic.render(ctx, Engine.W, Engine.H);
+      drawOrionDebugOverlay();
       return;
     }
     // Spears
@@ -2485,6 +2534,7 @@ Engine.boot({
     drawOrion();
     renderHUD();   // inside shake transform — matches original orion feel
     if (window.GodGames && GodGames.MythCinematic) GodGames.MythCinematic.render(ctx, Engine.W, Engine.H);
+    drawOrionDebugOverlay();
   },
 
   onKeyDown(ev) {

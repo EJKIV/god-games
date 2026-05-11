@@ -1712,6 +1712,76 @@ function render() {
   renderHUD(W, H);
 }
 
+function drawIcarusDebugOverlay(W, H) {
+  const debug = window.GodGames && GodGames.Debug;
+  if (!debug || typeof debug.draw !== 'function') return;
+  const items = [];
+  const drifts = [];
+  if (player) {
+    const px = player.x;
+    const py = player.y;
+    const vx = typeof player.visualX === 'number' ? player.visualX : px;
+    const vy = typeof player.visualY === 'number' ? player.visualY : py;
+    items.push({ role: 'player', x: px, y: py, r: 20, label: 'icarus hit' });
+    items.push({ role: 'visual', x: vx, y: vy - 4, w: 86, h: 96, label: 'icarus sprite' });
+  }
+  for (const e of eagles) {
+    const vx = typeof e.visualX === 'number' ? e.visualX : e.x;
+    const vy = typeof e.visualY === 'number' ? e.visualY : e.y;
+    const scale = e.size || 1;
+    const hitR = 28;
+    items.push({ role: 'danger', x: e.x, y: e.y, r: hitR, label: 'eagle hit' });
+    items.push({ role: 'visual', x: vx, y: vy, w: 84 * scale, h: 58 * scale, label: 'eagle sprite' });
+    drifts.push({
+      label: 'eagle',
+      x: e.x,
+      y: e.y,
+      visualX: vx,
+      visualY: vy,
+      radius: hitR,
+      maxDrift: e._diving ? 8 : 9,
+    });
+  }
+  for (const o of orcas) {
+    const vx = typeof o.visualX === 'number' ? o.visualX : o.x;
+    const vy = typeof o.visualY === 'number' ? o.visualY : o.y;
+    const hitR = 38;
+    items.push({ role: 'danger', x: o.x, y: o.y, r: hitR, label: o.chargeT > 0 ? 'orca warn' : 'orca hit' });
+    items.push({ role: 'visual', x: vx, y: vy, w: 112, h: 78, label: 'orca sprite' });
+    drifts.push({
+      label: o.chargeT > 0 ? 'orca-warn' : 'orca',
+      x: o.x,
+      y: o.y,
+      visualX: vx,
+      visualY: vy,
+      radius: hitR,
+      maxDrift: 12,
+    });
+  }
+  const oY = oceanY();
+  for (const wv of waves) {
+    if (!wv || wv.h < 2) continue;
+    const top = oY - wv.h;
+    items.push({
+      role: 'danger',
+      x: wv.x,
+      y: (top + oY) / 2,
+      w: (wv.w + 10) * 2,
+      h: Math.max(4, wv.h),
+      label: 'wave hit',
+    });
+    items.push({
+      role: 'visual',
+      x: wv.x,
+      y: top + wv.h * 0.50,
+      w: Math.max(50, wv.w * 2.2),
+      h: Math.max(10, wv.h + 24),
+      label: 'wave sprite',
+    });
+  }
+  debug.draw(ctx, { game: 'icarus', items, drifts });
+}
+
 function renderBackground(W, H) {
   if (Engine.manga && drawMangaFlightStageBackground(W, H)) return;
 
@@ -4797,6 +4867,7 @@ Engine.boot({
     time = Engine.time;
     render();
     if (window.GodGames && GodGames.MythCinematic) GodGames.MythCinematic.render(ctx, canvas.width, canvas.height);
+    drawIcarusDebugOverlay(canvas.width, canvas.height);
   },
 
   onTitleRender() {
