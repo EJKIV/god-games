@@ -20,6 +20,10 @@
   function performanceTier() {
     const pref = storageValue('godgames_perf');
     if (pref === 'high' || pref === 'balanced' || pref === 'low') return pref;
+    const nav = window.navigator || {};
+    const touch = (nav.maxTouchPoints || 0) > 0;
+    const pixels = (window.innerWidth || 0) * (window.innerHeight || 0) * Math.max(1, window.devicePixelRatio || 1);
+    if (touch || pixels > 1400000 || Math.min(window.innerWidth || 9999, window.innerHeight || 9999) < 520) return 'low';
     return 'balanced';
   }
 
@@ -39,7 +43,7 @@
   function frameBlendEnabled(opts = {}) {
     if (opts.frameBlend === false || opts.tween === false) return false;
     if (opts.frameBlend === true || opts.tween === true) return true;
-    return heavyEffects(opts);
+    return performanceTier() === 'high';
   }
 
   function smearEnabled(opts = {}, amount = 0) {
