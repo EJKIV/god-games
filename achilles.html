@@ -988,21 +988,26 @@ function drawMangaArcher(a, archerIdx) {
   if (heavy) ctx.filter = 'sepia(0.18) saturate(1.12) brightness(0.78) contrast(1.08)';
   ctx.shadowColor = 'rgba(255,100,40,0.22)';
   ctx.shadowBlur = downed ? 0 : (heavy ? 7 : 2);
+  const actorOpts = {
+    scale,
+    rotate: recoil,
+    frameBlend: heavy,
+    smear: false,
+    amount: downed ? 0.03 : (heavy ? 0.22 : 0.12),
+    bob: heavy ? 1.8 : 1.1,
+    sway: heavy ? 0.014 : 0.006,
+    squash: heavy ? 0.014 : 0.006,
+  };
   const drew = frame
     ? (typeof art.drawFilmFrame === 'function'
         ? art.drawFilmFrame(ctx, ACHILLES_MANGA_ARCHER_SHEET, frame, screenX, y, {
-            scale,
-            rotate: recoil,
+            ...actorOpts,
             phase: animT,
-            amount: downed ? 0.03 : 0.22,
-            bob: 1.8,
-            sway: 0.014,
-            squash: 0.014,
             animName: anim,
           })
         : art.drawFrame(ctx, ACHILLES_MANGA_ARCHER_SHEET, frame, screenX, y, { scale, rotate: recoil }))
-    : art.drawAnimation(ctx, ACHILLES_MANGA_ARCHER_SHEET, anim, animT, screenX, y, { scale, rotate: recoil });
-  ctx.filter = 'none';
+    : art.drawAnimation(ctx, ACHILLES_MANGA_ARCHER_SHEET, anim, animT, screenX, y, actorOpts);
+  if (heavy) ctx.filter = 'none';
   ctx.shadowBlur = 0;
 
   if (drew && archerIdx === 0) {
@@ -1268,9 +1273,9 @@ function drawMangaArrow(a, progress) {
     ctx.restore();
   }
   const heavy = typeof art.heavyEffects === 'function' && art.heavyEffects();
-  ctx.filter = heavy
-    ? `sepia(0.10) saturate(1.10) brightness(${0.82 + depth * 0.24}) contrast(1.08) blur(${Math.max(0, (1 - depth) * 0.45)}px)`
-    : `sepia(0.08) saturate(1.04) brightness(${0.86 + depth * 0.18}) contrast(1.06)`;
+  if (heavy) {
+    ctx.filter = `sepia(0.10) saturate(1.10) brightness(${0.82 + depth * 0.24}) contrast(1.08) blur(${Math.max(0, (1 - depth) * 0.45)}px)`;
+  }
   if (progress > 0.42 || a.inferno) {
     const g = a.inferno ? 1 : (progress - 0.42) / 0.58;
     ctx.shadowColor = a.inferno ? '#ff1100' : (a.targeted ? '#ff2200' : '#ff8800');
@@ -1507,6 +1512,8 @@ function drawAchillesMangaSprite() {
       bob: 4.8,
       sway: 0.026,
       squash: 0.026,
+      frameBlend: heavy,
+      smear: false,
     });
   } else {
     const frame = currentAchillesMangaFrame(motion);
@@ -1519,6 +1526,7 @@ function drawAchillesMangaSprite() {
       bob: 4.5,
       sway: 0.024,
       squash: 0.026,
+      smear: false,
       animName: motion.anim || frame,
     };
     drew = art && typeof art.drawFilmFrame === 'function'
@@ -2178,9 +2186,14 @@ Engine.boot({
     if (mangaReady()) {
       const W = Engine.W, H = Engine.H;
       const p = Manga.characters.achilles.polish;
-      // Atmospheric vignette + faint scanlines
-      Manga.effects.vignette(ctx, W, H, { strength: p.atmosphere.vignetteStrength });
-      Manga.effects.scanlines(ctx, W, H, { spacing: 3, alpha: p.atmosphere.scanlineAlpha });
+      const art = window.GodGames && GodGames.MangaArt;
+      const heavy = art && typeof art.heavyEffects === 'function' && art.heavyEffects();
+      // Atmospheric vignette + faint scanlines are already baked into the cached
+      // manga stage layer on balanced/low tiers.
+      if (heavy) {
+        Manga.effects.vignette(ctx, W, H, { strength: p.atmosphere.vignetteStrength });
+        Manga.effects.scanlines(ctx, W, H, { spacing: 3, alpha: p.atmosphere.scanlineAlpha });
+      }
       // Hit feedback: full-screen red flash + big "BAM!" near player
       if (player && player.hitFlash > 0) {
         const f = player.hitFlash / 0.35;
