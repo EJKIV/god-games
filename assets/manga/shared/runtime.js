@@ -980,7 +980,7 @@
       maxDriftRatio: max.ratio || 0,
       failures,
       drifts: measured,
-      ts: performance && performance.now ? performance.now() : Date.now(),
+      ts: (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now(),
     };
     GG.Debug = GG.Debug || {};
     GG.Debug.lastReport = report;
