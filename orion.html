@@ -87,6 +87,8 @@ const ORION_MANGA_ORION_SHEET = 'godgames.orion.orionAnimV1';
 const ORION_MANGA_SCORPION_SHEET = 'godgames.orion.scorpionAnimV1';
 const ORION_MANGA_FXHUD_SHEET = 'godgames.orion.fxHudV1';
 let orionMangaArenaCache = null;
+let orionNormalArenaCache = null;
+let orionNormalArenaKey = '';
 
 // ── Manga abilities (player) ──────────────────────────────────────────────
 let constellationT  = 0;          // charge animation duration remaining
@@ -1973,6 +1975,7 @@ function drawBg(c, W, H, time) {
     Manga.scenes.orionArena(c, W, H, time);
     return;
   }
+  if (drawOrionNormalArenaCached(c, W, H, time)) return;
   const GY = H * 0.76;
   // Sky
   const sky = c.createLinearGradient(0,0,0,H);
@@ -2071,6 +2074,71 @@ function drawTorch(c, x, y, time){
   c.fillStyle = `rgba(255,220,80,${fl*0.7})`;
   c.beginPath(); c.arc(0,-38,4*fl,0,Math.PI*2); c.fill();
   c.shadowBlur=0; c.restore();
+}
+
+function drawOrionNormalArenaBase(c, W, H) {
+  const GY = H * 0.76;
+  const sky = c.createLinearGradient(0,0,0,H);
+  sky.addColorStop(0,'#06021a'); sky.addColorStop(0.55,'#130828'); sky.addColorStop(1,'#220e10');
+  c.fillStyle=sky; c.fillRect(0,0,W,H);
+  c.fillStyle='#fff';
+  c.globalAlpha = 0.62;
+  for(const s of stars){
+    c.beginPath(); c.arc(s.rx*W, s.ry*H, s.r, 0, Math.PI*2); c.fill();
+  }
+  c.globalAlpha=1;
+  c.save();
+  c.shadowColor='rgba(255,200,80,0.35)'; c.shadowBlur=22;
+  c.fillStyle='#f5e8c0'; c.beginPath(); c.arc(W*0.87,H*0.08,26,0,Math.PI*2); c.fill();
+  c.fillStyle='#130828'; c.beginPath(); c.arc(W*0.87+8,H*0.08,22,0,Math.PI*2); c.fill();
+  c.restore();
+  c.fillStyle='#1e0e06';
+  c.beginPath(); c.moveTo(0,GY);
+  const dx=[0,.10,.22,.35,.46,.58,.70,.82,.93,1];
+  const dh=[.14,.09,.22,.10,.18,.07,.20,.11,.08,.12];
+  for(let i=0;i<dx.length;i++) c.lineTo(dx[i]*W, GY-dh[i]*H*0.52);
+  c.lineTo(W,GY); c.closePath(); c.fill();
+  const gnd = c.createLinearGradient(0,GY,0,H);
+  gnd.addColorStop(0,'#c87820'); gnd.addColorStop(0.07,'#9a5c10'); gnd.addColorStop(1,'#2a1004');
+  c.fillStyle=gnd; c.fillRect(0,GY,W,H-GY);
+  c.strokeStyle='rgba(255,180,70,0.10)'; c.lineWidth=1;
+  for(let i=0;i<9;i++){
+    const ry = GY+10+i*12;
+    c.beginPath(); c.moveTo(0,ry);
+    for(let x=0;x<=W;x+=18) c.lineTo(x, ry+Math.sin(x*0.045+i*1.2)*2.5);
+    c.stroke();
+  }
+  c.strokeStyle='rgba(255,210,100,0.3)'; c.lineWidth=2;
+  c.beginPath(); c.moveTo(0,GY); c.lineTo(W,GY); c.stroke();
+  const rockXs = [W*.07,W*.22,W*.45,W*.62,W*.80,W*.91];
+  for(let i=0;i<rockXs.length;i++){
+    const rx=rockXs[i], rw=14+i*5, rh=9+i*2;
+    c.fillStyle='#3a2010';
+    c.beginPath(); c.ellipse(rx,GY-3,rw,rh,0,0,Math.PI*2); c.fill();
+    c.strokeStyle='rgba(255,180,60,0.15)'; c.lineWidth=1;
+    c.beginPath(); c.ellipse(rx-2,GY-5,rw*0.6,rh*0.45,0,0,Math.PI*2); c.stroke();
+  }
+}
+
+function drawOrionNormalArenaCached(c, W, H, time) {
+  if (!window.document) return false;
+  const key = `${W}|${H}`;
+  if (!orionNormalArenaCache || orionNormalArenaKey !== key) {
+    const layer = document.createElement('canvas');
+    layer.width = W;
+    layer.height = H;
+    const layerCtx = layer.getContext('2d');
+    if (!layerCtx) return false;
+    drawOrionNormalArenaBase(layerCtx, W, H);
+    orionNormalArenaCache = layer;
+    orionNormalArenaKey = key;
+  }
+  c.drawImage(orionNormalArenaCache, 0, 0, W, H);
+  drawOrionConstellation(c, W, H, time);
+  const GY = H * 0.76;
+  drawTorch(c, W*0.04, GY-50, time);
+  drawTorch(c, W*0.96, GY-50, time);
+  return true;
 }
 
 function drawMangaOrionPose(anim, x, y, opts = {}) {
