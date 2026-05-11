@@ -1570,6 +1570,7 @@ function drawPerseusMangaSprite() {
       : Math.min(0.07, 0.012 + runAmount * 0.025 + slashArc * 0.03),
     filmScaleX: bodyScaleX,
     filmScaleY: bodyScaleY,
+    hero: true,
   });
   ctx.restore();
 
@@ -1953,6 +1954,7 @@ function drawMedusaMangaSprite(t) {
       : Math.min(0.055, 0.012 + gaze * 0.020 + hurt * 0.018),
     filmScaleX: bodyScaleX,
     filmScaleY: bodyScaleY,
+    hero: true,
   });
   ctx.restore();
 
@@ -2659,7 +2661,7 @@ function drawWorld() {
 
 function drawPerseusDebugOverlay() {
   const debug = window.GodGames && GodGames.Debug;
-  if (!debug || typeof debug.draw !== 'function' || (typeof debug.enabled === 'function' && !debug.enabled())) return;
+  if (!debug || typeof debug.draw !== 'function' || (typeof debug.collecting === 'function' && !debug.collecting())) return;
   const items = [];
   const drifts = [];
   if (player) {

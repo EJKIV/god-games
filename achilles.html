@@ -1542,6 +1542,7 @@ function drawAchillesMangaSprite() {
       sway: 0.026,
       squash: 0.026,
       smear: false,
+      hero: true,
     });
   } else {
     const frame = currentAchillesMangaFrame(motion);
@@ -1556,6 +1557,7 @@ function drawAchillesMangaSprite() {
       squash: 0.026,
       smear: false,
       animName: motion.anim || frame,
+      hero: true,
     };
     drew = art && typeof art.drawFilmFrame === 'function'
       ? art.drawFilmFrame(ctx, ACHILLES_MANGA_SHEET, frame, drawX + jitter, y, drawOpts)
@@ -1939,7 +1941,7 @@ function drawWorldFrame() {
 
 function drawAchillesDebugOverlay() {
   const debug = window.GodGames && GodGames.Debug;
-  if (!debug || typeof debug.draw !== 'function') return;
+  if (!debug || typeof debug.draw !== 'function' || (typeof debug.collecting === 'function' && !debug.collecting())) return;
   const items = [];
   const drifts = [];
   if (player) {

@@ -5,9 +5,11 @@
   const atmosphereCache = new Map();
   const effectLayerCache = new Map();
   const frameLayerCache = new Map();
+  const placeSceneLayerCache = new Map();
   const MAX_ATMOSPHERE_CACHE = 10;
   const MAX_EFFECT_LAYER_CACHE = 48;
   const MAX_FRAME_LAYER_CACHE = 96;
+  const MAX_PLACE_SCENE_LAYER_CACHE = 16;
   const TIER_RANK = { low: 0, balanced: 1, high: 2 };
   const perfState = {
     frames: 0,
@@ -122,8 +124,8 @@
     };
   }
 
-  function qualityScale() {
-    const tier = performanceTier();
+  function qualityScale(opts = {}) {
+    const tier = priorityAnimation(opts) ? basePerformanceTier() : performanceTier();
     if (tier === 'high') return 1;
     if (tier === 'low') return 0.48;
     return 0.72;
@@ -140,7 +142,7 @@
     if (opts.frameBlend === false || opts.tween === false) return false;
     if (adaptiveEffectsDisabled(opts) || opts.crowdedActor) return false;
     if (opts.frameBlend === true || opts.tween === true) return priorityAnimation(opts) || performanceTier() !== 'low';
-    return performanceTier() === 'high';
+    return performanceTier() !== 'low';
   }
 
   function smearEnabled(opts = {}, amount = 0) {
@@ -154,6 +156,7 @@
     atmosphereCache.clear();
     effectLayerCache.clear();
     frameLayerCache.clear();
+    placeSceneLayerCache.clear();
   }
 
   function assets() {
@@ -300,6 +303,19 @@
     return 0.14;
   }
 
+  function crowdedActor(id, name, opts = {}) {
+    if (priorityAnimation(opts)) return false;
+    if (opts.crowdedActor || opts.crowded || opts.smallActor || opts.backgroundActor || opts.repeatedActor) return true;
+    if (typeof opts.actorCount === 'number' && opts.actorCount >= 4) return true;
+    const sid = String(id || opts.assetId || '').toLowerCase();
+    const anim = String(name || opts.animName || '').toLowerCase();
+    if (/archersheet/.test(sid)) return true;
+    if (/gorgonsheet/.test(sid) && /snake|hazard|crawl|watch/.test(anim)) return true;
+    if (/scorpionanim/.test(sid) && /claw|sting|crawl|charge/.test(anim)) return true;
+    if (/stageatlas/.test(sid) && /gull|crow|spark|foam|hazard/.test(anim)) return true;
+    return false;
+  }
+
   function shouldFilmAnimation(id, name, opts = {}) {
     if (opts.film === false) return false;
     if (opts.film === true) return true;
@@ -309,8 +325,11 @@
   }
 
   function drawFilmFrame(ctx, id, frame, x, y, opts = {}) {
-    const q = qualityScale();
-    const amount = clamp(filmAmountForAnimation(opts.animName || frame, opts), 0, 1.4);
+    const q = qualityScale(opts);
+    let amount = clamp(filmAmountForAnimation(opts.animName || frame, opts), 0, 1.4);
+    if (opts.crowdedActor && performanceTier() !== 'high') {
+      amount = Math.min(amount, performanceTier() === 'low' ? 0.08 : 0.14);
+    }
     const phase = cycle01(opts.phase != null
       ? opts.phase
       : (opts.walkPhase != null ? opts.walkPhase / (Math.PI * 2) : (opts.t || 0) * (opts.rate || 0.95)));
@@ -367,12 +386,21 @@
   function drawAnimation(ctx, id, name, t, x, y, opts = {}) {
     const state = animationState(id, name, t, opts);
     if (shouldFilmAnimation(id, name, opts)) {
+      const crowded = crowdedActor(id, name, opts);
       const baseOpts = Object.assign({}, opts, {
         t,
         animName: name,
+        assetId: id,
+        crowdedActor: crowded,
         phase: opts.phase != null ? opts.phase : state.phase,
       });
-      const blendStrength = frameBlendEnabled(opts) ? tweenAmountForAnimation(name, opts) : 0;
+      if (crowded && performanceTier() !== 'high') {
+        baseOpts.amount = Math.min(filmAmountForAnimation(name, opts), performanceTier() === 'low' ? 0.08 : 0.14);
+        baseOpts.smear = false;
+        baseOpts.frameBlend = false;
+        baseOpts.tween = false;
+      }
+      const blendStrength = frameBlendEnabled(baseOpts) ? tweenAmountForAnimation(name, baseOpts) : 0;
       if (blendStrength > 0 && state.nextFrame && state.nextFrame !== state.frame) {
         const alpha = opts.alpha ?? 1;
         const mix = smoothstep(0.36, 0.94, state.progress) * blendStrength;
@@ -813,18 +841,52 @@
     ctx.restore();
   }
 
+  function drawPlaceSceneBase(ctx, id, x, y, w, h, opts, spec) {
+    if (!window.document || opts.alpha != null && opts.alpha !== 1) return false;
+    const cw = Math.max(1, Math.ceil(w));
+    const ch = Math.max(1, Math.ceil(h));
+    if (cw * ch > 6000000) return false;
+    const focusX = opts.focusX ?? spec.focusX ?? 0.5;
+    const focusY = opts.focusY ?? spec.focusY ?? 0.5;
+    const key = [
+      id, cw, ch, focusX.toFixed(3), focusY.toFixed(3),
+      opts.top || '', opts.mid || '', opts.bottom || '',
+      ready(SCENE_ATLAS) ? 1 : 0,
+    ].join('|');
+    let layer = placeSceneLayerCache.get(key);
+    if (!layer) {
+      layer = document.createElement('canvas');
+      layer.width = cw;
+      layer.height = ch;
+      const layerCtx = layer.getContext('2d');
+      if (!layerCtx) return false;
+      if (!drawScene(layerCtx, spec.frame, 0, 0, cw, ch, { focusX, focusY, alpha: 1 })) return false;
+      overlay(layerCtx, cw, ch, {
+        top: opts.top || 'rgba(0,0,0,0.08)',
+        mid: opts.mid || 'rgba(0,0,0,0.08)',
+        bottom: opts.bottom || 'rgba(0,0,0,0.64)',
+      });
+      placeSceneLayerCache.set(key, layer);
+      trimCache(placeSceneLayerCache, MAX_PLACE_SCENE_LAYER_CACHE);
+    }
+    ctx.drawImage(layer, x, y, w, h);
+    return true;
+  }
+
   function drawPlaceScene(ctx, id, x, y, w, h, opts = {}) {
     const spec = placeSceneSpec(id);
-    if (!drawScene(ctx, spec.frame, x, y, w, h, {
-      focusX: opts.focusX ?? spec.focusX ?? 0.5,
-      focusY: opts.focusY ?? spec.focusY ?? 0.5,
-      alpha: opts.alpha ?? 1,
-    })) return false;
-    overlay(ctx, w, h, {
-      top: opts.top || 'rgba(0,0,0,0.08)',
-      mid: opts.mid || 'rgba(0,0,0,0.08)',
-      bottom: opts.bottom || 'rgba(0,0,0,0.64)',
-    });
+    if (!drawPlaceSceneBase(ctx, id, x, y, w, h, opts, spec)) {
+      if (!drawScene(ctx, spec.frame, x, y, w, h, {
+        focusX: opts.focusX ?? spec.focusX ?? 0.5,
+        focusY: opts.focusY ?? spec.focusY ?? 0.5,
+        alpha: opts.alpha ?? 1,
+      })) return false;
+      overlay(ctx, w, h, {
+        top: opts.top || 'rgba(0,0,0,0.08)',
+        mid: opts.mid || 'rgba(0,0,0,0.08)',
+        bottom: opts.bottom || 'rgba(0,0,0,0.64)',
+      });
+    }
     drawPlaceTreatment(ctx, id, w, h, opts.t || 0);
     mangaAtmosphere(ctx, w, h, {
       halftoneAlpha: opts.halftoneAlpha ?? 0.09,
@@ -893,6 +955,8 @@
       scale: spriteScale,
       flipX,
       alpha: opts.alpha,
+      hero: true,
+      cinematic: true,
     }));
     ctx.restore();
     return drew;
@@ -961,6 +1025,26 @@
     } catch (_) {
       return false;
     }
+  }
+
+  function debugCollecting() {
+    try {
+      const qs = new URLSearchParams(location.search);
+      if (qs.get('perfHarness') === '1') return true;
+    } catch (_) {}
+    return debugEnabled();
+  }
+
+  function setDebugEnabled(on) {
+    try {
+      if (on) localStorage.setItem('godgames_debug', '1');
+      else localStorage.removeItem('godgames_debug');
+    } catch (_) {}
+    return debugEnabled();
+  }
+
+  function toggleDebug() {
+    return setDebugEnabled(!debugEnabled());
   }
 
   function finite(v) {
@@ -1114,19 +1198,33 @@
 
   const Debug = GG.Debug = GG.Debug || {};
   Debug.enabled = debugEnabled;
+  Debug.collecting = debugCollecting;
+  Debug.setEnabled = setDebugEnabled;
+  Debug.toggle = toggleDebug;
   Debug.draw = drawDebugOverlay;
   Debug.report = () => Debug.lastReport || updateDebugReport('unknown');
   Debug.measureDrift = debugDrift;
   Debug.clampVisualDrift = clampVisualDrift;
   Debug.maxDriftForRadius = (radius, ratio = 0.32) => Math.max(0, radius * ratio);
+  if (!Debug._hotkeyInstalled && typeof window.addEventListener === 'function') {
+    Debug._hotkeyInstalled = true;
+    window.addEventListener('keydown', (e) => {
+      if (e.ctrlKey && e.shiftKey && String(e.key || '').toLowerCase() === 'd') {
+        toggleDebug();
+      }
+    });
+  }
 
   Art.SCENE_ATLAS = SCENE_ATLAS;
   Art.PLACE_SCENES = PLACE_SCENES;
   Art.mangaEnabled = mangaEnabled;
   Art.performanceTier = performanceTier;
+  Art.performanceReport = performanceReport;
+  Art.noteFrame = recordFrameDelta;
   Art.qualityScale = qualityScale;
   Art.heavyEffects = heavyEffects;
   Art.frameBlendEnabled = frameBlendEnabled;
+  Art.smearEnabled = smearEnabled;
   Art.clearPerformanceCaches = clearPerformanceCaches;
   Art.ready = ready;
   Art.drawImage = drawImage;

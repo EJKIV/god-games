@@ -1714,7 +1714,7 @@ function render() {
 
 function drawIcarusDebugOverlay(W, H) {
   const debug = window.GodGames && GodGames.Debug;
-  if (!debug || typeof debug.draw !== 'function' || (typeof debug.enabled === 'function' && !debug.enabled())) return;
+  if (!debug || typeof debug.draw !== 'function' || (typeof debug.collecting === 'function' && !debug.collecting())) return;
   const items = [];
   const drifts = [];
   if (player) {
@@ -3932,6 +3932,7 @@ function drawIcarusMangaSprite() {
         sway: diveT > 0 ? 0.012 : 0.034,
         squash: thrusting ? 0.020 : 0.012,
         animName: thrusting ? 'flap' : frame,
+        hero: true,
       })
     : Manga.assets.drawFrame(ctx, ICARUS_MANGA_SHEET_ASSET, frame, drawX, drawY, {
         scale,

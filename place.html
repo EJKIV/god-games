@@ -87,6 +87,31 @@ const SAFE_PLACE = {
 const P = place || SAFE_PLACE;
 const MANGA_ON = localStorage.getItem('godgames_manga') === '1';
 document.body.classList.toggle('manga-mode', MANGA_ON);
+let normalPlaceLayer = null;
+let normalPlaceKey = '';
+
+function drawNormalPlaceScene(W, H, t) {
+  if (!window.document || !P || typeof P.silhouette !== 'function') {
+    P.silhouette(ctx, W, H, t);
+    return;
+  }
+  const ambienceTick = Math.floor(t * 2) / 2;
+  const key = `${placeId}|${W}|${H}|${ambienceTick.toFixed(2)}`;
+  if (!normalPlaceLayer || normalPlaceKey !== key) {
+    const layer = document.createElement('canvas');
+    layer.width = W;
+    layer.height = H;
+    const layerCtx = layer.getContext('2d');
+    if (!layerCtx) {
+      P.silhouette(ctx, W, H, t);
+      return;
+    }
+    P.silhouette(layerCtx, W, H, ambienceTick);
+    normalPlaceLayer = layer;
+    normalPlaceKey = key;
+  }
+  ctx.drawImage(normalPlaceLayer, 0, 0, W, H);
+}
 
 // Route the character draw call to the correct manga character. Perseus is
 // local for now because the shared manga package does not yet ship him.
@@ -226,6 +251,8 @@ function drawAssetTraveler(char, x, y, scale, facing, walkPhase, t) {
         sway: char === 'icarus' ? 0.040 : 0.028,
         squash: char === 'icarus' ? 0.018 : 0.032,
         animName: char === 'icarus' ? 'flap' : frame,
+        hero: true,
+        cinematic: true,
       })
     : A.drawFrame(ctx, id, frame, x, y, {
         scale: spriteScale,
@@ -437,7 +464,7 @@ function render() {
     ctx.fillRect(0, H * 0.54, W, H * 0.46);
     if (art && art.mangaAtmosphere) art.mangaAtmosphere(ctx, W, H, { halftoneAlpha: 0.12, scanAlpha: 0.08, vignette: 0.60 });
   } else {
-    P.silhouette(ctx, W, H, t);
+    drawNormalPlaceScene(W, H, t);
   }
 
   // Character — placed by the place's transform, drawn idle.
@@ -550,7 +577,62 @@ function render() {
   }
 
   maybeShowReturn();
+  drawPlaceDebugOverlay(tf);
   requestAnimationFrame(render);
+}
+
+function domRectOnCanvas(el) {
+  if (!el) return null;
+  const cr = canvas.getBoundingClientRect();
+  const br = el.getBoundingClientRect();
+  if (!cr.width || !cr.height || !br.width || !br.height) return null;
+  return {
+    x: (br.left - cr.left) * canvas.width / cr.width,
+    y: (br.top - cr.top) * canvas.height / cr.height,
+    w: br.width * canvas.width / cr.width,
+    h: br.height * canvas.height / cr.height,
+  };
+}
+
+function drawPlaceDebugOverlay(tf) {
+  const debug = window.GodGames && GodGames.Debug;
+  if (!debug || typeof debug.draw !== 'function' || (typeof debug.collecting === 'function' && !debug.collecting())) return;
+  const W = canvas.width, H = canvas.height;
+  const items = [];
+  if (tf) {
+    items.push({
+      role: 'player',
+      x: tf.x,
+      y: tf.y,
+      r: Math.max(16, 30 * (tf.scale || 1)),
+      label: 'traveler ground',
+      alpha: 0.55,
+    });
+    items.push({
+      role: 'player',
+      x1: Math.max(0, tf.x - W * 0.18),
+      y1: tf.y,
+      x2: Math.min(W, tf.x + W * 0.18),
+      y2: tf.y,
+      label: 'traveler drift lane',
+      dash: [8, 5],
+      alpha: 0.48,
+    });
+  }
+  const returnRect = domRectOnCanvas(returnBtn);
+  if (returnRect) items.push(Object.assign({ role: 'hotspot', center: false, label: 'return button', alpha: 0.62 }, returnRect));
+  const bannerY = H * 0.93 - 104;
+  items.push({
+    role: 'visual',
+    x: W * 0.11,
+    y: bannerY,
+    w: W * 0.78,
+    h: 96,
+    center: false,
+    label: 'clue banner',
+    alpha: 0.34,
+  });
+  debug.draw(ctx, { game: `place:${placeId}`, items });
 }
 
 // Tiny text wrapper (we don't have wrapText globally on this page).

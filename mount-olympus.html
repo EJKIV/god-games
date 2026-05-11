@@ -665,7 +665,7 @@ load();
 
 // ─── Background canvas: Mount Olympus ──────────────────────────────────
 const bg = $('bg');
-const bx = bg.getContext('2d');
+let bx = bg.getContext('2d');
 let BW = bg.width = window.innerWidth;
 let BH = bg.height = window.innerHeight;
 window.addEventListener('resize', () => { BW = bg.width = window.innerWidth; BH = bg.height = window.innerHeight; });
@@ -685,10 +685,52 @@ const clouds = Array.from({length: 12}, () => ({
 let lightning = 0; // brightness flash
 let nextStrike = 4 + Math.random()*8;
 let mangaAtlasBackdrop = false;
+let normalMountainsLayer = null;
+let normalMountainsKey = '';
 
 function drawMountains(t) {
   mangaAtlasBackdrop = false;
   if (_mangaUnlocked) { drawMangaMountains(t); return; }
+  drawNormalMountainsCached(t);
+}
+
+function drawNormalLightning() {
+  if (lightning <= 0) return;
+  bx.save();
+  bx.globalCompositeOperation = 'screen';
+  const flash = bx.createRadialGradient(BW*0.5, BH*0.30, 20, BW*0.5, BH*0.30, BH*0.85);
+  flash.addColorStop(0, `rgba(220,220,255,${0.28*lightning})`);
+  flash.addColorStop(0.5, `rgba(180,160,240,${0.12*lightning})`);
+  flash.addColorStop(1, `rgba(180,160,240,0)`);
+  bx.fillStyle = flash;
+  bx.fillRect(0, 0, BW, BH);
+  bx.restore();
+}
+
+function drawNormalMountainsCached(t) {
+  if (!window.document) { drawNormalMountainsRaw(t); return; }
+  const key = `${BW}|${BH}`;
+  if (!normalMountainsLayer || normalMountainsKey !== key) {
+    const layer = document.createElement('canvas');
+    layer.width = BW;
+    layer.height = BH;
+    const layerCtx = layer.getContext('2d');
+    if (!layerCtx) { drawNormalMountainsRaw(t); return; }
+    const prevBx = bx;
+    const prevLightning = lightning;
+    bx = layerCtx;
+    lightning = 0;
+    drawNormalMountainsRaw(0);
+    lightning = prevLightning;
+    bx = prevBx;
+    normalMountainsLayer = layer;
+    normalMountainsKey = key;
+  }
+  bx.drawImage(normalMountainsLayer, 0, 0, BW, BH);
+  drawNormalLightning();
+}
+
+function drawNormalMountainsRaw(t) {
   // Far back range — soft purple, distant
   const skyTop = '#04071a', skyMid = '#0e1438', skyBot = '#1a2654';
   const sky = bx.createLinearGradient(0, 0, 0, BH);

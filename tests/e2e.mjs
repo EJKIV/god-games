@@ -153,7 +153,11 @@ async function testIcarus() {
   await page.keyboard.press('ArrowUp');     // start
   await new Promise(r => setTimeout(r, 300));
   await page.keyboard.down('ArrowUp');      // hold to fly
-  await new Promise(r => setTimeout(r, 3500));
+  try {
+    await page.waitForFunction(() => window.Engine?.unlock?.has('hint.z') === true, { timeout: 6500 });
+  } catch (_e) {
+    // Keep the probe below as the source of truth so failures include state.
+  }
 
   const mid = await probe(page);
   await page.screenshot({ path: `${SHOTS}/icarus_play.png` });

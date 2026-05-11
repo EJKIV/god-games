@@ -53,6 +53,7 @@ canvas.height = window.innerHeight;
 window.addEventListener('resize', () => {
   canvas.width  = window.innerWidth;
   canvas.height = window.innerHeight;
+  if (!MANGA_ON) render();
 });
 
 const GOLD = '#D4AF37';
@@ -295,7 +296,32 @@ function render() {
   ctx.fillText('press T or ESC to return to the world', W / 2, Math.min(H - 96, ty + tabH + 34));
   ctx.restore();
 
-  requestAnimationFrame(render);
+  drawCluesDebugOverlay({ x: tx, y: ty, w: tabW, h: tabH });
+
+  if (MANGA_ON) requestAnimationFrame(render);
+}
+
+function domRectOnCanvas(el) {
+  if (!el) return null;
+  const cr = canvas.getBoundingClientRect();
+  const br = el.getBoundingClientRect();
+  if (!cr.width || !cr.height || !br.width || !br.height) return null;
+  return {
+    x: (br.left - cr.left) * canvas.width / cr.width,
+    y: (br.top - cr.top) * canvas.height / cr.height,
+    w: br.width * canvas.width / cr.width,
+    h: br.height * canvas.height / cr.height,
+  };
+}
+
+function drawCluesDebugOverlay(tablet) {
+  const debug = window.GodGames && GodGames.Debug;
+  if (!debug || typeof debug.draw !== 'function' || (typeof debug.collecting === 'function' && !debug.collecting())) return;
+  const items = [];
+  if (tablet) items.push(Object.assign({ role: 'visual', center: false, label: 'clue tablet', alpha: 0.42 }, tablet));
+  const backRect = domRectOnCanvas(document.getElementById('backBtn'));
+  if (backRect) items.push(Object.assign({ role: 'hotspot', center: false, label: 'return button', alpha: 0.62 }, backRect));
+  debug.draw(ctx, { game: 'clue-journal', items });
 }
 
 function wrap(text, maxW) {

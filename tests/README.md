@@ -32,11 +32,35 @@ npm run perf
 ```
 
 The harness gates unexpected 404s/HTTP errors, request failures, uncaught JS
-errors, `console.error`, p95 frame time, and the debug-overlay drift report.
-It sets `localStorage.godgames_debug='1'` so each gameplay surface publishes
-hitbox-vs-sprite drift while it drives a short fairness playtest. Useful env
+errors, `console.error`, and the debug-overlay drift report. It also prints
+gameplay-route p95 frame time; set `PERF_FRAME_GATE=1` to make p95 a hard gate.
+The hub stays in the matrix for visibility, but its headless desktop p95 is
+informational because it is not a collision gameplay surface.
+The overlay stays hidden for frame timing while the harness still collects
+hitbox-vs-sprite drift during a short fairness playtest. Defaults are smoke-test
+budgets; set stricter p95 values when profiling a specific change. Useful env
 overrides: `PERF_DURATION_MS`, `PERF_DESKTOP_P95_MS`, `PERF_MOBILE_P95_MS`,
-and `PERF_DRIFT_RATIO`. To focus one surface, pass `-- --only=icarus`.
+`PERF_FRAME_GATE`, and `PERF_DRIFT_RATIO`. To focus one surface, pass
+`-- --only=icarus`.
+
+## Shared Surface QA Harness
+
+```bash
+# Serve the project first.
+python3 -m http.server 8765 &
+
+# Then run every page in normal + manga mode.
+npm run qa
+```
+
+The QA harness seeds `localStorage`, stubs `/api/progress` and
+`/api/leaderboard`, asserts no page errors, verifies canvases are nonblank,
+checks warm-frame p95 budgets, validates mobile portrait rotation overlays,
+clicks/taps every hub portal region, and clicks destination return buttons.
+Useful env overrides: `QA_SETTLE_MS`, `QA_FRAME_WARMUP_MS`,
+`QA_FRAME_SAMPLE_MS`, `QA_DESKTOP_P95_MS`, `QA_MOBILE_P95_MS`, and
+`QA_FRAME_EPSILON_MS`. To focus one surface, pass `-- --only=hub`,
+`-- --only=portals`, or a place id such as `-- --only=oceanus`.
 
 ## What it covers
 

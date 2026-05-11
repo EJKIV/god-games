@@ -813,7 +813,7 @@ function updatePhantoms(dt){
 
 function drawOrionDebugOverlay() {
   const debug = window.GodGames && GodGames.Debug;
-  if (!debug || typeof debug.draw !== 'function') return;
+  if (!debug || typeof debug.draw !== 'function' || (typeof debug.collecting === 'function' && !debug.collecting())) return;
   const items = [];
   const drifts = [];
   if (orion) {
@@ -1259,6 +1259,7 @@ function drawOrionMangaSprite() {
       bob: motion.anim === 'run' ? 5.4 : 3.4,
       sway: motion.anim === 'run' ? 0.030 : 0.020,
       squash: motion.anim === 'run' ? 0.030 : 0.018,
+      hero: true,
     });
   } else {
     const frame = currentOrionMangaFrame();
@@ -1273,6 +1274,7 @@ function drawOrionMangaSprite() {
       sway: 0.024,
       squash: 0.026,
       animName: motion.anim || frame,
+      hero: true,
     };
     drew = art && typeof art.drawFilmFrame === 'function'
       ? art.drawFilmFrame(ctx, ORION_MANGA_LEGACY_SHEET, frame, drawX + jitter, drawY + 4, drawOpts)
@@ -1413,6 +1415,7 @@ function drawScorpionMangaSprite() {
       bob: motion.anim === 'charge' ? 7 : 5.6,
       sway: motion.anim === 'charge' ? 0.040 : 0.024,
       squash: motion.anim === 'charge' ? 0.036 : 0.026,
+      hero: true,
     });
   } else {
     const frame = currentScorpionMangaFrame();
@@ -1426,6 +1429,7 @@ function drawScorpionMangaSprite() {
       sway: boss.state === 'charge' ? 0.034 : 0.022,
       squash: boss.state === 'charge' ? 0.032 : 0.022,
       animName: boss.state || frame,
+      hero: true,
     };
     drew = art && typeof art.drawFilmFrame === 'function'
       ? art.drawFilmFrame(ctx, ORION_MANGA_LEGACY_SHEET, frame, drawX, drawY + 10, drawOpts)
