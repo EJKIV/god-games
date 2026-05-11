@@ -8,6 +8,17 @@
   const MAX_ATMOSPHERE_CACHE = 10;
   const MAX_EFFECT_LAYER_CACHE = 48;
   const MAX_FRAME_LAYER_CACHE = 96;
+  const TIER_RANK = { low: 0, balanced: 1, high: 2 };
+  const perfState = {
+    frames: 0,
+    lastTs: 0,
+    badUntil: 0,
+    badStreak: 0,
+    goodStreak: 0,
+    p95: 0,
+    samples: [],
+    monitorStarted: false,
+  };
 
   function storageValue(key) {
     try { return localStorage.getItem(key); } catch (_) { return null; }
@@ -17,7 +28,7 @@
     return (window.Engine && Engine.manga) || storageValue('godgames_manga') === '1';
   }
 
-  function performanceTier() {
+  function basePerformanceTier() {
     const pref = storageValue('godgames_perf');
     if (pref === 'high' || pref === 'balanced' || pref === 'low') return pref;
     const nav = window.navigator || {};
@@ -25,6 +36,90 @@
     const pixels = (window.innerWidth || 0) * (window.innerHeight || 0) * Math.max(1, window.devicePixelRatio || 1);
     if (touch || pixels > 1400000 || Math.min(window.innerWidth || 9999, window.innerHeight || 9999) < 520) return 'low';
     return 'balanced';
+  }
+
+  function nowMs() {
+    return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+  }
+
+  function frameBudgetMs() {
+    const nav = window.navigator || {};
+    const touch = (nav.maxTouchPoints || 0) > 0;
+    const shortSide = Math.min(window.innerWidth || 9999, window.innerHeight || 9999);
+    return touch || shortSide < 520 ? 38 : 24;
+  }
+
+  function lowerTier(a, b) {
+    return (TIER_RANK[a] ?? 1) <= (TIER_RANK[b] ?? 1) ? a : b;
+  }
+
+  function recordFrameDelta(dt) {
+    if (!Number.isFinite(dt) || dt <= 0 || dt > 250) return;
+    perfState.frames += 1;
+    if (perfState.frames < 45) return;
+
+    perfState.samples.push(dt);
+    if (perfState.samples.length > 120) perfState.samples.shift();
+    if (perfState.samples.length >= 24) {
+      const sorted = perfState.samples.slice().sort((a, b) => a - b);
+      perfState.p95 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] || 0;
+    }
+
+    const budget = frameBudgetMs();
+    if (dt > budget * 1.35 || perfState.p95 > budget * 1.20) {
+      perfState.badStreak += 1;
+      perfState.goodStreak = 0;
+      if (perfState.badStreak >= 3) perfState.badUntil = nowMs() + 2600;
+    } else if (dt < budget * 0.94) {
+      perfState.goodStreak += 1;
+      if (perfState.goodStreak >= 45) {
+        perfState.badStreak = 0;
+        if (perfState.badUntil < nowMs()) perfState.badUntil = 0;
+      }
+    }
+  }
+
+  function startPerformanceMonitor() {
+    if (perfState.monitorStarted || typeof requestAnimationFrame !== 'function') return;
+    perfState.monitorStarted = true;
+    const tick = (ts) => {
+      if (!document.hidden && perfState.lastTs) recordFrameDelta(ts - perfState.lastTs);
+      perfState.lastTs = ts;
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
+  function priorityAnimation(opts = {}) {
+    return opts.hero === true
+      || opts.title === true
+      || opts.cinematic === true
+      || opts.closeup === true
+      || opts.priority === 'hero'
+      || opts.priority === 'cinematic';
+  }
+
+  function adaptiveEffectsDisabled(opts = {}) {
+    return !priorityAnimation(opts) && perfState.badUntil > nowMs();
+  }
+
+  function performanceTier() {
+    startPerformanceMonitor();
+    const base = basePerformanceTier();
+    if (perfState.badUntil > nowMs()) return lowerTier(base, 'low');
+    return base;
+  }
+
+  function performanceReport() {
+    return {
+      tier: performanceTier(),
+      baseTier: basePerformanceTier(),
+      adaptiveLow: perfState.badUntil > nowMs(),
+      p95: perfState.p95,
+      frameBudget: frameBudgetMs(),
+      samples: perfState.samples.length,
+      badStreak: perfState.badStreak,
+    };
   }
 
   function qualityScale() {
@@ -35,6 +130,7 @@
   }
 
   function heavyEffects(opts = {}) {
+    if (adaptiveEffectsDisabled(opts)) return false;
     if (opts.heavyEffects === true) return true;
     if (opts.heavyEffects === false) return false;
     return performanceTier() === 'high';
@@ -42,12 +138,14 @@
 
   function frameBlendEnabled(opts = {}) {
     if (opts.frameBlend === false || opts.tween === false) return false;
-    if (opts.frameBlend === true || opts.tween === true) return true;
-    return performanceTier() !== 'low';
+    if (adaptiveEffectsDisabled(opts) || opts.crowdedActor) return false;
+    if (opts.frameBlend === true || opts.tween === true) return priorityAnimation(opts) || performanceTier() !== 'low';
+    return performanceTier() === 'high';
   }
 
   function smearEnabled(opts = {}, amount = 0) {
     if (opts.smear === false) return false;
+    if (adaptiveEffectsDisabled(opts) || opts.crowdedActor) return false;
     if (opts.smear === true || typeof opts.smear === 'number') return amount > 0.10;
     return heavyEffects(opts) && amount > 0.26;
   }

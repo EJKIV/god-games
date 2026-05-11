@@ -119,7 +119,7 @@ async function instrumentPage(page, sink) {
 async function seedPage(page, manga) {
   await page.evaluateOnNewDocument((mangaOn) => {
     localStorage.setItem('godgames_playerName', 'PERF');
-    localStorage.setItem('godgames_debug', '1');
+    localStorage.removeItem('godgames_debug');
     localStorage.setItem('godgames_perf', 'balanced');
     localStorage.setItem('icarus_lastPlay', String(Date.now()));
     if (mangaOn) localStorage.setItem('godgames_manga', '1');
@@ -143,6 +143,10 @@ async function gotoMeasured(page, route) {
 }
 
 async function startRoute(page, route) {
+  await page.evaluate(() => {
+    window.GodGames = window.GodGames || {};
+    window.GodGames.suppressDepart = true;
+  });
   await sleep(SETTLE_MS);
   if (route.start === false) return;
   await page.keyboard.press(route.startKey || ' ');
