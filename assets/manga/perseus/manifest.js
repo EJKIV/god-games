@@ -11,7 +11,11 @@
       return;
     }
     const page = (location.pathname.split('/').pop() || 'index.html').toLowerCase();
+    const placeFrom = page === 'place.html'
+      ? String(new URLSearchParams(location.search || '').get('from') || '').toLowerCase()
+      : '';
     const shouldPrime = page === 'perseus.html';
+    const travelerPreload = shouldPrime || placeFrom === 'perseus';
     function prime(id, frames, opts) {
       if (!shouldPrime) return;
       setTimeout(() => {
@@ -25,6 +29,7 @@
 
     M.assets.define('godgames.perseus.gorgonSheet', {
       src: 'assets/manga/perseus/perseus-gorgon-film-v2.png',
+      preload: travelerPreload,
       frames: {
         perseusIdle:     frame(0, 0),
         perseusIdle1:    frame(0, 0),
@@ -105,6 +110,7 @@
 
     M.assets.define('godgames.perseus.chambers', {
       src: 'assets/manga/perseus/perseus-chambers-v1.jpg',
+      preload: shouldPrime,
       frames: {
         chamber1: chamber(0),
         chamber2: chamber(1),
@@ -126,6 +132,7 @@
 
     M.assets.define('godgames.perseus.fxHudSheet', {
       src: 'assets/manga/perseus/serpent-fx-hud-v1.png',
+      preload: shouldPrime,
       frames: {
         serpentFly:     fxFrame(0, 0),
         serpentReflect: fxFrame(1, 0),

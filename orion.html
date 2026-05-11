@@ -87,6 +87,7 @@ const ORION_MANGA_ORION_SHEET = 'godgames.orion.orionAnimV1';
 const ORION_MANGA_SCORPION_SHEET = 'godgames.orion.scorpionAnimV1';
 const ORION_MANGA_FXHUD_SHEET = 'godgames.orion.fxHudV1';
 let orionMangaArenaCache = null;
+let orionMangaArenaCachePending = '';
 let orionNormalArenaCache = null;
 let orionNormalArenaKey = '';
 
@@ -980,6 +981,60 @@ function drawOrionMangaFloorUnderlay(opts = {}, targetCtx = ctx) {
   c.restore();
 }
 
+function renderOrionMangaArenaLayer(layerCtx, W, H, time, opts, focusX, focusY, alpha, includeAtmosphere = true) {
+  const art = orionMangaArt();
+  if (!art || typeof art.drawImage !== 'function') return false;
+  if (!art.drawImage(layerCtx, ORION_MANGA_ARENA, 0, 0, W, H, {
+    fit: 'cover',
+    focusX,
+    focusY,
+    alpha,
+  })) return false;
+
+  layerCtx.save();
+  const sky = layerCtx.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0, opts.title ? 'rgba(10,16,44,0.18)' : 'rgba(10,16,44,0.10)');
+  sky.addColorStop(0.48, 'rgba(0,0,0,0.00)');
+  sky.addColorStop(1, 'rgba(0,0,0,0.28)');
+  layerCtx.fillStyle = sky;
+  layerCtx.fillRect(0, 0, W, H);
+  drawOrionMangaFloorUnderlay(opts, layerCtx);
+  drawOrionConstellation(layerCtx, W, H, time, { lineWidth: opts.title ? 1.2 : 1.5 });
+  if (includeAtmosphere && art.mangaAtmosphere) {
+    art.mangaAtmosphere(layerCtx, W, H, {
+      density: 9,
+      dotSize: 1.20,
+      halftoneAlpha: opts.title ? 0.09 : 0.12,
+      scanAlpha: opts.title ? 0.05 : 0.07,
+      vignette: opts.title ? 0.42 : 0.50,
+    });
+  }
+  layerCtx.restore();
+  return true;
+}
+
+function warmOrionMangaArenaCache(key, W, H, time, opts, focusX, focusY, alpha) {
+  if (orionMangaArenaCachePending === key) return;
+  orionMangaArenaCachePending = key;
+  const build = () => {
+    try {
+      const layer = document.createElement('canvas');
+      layer.width = W;
+      layer.height = H;
+      const layerCtx = layer.getContext('2d');
+      if (layerCtx && renderOrionMangaArenaLayer(layerCtx, W, H, time, opts, focusX, focusY, alpha, true)) {
+        orionMangaArenaCache = { key, canvas: layer };
+      }
+    } finally {
+      if (orionMangaArenaCachePending === key) orionMangaArenaCachePending = '';
+    }
+  };
+  setTimeout(() => {
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(build, { timeout: 1200 });
+    else setTimeout(build, 0);
+  }, 2600);
+}
+
 function drawOrionMangaArena(c, W, H, time, opts = {}) {
   const art = orionMangaArt();
   if (!Engine.manga || !art || typeof art.drawImage !== 'function') return false;
@@ -989,38 +1044,9 @@ function drawOrionMangaArena(c, W, H, time, opts = {}) {
   const perf = typeof art.basePerformanceTier === 'function' ? art.basePerformanceTier() : 'balanced';
   const key = [W, H, focusX, focusY, alpha, opts.title ? 1 : 0, perf].join('|');
   if (!orionMangaArenaCache || orionMangaArenaCache.key !== key) {
-    const layer = document.createElement('canvas');
-    layer.width = W;
-    layer.height = H;
-    const layerCtx = layer.getContext('2d');
-    if (!layerCtx) return false;
-    if (!art.drawImage(layerCtx, ORION_MANGA_ARENA, 0, 0, W, H, {
-      fit: 'cover',
-      focusX,
-      focusY,
-      alpha,
-    })) return false;
-
-    layerCtx.save();
-    const sky = layerCtx.createLinearGradient(0, 0, 0, H);
-    sky.addColorStop(0, opts.title ? 'rgba(10,16,44,0.18)' : 'rgba(10,16,44,0.10)');
-    sky.addColorStop(0.48, 'rgba(0,0,0,0.00)');
-    sky.addColorStop(1, 'rgba(0,0,0,0.28)');
-    layerCtx.fillStyle = sky;
-    layerCtx.fillRect(0, 0, W, H);
-    drawOrionMangaFloorUnderlay(opts, layerCtx);
-    drawOrionConstellation(layerCtx, W, H, time, { lineWidth: opts.title ? 1.2 : 1.5 });
-    if (art.mangaAtmosphere) {
-      art.mangaAtmosphere(layerCtx, W, H, {
-        density: 9,
-        dotSize: 1.20,
-        halftoneAlpha: opts.title ? 0.09 : 0.12,
-        scanAlpha: opts.title ? 0.05 : 0.07,
-        vignette: opts.title ? 0.42 : 0.50,
-      });
-    }
-    layerCtx.restore();
-    orionMangaArenaCache = { key, canvas: layer };
+    const drewDirect = renderOrionMangaArenaLayer(c, W, H, time, opts, focusX, focusY, alpha, false);
+    if (drewDirect) warmOrionMangaArenaCache(key, W, H, time, opts, focusX, focusY, alpha);
+    return drewDirect;
   }
   c.drawImage(orionMangaArenaCache.canvas, 0, 0, W, H);
   return true;

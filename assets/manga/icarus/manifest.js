@@ -11,7 +11,11 @@
       return;
     }
     const page = (location.pathname.split('/').pop() || 'index.html').toLowerCase();
+    const placeFrom = page === 'place.html'
+      ? String(new URLSearchParams(location.search || '').get('from') || '').toLowerCase()
+      : '';
     const shouldPrime = page === 'icarus.html';
+    const travelerPreload = shouldPrime || placeFrom === 'icarus';
     function prime(id, frames, opts) {
       if (!shouldPrime) return;
       setTimeout(() => {
@@ -22,6 +26,7 @@
 
     M.assets.define('godgames.icarus.hero', {
       src: 'assets/manga/icarus/icarus-hero.jpg',
+      preload: shouldPrime,
       meta: {
         usage: 'Manga-mode Icarus title, tutorial, death, and dive cut-in art.',
       },
@@ -29,6 +34,7 @@
 
     M.assets.define('godgames.icarus.flightStageV2', {
       src: 'assets/manga/icarus/icarus-flight-stage-v2.jpg',
+      preload: shouldPrime,
       meta: {
         usage: 'Clean Icarus manga gameplay flight stage with sun, safe lane, sea depth, and no baked-in live actors.',
       },
@@ -38,6 +44,7 @@
     const sheetFrame = (col, row) => ({ x: cell * col, y: cell * row, w: cell, h: cell, anchorX: 209, anchorY: 209 });
     M.assets.define('godgames.icarus.flightSheet', {
       src: 'assets/manga/icarus/icarus-flight-film-v2.png',
+      preload: travelerPreload,
       frames: {
         flap1:    sheetFrame(0, 0),
         flap2:    sheetFrame(1, 0),
@@ -89,6 +96,7 @@
 
     M.assets.define('godgames.icarus.stageAtlasV2', {
       src: 'assets/manga/icarus/icarus-creatures-film-v2.png',
+      preload: shouldPrime,
       frames: {
         eagleFly1:      atlasFrame(0, 0),
         eagleFly2:      atlasFrame(1, 0),
@@ -144,6 +152,7 @@
 
     M.assets.define('godgames.icarus.fxCreaturesV2', {
       src: 'assets/manga/icarus/icarus-fx-creatures-v2.png',
+      preload: shouldPrime,
       frames: {
         orcaWarn1:     fxFrame(0, 0, fxCell * 0.66),
         orcaWarn2:     fxFrame(1, 0, fxCell * 0.66),

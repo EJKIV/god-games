@@ -13,13 +13,16 @@
       const path = (location.pathname || '').split('/').pop();
       return !path || path === 'index.html';
     }
-    if (!mangaRequested() && !hubPage()) return;
+    const wantsManga = mangaRequested();
+    const onHub = hubPage();
+    if (!wantsManga && !onHub) return;
 
     const cell = 362;
     const frame = (col, row) => ({ x: col * cell, y: row * cell, w: cell, h: cell });
 
     M.assets.define('godgames.shared.sceneAtlas', {
       src: 'assets/manga/shared/godgames-scene-atlas.jpg',
+      preload: wantsManga && !onHub,
       frames: {
         hub:         frame(0, 0),
         hubStage:    frame(0, 0),
@@ -52,6 +55,7 @@
 
     M.assets.define('godgames.shared.hubConcourseV2', {
       src: 'assets/manga/shared/hub-concourse-v2.jpg',
+      preload: false,
       meta: {
         usage: 'Clean manga/anime Mount Olympus hub concourse with five empty destination shrine bays; live canvas overlays provide labels, selection, and navigation.',
       },
@@ -59,6 +63,7 @@
 
     M.assets.define('godgames.shared.hubConcourseMuralsV1', {
       src: 'assets/manga/shared/hub-concourse-murals-v1.jpg',
+      preload: false,
       meta: {
         usage: 'Integrated Mount Olympus game-selection hall with destination murals physically inset into the wall bays. Visual order: Orion, Achilles, Olympus, Perseus, Icarus.',
       },
@@ -66,6 +71,7 @@
 
     M.assets.define('godgames.shared.hubConcourseIdleV4', {
       src: 'assets/manga/shared/hub-concourse-idle-v4.jpg',
+      preload: wantsManga && onHub,
       meta: {
         usage: 'Authored manga hub concourse with rectangular destination frescoes painted into the shrine walls, etched stone names, and no floating portal cards.',
       },
@@ -75,6 +81,7 @@
     const hubPanel = (idx) => ({ x: idx * hubPanelW + 28, y: 42, w: hubPanelW - 56, h: 662 });
     M.assets.define('godgames.shared.hubDestinationPanelsV2', {
       src: 'assets/manga/shared/hub-destination-panels-v2.jpg',
+      preload: false,
       frames: {
         orion: hubPanel(0),
         achilles: hubPanel(1),
@@ -99,6 +106,7 @@
     });
     M.assets.define('godgames.shared.hubAvatarV2', {
       src: 'assets/manga/shared/hub-avatar-film-v3.png',
+      preload: wantsManga && onHub,
       frames: {
         idle:  avatarFrame(0, 0),
         walkA: avatarFrame(0, 1),
@@ -143,6 +151,7 @@
     });
     M.assets.define('godgames.shared.hubToadV1', {
       src: 'assets/manga/shared/hub-toad-film-v2.png',
+      preload: false,
       frames: {
         idle: toadFrame(0, 0),
         ready: toadFrame(4, 0),

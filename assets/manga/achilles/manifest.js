@@ -11,7 +11,11 @@
       return;
     }
     const page = (location.pathname.split('/').pop() || 'index.html').toLowerCase();
+    const placeFrom = page === 'place.html'
+      ? String(new URLSearchParams(location.search || '').get('from') || '').toLowerCase()
+      : '';
     const shouldPrime = page === 'achilles.html';
+    const travelerPreload = shouldPrime || placeFrom === 'achilles';
     function prime(id, frames, opts) {
       if (!shouldPrime) return;
       setTimeout(() => {
@@ -25,6 +29,7 @@
 
     M.assets.define('godgames.achilles.actionSheet', {
       src: 'assets/manga/achilles/achilles-action-sheet.png',
+      preload: shouldPrime,
       frames: {
         idle:     frame(0, 0),
         runLeft:  frame(1, 0),
@@ -43,6 +48,7 @@
 
     M.assets.define('godgames.achilles.battlefield', {
       src: 'assets/manga/achilles/battlefield-clean-v3.jpg',
+      preload: shouldPrime,
       meta: {
         usage: 'Clean asset-backed Achilles manga gameplay arena with no baked-in archers or active arrows.',
       },
@@ -57,6 +63,7 @@
 
     M.assets.define('godgames.achilles.animSheet', {
       src: 'assets/manga/achilles/achilles-film-v2.png',
+      preload: travelerPreload,
       frames: {
         idle1:       animFrame(0, 0),
         idle2:       animFrame(1, 0),
@@ -118,6 +125,7 @@
 
     M.assets.define('godgames.achilles.archerSheet', {
       src: 'assets/manga/achilles/archers-film-v2.png',
+      preload: shouldPrime,
       frames: {
         idle1:          archerFrame(0, 0),
         idle2:          archerFrame(1, 0),
@@ -159,6 +167,7 @@
 
     M.assets.define('godgames.achilles.fxHudSheet', {
       src: 'assets/manga/achilles/fx-hud-v2.png',
+      preload: shouldPrime,
       frames: {
         arrowDown1:   fxFrame(0, 0),
         arrowDown2:   fxFrame(1, 0),

@@ -11,7 +11,11 @@
       return;
     }
     const page = (location.pathname.split('/').pop() || 'index.html').toLowerCase();
+    const placeFrom = page === 'place.html'
+      ? String(new URLSearchParams(location.search || '').get('from') || '').toLowerCase()
+      : '';
     const shouldPrime = page === 'orion.html';
+    const travelerPreload = shouldPrime || placeFrom === 'orion';
     function prime(id, frames, opts) {
       if (!shouldPrime) return;
       setTimeout(() => {
@@ -25,6 +29,7 @@
 
     M.assets.define('godgames.orion.scorpionSheet', {
       src: 'assets/manga/orion/orion-scorpion-sheet.png',
+      preload: false,
       frames: {
         orionIdle:     frame(0, 0),
         orionRun:      frame(1, 0),
@@ -46,6 +51,7 @@
 
     M.assets.define('godgames.orion.arenaCleanV1', {
       src: 'assets/manga/orion/orion-arena-clean-v1.jpg',
+      preload: shouldPrime,
       meta: {
         usage: 'Clean Orion manga gameplay arena with no baked-in fighters, projectiles, or blocking foreground figures.',
       },
@@ -60,6 +66,7 @@
 
     M.assets.define('godgames.orion.orionAnimV1', {
       src: 'assets/manga/orion/orion-film-v2.png',
+      preload: travelerPreload,
       frames: {
         idle1:        orionFrame(0, 0),
         idle2:        orionFrame(1, 0),
@@ -112,6 +119,7 @@
 
     M.assets.define('godgames.orion.scorpionAnimV1', {
       src: 'assets/manga/orion/scorpion-film-v2.png',
+      preload: shouldPrime,
       frames: {
         idle1:        scorpionFrame(0, 0),
         idle2:        scorpionFrame(1, 0),
@@ -168,6 +176,7 @@
 
     M.assets.define('godgames.orion.fxHudV1', {
       src: 'assets/manga/orion/orion-fx-hud-v1.png',
+      preload: false,
       frames: {
         spearTrail1:       fxFrame(0, 0),
         spearTrail2:       fxFrame(1, 0),

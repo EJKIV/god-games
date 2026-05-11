@@ -166,8 +166,9 @@ function drawCharacterAt(baseX, baseY, scale) {
         t,
         vx: characterVx(t),
         accent: P.palette.accent || '#D4AF37',
+        preferPrimaryOnly: true,
       })) return;
-  if (MANGA_ON && drawAssetTraveler(char, driftX, baseY, scale, facing, walkPhase, t)) return;
+  if (MANGA_ON && drawAssetTraveler(char, driftX, baseY, scale, facing, walkPhase, t, { preferPrimaryOnly: true })) return;
 
   if (!char || (char !== 'perseus' && (!window.Manga || !Manga.characters || !Manga.characters[char]))) {
     // Tiny fallback figure
@@ -212,7 +213,7 @@ function drawCharacterAt(baseX, baseY, scale) {
   ctx.restore();
 }
 
-function drawAssetTraveler(char, x, y, scale, facing, walkPhase, t) {
+function drawAssetTraveler(char, x, y, scale, facing, walkPhase, t, options = {}) {
   if (!char || !window.Manga || !Manga.assets || typeof Manga.assets.ready !== 'function') return false;
   const A = Manga.assets;
   const vx = characterVx(t);
@@ -228,7 +229,9 @@ function drawAssetTraveler(char, x, y, scale, facing, walkPhase, t) {
     spriteScale *= 0.34;
     y -= 22;
   } else if (char === 'achilles') {
-    id = canAnimate && A.ready('godgames.achilles.animSheet') ? 'godgames.achilles.animSheet' : 'godgames.achilles.actionSheet';
+    const primaryReady = canAnimate && A.ready('godgames.achilles.animSheet');
+    if (options.preferPrimaryOnly && canAnimate && !primaryReady) return false;
+    id = primaryReady ? 'godgames.achilles.animSheet' : 'godgames.achilles.actionSheet';
     anim = Math.abs(vx) > 1 ? (facing < 0 ? 'runLeft' : 'runRight') : 'idle';
     frame = Math.abs(vx) > 1 ? (facing < 0 ? 'runLeft' : 'runRight') : 'idle';
     animT = t;
@@ -236,7 +239,9 @@ function drawAssetTraveler(char, x, y, scale, facing, walkPhase, t) {
     spriteScale *= id === 'godgames.achilles.animSheet' ? 0.36 : 0.30;
     y += 4;
   } else if (char === 'orion') {
-    id = canAnimate && A.ready('godgames.orion.orionAnimV1') ? 'godgames.orion.orionAnimV1' : 'godgames.orion.scorpionSheet';
+    const primaryReady = canAnimate && A.ready('godgames.orion.orionAnimV1');
+    if (options.preferPrimaryOnly && canAnimate && !primaryReady) return false;
+    id = primaryReady ? 'godgames.orion.orionAnimV1' : 'godgames.orion.scorpionSheet';
     anim = Math.abs(vx) > 1 ? 'run' : 'idle';
     frame = id === 'godgames.orion.orionAnimV1'
       ? (Math.abs(vx) > 1 ? 'run1' : 'idle1')

@@ -1074,7 +1074,9 @@
         rotate: Math.sin(t * 1.1) * 0.035,
       };
     } else if (game === 'achilles') {
-      id = ready('godgames.achilles.animSheet') ? 'godgames.achilles.animSheet' : 'godgames.achilles.actionSheet';
+      const primaryReady = ready('godgames.achilles.animSheet');
+      if (opts.preferPrimaryOnly && !primaryReady) return false;
+      id = primaryReady ? 'godgames.achilles.animSheet' : 'godgames.achilles.actionSheet';
       if (id === 'godgames.achilles.animSheet') {
         anim = Math.abs(vx) > 1 ? (facing < 0 ? 'runLeft' : 'runRight') : 'idle';
         frame = animationFrame(id, anim, Math.abs(vx) > 1 ? animationSecondsFromPhase(walkCycle, id, anim) : t);
@@ -1086,7 +1088,9 @@
       }
       yy += 4 * scale;
     } else if (game === 'orion') {
-      id = ready('godgames.orion.orionAnimV1') ? 'godgames.orion.orionAnimV1' : 'godgames.orion.scorpionSheet';
+      const primaryReady = ready('godgames.orion.orionAnimV1');
+      if (opts.preferPrimaryOnly && !primaryReady) return false;
+      id = primaryReady ? 'godgames.orion.orionAnimV1' : 'godgames.orion.scorpionSheet';
       if (id === 'godgames.orion.orionAnimV1') {
         anim = Math.abs(vx) > 1 ? 'run' : 'idle';
         frame = animationFrame(id, anim, Math.abs(vx) > 1 ? animationSecondsFromPhase(walkCycle, id, anim) : t);
