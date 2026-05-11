@@ -70,6 +70,7 @@ canvas { display: block; }
 // Canvas + ctx are owned by Engine; aliased after boot.
 let canvas, ctx;
 let icarusMangaStageCache = null;
+let icarusNormalSkyCache = null;
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const GRAVITY        = 400;
@@ -462,6 +463,20 @@ function oceanY()         { return canvas.height * 0.83; }
 // ── Helpers ────────────────────────────────────────────────────────────────
 function clamp01(v) {
   return Math.max(0, Math.min(1, v));
+}
+
+function icarusPerfTier() {
+  const art = window.GodGames && GodGames.MangaArt;
+  if (art && typeof art.performanceTier === 'function') return art.performanceTier();
+  try {
+    const pref = localStorage.getItem('godgames_perf');
+    if (pref === 'high' || pref === 'balanced' || pref === 'low') return pref;
+  } catch (_e) {}
+  return 'balanced';
+}
+
+function reducedNormalIcarusEffects() {
+  return !Engine.manga && icarusPerfTier() !== 'high';
 }
 
 function altRatio() {
@@ -1435,12 +1450,11 @@ function updateFloaters(dt) {
 function render() {
   const W = canvas.width, H = canvas.height;
 
-  // background
-  renderBackground(W, H);
-
-  // sun
-  renderSun(W, H);
-  renderMangaSkyTreatment(W, H);
+  if (!renderNormalSkyCached(W, H)) {
+    renderBackground(W, H);
+    renderSun(W, H);
+    renderMangaSkyTreatment(W, H);
+  }
 
   // clouds
   renderClouds();
@@ -1782,34 +1796,85 @@ function drawIcarusDebugOverlay(W, H) {
   debug.draw(ctx, { game: 'icarus', items, drifts });
 }
 
+function renderNormalSkyCached(W, H) {
+  if (Engine.manga || !reducedNormalIcarusEffects()) return false;
+  const heat = dangerHeat();
+  const key = `${W}x${H}`;
+  if (!icarusNormalSkyCache || icarusNormalSkyCache.key !== key) {
+    const layer = icarusNormalSkyCache && icarusNormalSkyCache.canvas
+      ? icarusNormalSkyCache.canvas
+      : document.createElement('canvas');
+    if (layer.width !== W || layer.height !== H) {
+      layer.width = W;
+      layer.height = H;
+    }
+    const g = layer.getContext('2d');
+    if (!g) return false;
+    drawNormalBackground(g, W, H, 0, time);
+    drawNormalSun(g, W, H, time, true);
+    icarusNormalSkyCache = { key, canvas: layer };
+  }
+  ctx.drawImage(icarusNormalSkyCache.canvas, 0, 0);
+
+  if (heat > 0.03) {
+    const wash = ctx.createLinearGradient(0, 0, 0, H);
+    wash.addColorStop(0, `rgba(255,118,0,${0.10 + heat * 0.16})`);
+    wash.addColorStop(0.35, `rgba(255,170,36,${0.04 + heat * 0.08})`);
+    wash.addColorStop(0.78, 'rgba(255,170,36,0)');
+    ctx.fillStyle = wash;
+    ctx.fillRect(0, 0, W, H * 0.82);
+  }
+
+  // subtle heat shimmer lines near top when dangerous
+  if (heat > 0.3) {
+    ctx.save();
+    ctx.globalAlpha = heat * 0.08;
+    for (let i = 0; i < 4; i++) {
+      const yy = (time*40 + i*30) % (H*0.5);
+      ctx.strokeStyle = '#ffaa00';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, yy);
+      ctx.lineTo(W, yy + Math.sin(time*3+i)*8);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+  return true;
+}
+
+function drawNormalBackground(g, W, H, heat, t) {
+  const grad = g.createLinearGradient(0, 0, 0, H);
+  const topC = lerpColor('#ff8800', '#ffdd00', Math.sin(t * 1.5) * 0.15 + 0.5);
+  const midHiC = lerpColor('#cc4400', '#ff7700', heat);
+  const midC = lerpColor('#1a6b9e', '#c2650a', heat * 0.9);
+
+  grad.addColorStop(0, topC);
+  grad.addColorStop(0.12 + heat * 0.15, midHiC);
+  grad.addColorStop(0.45 + heat * 0.2, midC);
+  grad.addColorStop(0.80, '#0d3a5c');
+  grad.addColorStop(1, '#071e30');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, W, H);
+}
+
 function renderBackground(W, H) {
   if (Engine.manga && drawMangaFlightStageBackground(W, H)) return;
 
-  const alt = altRatio();
   const heat = dangerHeat();
-  // gradient shifts: the hotter, the more orange bleeds downward
-  const grad = ctx.createLinearGradient(0, 0, 0, H);
   if (Engine.manga) {
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
     grad.addColorStop(0,    lerpColor('#ff9a00', '#ffd51f', Math.sin(time * 1.5) * 0.12 + 0.55));
     grad.addColorStop(0.18 + heat * 0.10, '#f06a11');
     grad.addColorStop(0.45 + heat * 0.12, '#a95c27');
     grad.addColorStop(0.72, '#176684');
     grad.addColorStop(1,    '#07304f');
-  } else {
-    // top colors get more intense with heat
-    const topC  = lerpColor('#ff8800', '#ffdd00', Math.sin(time*1.5)*0.15+0.5);
-    const midHiC = lerpColor('#cc4400', '#ff7700', heat);
-    const midC  = lerpColor('#1a6b9e', '#c2650a', heat * 0.9);
-    const botC  = '#0d3a5c'; // deep blue that blends into ocean
-
-    grad.addColorStop(0,    topC);
-    grad.addColorStop(0.12 + heat*0.15, midHiC);
-    grad.addColorStop(0.45 + heat*0.2,  midC);
-    grad.addColorStop(0.80, botC);
-    grad.addColorStop(1,    '#071e30');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+    return;
   }
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, W, H);
+
+  drawNormalBackground(ctx, W, H, heat, time);
 
   // subtle heat shimmer lines near top when dangerous
   if (heat > 0.3) {
@@ -1828,60 +1893,64 @@ function renderBackground(W, H) {
   }
 }
 
+function drawNormalSun(g, W, H, t, reduced = false) {
+  const cx = W/2, cy = -30;
+  const pulse = 1 + Math.sin(t*1.8)*0.06;
+  const R = 120 * pulse;
+
+  const glows = reduced
+    ? [{r: R*4.2, a: 0.035}, {r: R*2.4, a: 0.09}, {r: R*1.28, a: 0.20}]
+    : [
+      {r: R*5.5, a: 0.022}, {r: R*4,   a: 0.04},
+      {r: R*2.8, a: 0.07},  {r: R*1.9, a: 0.12},
+      {r: R*1.35,a: 0.22},
+    ];
+  for (const glow of glows) {
+    const grad = g.createRadialGradient(cx, cy, 0, cx, cy, glow.r);
+    grad.addColorStop(0,   `rgba(255,200,50,${glow.a})`);
+    grad.addColorStop(0.6, `rgba(255,120,0,${glow.a*0.5})`);
+    grad.addColorStop(1,   'rgba(255,80,0,0)');
+    g.fillStyle = grad;
+    g.beginPath();
+    g.arc(cx, cy, glow.r, 0, Math.PI*2);
+    g.fill();
+  }
+
+  g.save();
+  g.translate(cx, cy);
+  g.rotate(t * 0.12);
+  g.globalAlpha = reduced ? 0.16 : 0.25;
+  const rays = reduced ? 8 : 16;
+  for (let i = 0; i < rays; i++) {
+    const a = (i / rays) * Math.PI * 2;
+    const r1 = R * 1.2, r2 = R * 3.5 + Math.sin(t*2+i)*20;
+    g.strokeStyle = '#ffcc44';
+    g.lineWidth = reduced ? 1.1 : 1.5;
+    g.beginPath();
+    g.moveTo(Math.cos(a)*r1, Math.sin(a)*r1);
+    g.lineTo(Math.cos(a)*r2, Math.sin(a)*r2);
+    g.stroke();
+  }
+  g.restore();
+
+  const coreGrad = g.createRadialGradient(cx, cy, 0, cx, cy, R);
+  coreGrad.addColorStop(0,   '#ffffff');
+  coreGrad.addColorStop(0.3, '#fffaaa');
+  coreGrad.addColorStop(0.7, '#ffcc00');
+  coreGrad.addColorStop(1,   '#ff8800');
+  g.fillStyle = coreGrad;
+  g.beginPath();
+  g.arc(cx, cy, R, 0, Math.PI*2);
+  g.fill();
+}
+
 function renderSun(W, H) {
   if (Engine.manga) {
     renderMangaSunZone(W, H);
     return;
   }
 
-  const cx = W/2, cy = -30;
-  const pulse = 1 + Math.sin(time*1.8)*0.06;
-  const R = 120 * pulse;
-
-  // glow layers
-  const glows = [
-    {r: R*5.5, a: 0.022}, {r: R*4,   a: 0.04},
-    {r: R*2.8, a: 0.07},  {r: R*1.9, a: 0.12},
-    {r: R*1.35,a: 0.22},
-  ];
-  for (const g of glows) {
-    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, g.r);
-    grad.addColorStop(0,   `rgba(255,200,50,${g.a})`);
-    grad.addColorStop(0.6, `rgba(255,120,0,${g.a*0.5})`);
-    grad.addColorStop(1,   'rgba(255,80,0,0)');
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.arc(cx, cy, g.r, 0, Math.PI*2);
-    ctx.fill();
-  }
-
-  // corona rays
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.rotate(time * 0.12);
-  ctx.globalAlpha = 0.25;
-  for (let i = 0; i < 16; i++) {
-    const a = (i / 16) * Math.PI * 2;
-    const r1 = R * 1.2, r2 = R * 3.5 + Math.sin(time*2+i)*20;
-    ctx.strokeStyle = '#ffcc44';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(Math.cos(a)*r1, Math.sin(a)*r1);
-    ctx.lineTo(Math.cos(a)*r2, Math.sin(a)*r2);
-    ctx.stroke();
-  }
-  ctx.restore();
-
-  // core
-  const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, R);
-  coreGrad.addColorStop(0,   '#ffffff');
-  coreGrad.addColorStop(0.3, '#fffaaa');
-  coreGrad.addColorStop(0.7, '#ffcc00');
-  coreGrad.addColorStop(1,   '#ff8800');
-  ctx.fillStyle = coreGrad;
-  ctx.beginPath();
-  ctx.arc(cx, cy, R, 0, Math.PI*2);
-  ctx.fill();
+  drawNormalSun(ctx, W, H, time, false);
 }
 
 function renderMangaSkyTreatment(W, H) {
@@ -1946,19 +2015,26 @@ function renderMangaSkyTreatment(W, H) {
 function renderClouds() {
   if (Engine.manga && renderMangaClouds()) return;
 
+  const reduced = reducedNormalIcarusEffects();
   for (const c of clouds) {
     const a = c.baseAlpha;
     if (a < 0.01) continue;
     ctx.save();
     ctx.globalAlpha = Engine.manga ? a * 0.72 : a;
     // fluffy cloud from overlapping ellipses
-    const puffs = [
-      {dx:0,    dy:0,    rx:c.w*0.45, ry:c.h*0.6},
-      {dx:-c.w*0.28, dy:c.h*0.15, rx:c.w*0.32, ry:c.h*0.5},
-      {dx: c.w*0.28, dy:c.h*0.15, rx:c.w*0.32, ry:c.h*0.5},
-      {dx:-c.w*0.12, dy:-c.h*0.1, rx:c.w*0.28, ry:c.h*0.45},
-      {dx: c.w*0.12, dy:-c.h*0.1, rx:c.w*0.28, ry:c.h*0.45},
-    ];
+    const puffs = reduced
+      ? [
+        {dx:0, dy:0, rx:c.w*0.45, ry:c.h*0.58},
+        {dx:-c.w*0.25, dy:c.h*0.12, rx:c.w*0.30, ry:c.h*0.46},
+        {dx: c.w*0.25, dy:c.h*0.12, rx:c.w*0.30, ry:c.h*0.46},
+      ]
+      : [
+        {dx:0,    dy:0,    rx:c.w*0.45, ry:c.h*0.6},
+        {dx:-c.w*0.28, dy:c.h*0.15, rx:c.w*0.32, ry:c.h*0.5},
+        {dx: c.w*0.28, dy:c.h*0.15, rx:c.w*0.32, ry:c.h*0.5},
+        {dx:-c.w*0.12, dy:-c.h*0.1, rx:c.w*0.28, ry:c.h*0.45},
+        {dx: c.w*0.12, dy:-c.h*0.1, rx:c.w*0.28, ry:c.h*0.45},
+      ];
     ctx.fillStyle = Engine.manga ? 'rgba(255,246,218,0.88)' : 'rgba(200,220,255,0.9)';
     for (const p of puffs) {
       ctx.beginPath();
@@ -1989,12 +2065,16 @@ function renderOcean(W, H) {
 
   const oY = oceanY();
   const waveAmp1 = 9, waveAmp2 = 5;
+  const reduced = reducedNormalIcarusEffects();
+  const surfaceStep = reduced ? (W > 1000 ? 16 : 10) : 6;
+  const rippleStep = reduced ? (W > 1000 ? 20 : 12) : 6;
+  const sparkleCount = reduced ? 6 : 18;
 
   // wave surface path
   ctx.save();
   ctx.beginPath();
   ctx.moveTo(0, oY + waveAmp1);
-  for (let x = 0; x <= W; x += 6) {
+  for (let x = 0; x <= W; x += surfaceStep) {
     const y = oY
       + Math.sin(x * 0.018 + time * 1.6) * waveAmp1
       + Math.sin(x * 0.032 - time * 2.1) * waveAmp2;
@@ -2016,7 +2096,7 @@ function renderOcean(W, H) {
   // foam / wave crest highlight
   ctx.beginPath();
   ctx.moveTo(0, oY + waveAmp1);
-  for (let x = 0; x <= W; x += 6) {
+  for (let x = 0; x <= W; x += surfaceStep) {
     const y = oY
       + Math.sin(x * 0.018 + time * 1.6) * waveAmp1
       + Math.sin(x * 0.032 - time * 2.1) * waveAmp2;
@@ -2028,7 +2108,7 @@ function renderOcean(W, H) {
 
   // secondary ripple
   ctx.beginPath();
-  for (let x = 0; x <= W; x += 6) {
+  for (let x = 0; x <= W; x += rippleStep) {
     const y = oY + 14
       + Math.sin(x * 0.022 - time * 1.2) * 6
       + Math.sin(x * 0.04  + time * 1.9) * 3;
@@ -2040,7 +2120,7 @@ function renderOcean(W, H) {
 
   // light sparkles on water surface
   ctx.globalAlpha = 0.55;
-  for (let i = 0; i < 18; i++) {
+  for (let i = 0; i < sparkleCount; i++) {
     const sx = ((i * 137 + time * 25) % W);
     const sy = oY + 4 + Math.sin(sx * 0.02 + time * 1.5) * waveAmp1;
     const blink = Math.sin(time * 4 + i * 1.7) * 0.5 + 0.5;
@@ -2523,7 +2603,7 @@ function drawSideWing(ctx, flapY, wh, burnFrac, wetFrac) {
   const tipX = -8 + flapY * 0.45;
   const tipY = -55 + flapY * 0.88;
 
-  const maxFeathers = 8;
+  const maxFeathers = reducedNormalIcarusEffects() ? 5 : 8;
   const nFeathers = Math.max(2, Math.round(wh * maxFeathers));
 
   // Translucent wing membrane
@@ -3734,7 +3814,8 @@ function drawMangaOrca(o, W, H) {
   if (heavy) {
     ctx.filter = `saturate(1.10) brightness(${0.92 + depth * 0.12}) contrast(1.08)`;
   }
-  drew = drawMangaAtlasFrame(frame, ox, Math.min(oy + 26, oY + 36), {
+  const drawY = Math.min(oy + 26, oY + 36);
+  const drawOpts = {
     scale: base * (frame === 'orcaSplash' ? 0.92 : 1.0),
     rotate: rot,
     alpha: o.y > oY + 30 ? 0.74 : 0.98,
@@ -3744,7 +3825,10 @@ function drawMangaOrca(o, W, H) {
     bob: 4,
     sway: 0.016,
     squash: 0.010,
-  });
+  };
+  drew = above && !o.splashed
+    ? drawMangaAtlasAnimation('orcaBreach', ((time + o.x * 0.003) % 0.56 + 0.56) % 0.56, ox, drawY, drawOpts)
+    : drawMangaAtlasFrame(frame, ox, drawY, drawOpts);
   if (heavy) ctx.filter = 'none';
   ctx.restore();
   return drew;
@@ -3758,7 +3842,7 @@ function drawMangaDaedalusFly(x, y, opts = {}) {
   ctx.save();
   ctx.globalAlpha = 0.86;
   if (heavy) ctx.filter = 'sepia(0.10) saturate(1.02) brightness(0.86) contrast(1.05)';
-  const drew = drawMangaAtlasFrame('daedalusFly', x, y, {
+  const drew = drawMangaAtlasAnimation('daedalusFly', time, x, y, {
     scale,
     alpha: 0.88,
     rotate: (opts.tilt || 0) + Math.sin(time * 1.2) * 0.035,
@@ -3859,12 +3943,23 @@ function currentIcarusSpriteFrame() {
   return 'glide';
 }
 
+function currentIcarusSpriteAnimation() {
+  if (state === 'dying') return 'falling';
+  if (diveT > 0) return 'dive';
+  if (player.burnDmg > 34 && player.burnDmg >= player.wetDmg) return 'burn';
+  if (player.wetDmg > 34 && player.wetDmg > player.burnDmg) return 'wet';
+  if (keys && (keys['ArrowUp'] || keys[' '])) return 'flap';
+  if (Math.abs(player.vy) > 190 || player.vx > 170) return 'speed';
+  return 'glide';
+}
+
 function drawIcarusMangaSprite() {
   if (!mangaAssetReady(ICARUS_MANGA_SHEET_ASSET)
     || !Manga.assets || typeof Manga.assets.drawFrame !== 'function') return false;
 
   const p = player;
   const frame = currentIcarusSpriteFrame();
+  const anim = currentIcarusSpriteAnimation();
   const compact = Math.min(canvas.width, canvas.height);
   const nearScale = Math.max(0.26, Math.min(0.42, compact / 2200));
   const drawX = typeof p.visualX === 'number' ? p.visualX : p.x;
@@ -3919,8 +4014,7 @@ function drawIcarusMangaSprite() {
     ? 0.08
     : (diveT > 0 ? 0.52 : Math.max(thrusting ? 0.48 : 0.22, Math.min(0.54, Math.abs(p.visualVy || p.vy) / 780)));
   const rotate = state === 'dying' ? p.angle * 0.16 : (p.spriteTilt || 0);
-  const drew = art && typeof art.drawFilmFrame === 'function'
-    ? art.drawFilmFrame(ctx, ICARUS_MANGA_SHEET_ASSET, frame, drawX, drawY, {
+  const frameOpts = {
         scale,
         flipX: !p.facingRight,
         rotate,
@@ -3931,14 +4025,20 @@ function drawIcarusMangaSprite() {
         floatRate: 2.1,
         sway: diveT > 0 ? 0.012 : 0.034,
         squash: thrusting ? 0.020 : 0.012,
-        animName: thrusting ? 'flap' : frame,
+        animName: anim,
         hero: true,
-      })
+        film: true,
+        fps: anim === 'flap' ? 8 : undefined,
+      };
+  const drew = art && typeof art.drawAnimation === 'function'
+    ? art.drawAnimation(ctx, ICARUS_MANGA_SHEET_ASSET, anim, anim === 'flap' ? wingCycle : time, drawX, drawY, frameOpts)
+    : (art && typeof art.drawFilmFrame === 'function'
+      ? art.drawFilmFrame(ctx, ICARUS_MANGA_SHEET_ASSET, frame, drawX, drawY, frameOpts)
     : Manga.assets.drawFrame(ctx, ICARUS_MANGA_SHEET_ASSET, frame, drawX, drawY, {
         scale,
         flipX: !p.facingRight,
         rotate,
-      });
+      }));
   if (heavy) ctx.filter = 'none';
   ctx.shadowBlur = 0;
   ctx.restore();

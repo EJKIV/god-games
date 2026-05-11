@@ -1746,11 +1746,14 @@ function drawMangaHubAvatar(scale) {
   const turnSqueeze = turn > 0 ? 0.52 + Math.abs(turnPhase - 0.5) * 0.96 : 1;
   const facing = player.drawFacing || player.facing;
   let frame = 'idle';
+  let anim = 'idle';
   if (ready > 0.45 && !moving) frame = 'ready';
   else if (moving) {
     const walkCycle = ((player.walkPhase / (Math.PI * 2)) % 1 + 1) % 1;
     frame = walkCycle < 0.5 ? 'walkA' : 'walkB';
   }
+  if (moving) anim = 'walk';
+  else if (frame === 'ready') anim = 'ready';
 
   const avatarScale = Math.max(0.082, Math.min(0.152, 0.138 * scale));
   const drawX = typeof player.visualX === 'number' ? player.visualX : player.x;
@@ -1773,8 +1776,7 @@ function drawMangaHubAvatar(scale) {
   ctx.filter = heavy
     ? 'drop-shadow(0 5px 3px rgba(0,0,0,0.45)) saturate(0.96) contrast(1.04)'
     : 'saturate(0.96) contrast(1.04)';
-  const drew = art && typeof art.drawFilmFrame === 'function'
-    ? art.drawFilmFrame(ctx, HUB_AVATAR_ASSET, frame, drawX, drawY, {
+  const frameOpts = {
         scale: avatarScale,
         flipX: facing < 0,
         phase: walkPhase,
@@ -1786,14 +1788,20 @@ function drawMangaHubAvatar(scale) {
         filmScaleY: 1 + landing * 0.05,
         lean: (player.visualLean || 0) + ready * facing * -0.012,
         smear: moving ? 5 : false,
-        animName: moving ? 'walk' : frame,
+        animName: anim,
         hero: true,
-      })
+        film: true,
+        fps: moving ? 8 : undefined,
+      };
+  const drew = art && typeof art.drawAnimation === 'function'
+    ? art.drawAnimation(ctx, HUB_AVATAR_ASSET, anim, moving ? walkPhase : time, drawX, drawY, frameOpts)
+    : (art && typeof art.drawFilmFrame === 'function'
+      ? art.drawFilmFrame(ctx, HUB_AVATAR_ASSET, frame, drawX, drawY, frameOpts)
     : Manga.assets.drawFrame(ctx, HUB_AVATAR_ASSET, frame, drawX, drawY - bob, {
         scale: avatarScale,
         flipX: facing < 0,
         rotate: (player.visualLean || 0) + ready * facing * -0.012,
-      });
+      }));
   ctx.restore();
   return drew;
 }

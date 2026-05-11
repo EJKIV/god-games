@@ -32,8 +32,9 @@ npm run perf
 ```
 
 The harness gates unexpected 404s/HTTP errors, request failures, uncaught JS
-errors, `console.error`, and the debug-overlay drift report. It also prints
-gameplay-route p95 frame time; set `PERF_FRAME_GATE=1` to make p95 a hard gate.
+errors, `console.error`, gameplay-route p95 frame time, and the debug-overlay
+drift report. Set `PERF_FRAME_GATE=0` to report p95 without failing on frame
+cadence.
 The hub stays in the matrix for visibility, but its headless desktop p95 is
 informational because it is not a collision gameplay surface.
 The overlay stays hidden for frame timing while the harness still collects

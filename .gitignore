@@ -5,3 +5,12 @@ node_modules/
 
 # Generated manga loop-sheet drafts; commit only once wired through manifests.
 assets/manga/**/*-loops-v1.png
+!assets/manga/shared/hub-avatar-loops-v1.png
+!assets/manga/shared/hub-toad-loops-v1.png
+!assets/manga/achilles/achilles-anim-loops-v1.png
+!assets/manga/achilles/archers-loops-v1.png
+!assets/manga/orion/orion-anim-loops-v1.png
+!assets/manga/orion/scorpion-anim-loops-v1.png
+!assets/manga/icarus/icarus-flight-loops-v1.png
+!assets/manga/icarus/icarus-stage-atlas-loops-v1.png
+!assets/manga/perseus/perseus-gorgon-loops-v1.png

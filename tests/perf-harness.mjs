@@ -5,8 +5,8 @@
 //   - unexpected 4xx/5xx responses or request failures
 //   - uncaught JS errors or console.error calls
 //   - gameplay-vs-visual drift over the debug overlay budget
-// Prints p95 requestAnimationFrame deltas; set PERF_FRAME_GATE=1 to fail on
-// frame-budget regressions during a focused profiling run.
+// Prints p95 requestAnimationFrame deltas; set PERF_FRAME_GATE=0 to report
+// frame-budget regressions without failing during noisy local profiling.
 
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
@@ -28,7 +28,8 @@ const SETTLE_MS = Number(process.env.PERF_SETTLE_MS || 1200);
 const DRIFT_BUDGET = Number(process.env.PERF_DRIFT_RATIO || 0.35);
 const DESKTOP_P95_MS = Number(process.env.PERF_DESKTOP_P95_MS || 67);
 const MOBILE_P95_MS = Number(process.env.PERF_MOBILE_P95_MS || 84);
-const FRAME_GATE = process.env.PERF_FRAME_GATE === '1';
+const MIN_FRAMES = Number(process.env.PERF_MIN_FRAMES || 16);
+const FRAME_GATE = process.env.PERF_FRAME_GATE !== '0';
 
 const VIEWPORTS = [
   { id: 'desktop', budget: DESKTOP_P95_MS, viewport: { width: 1280, height: 720, deviceScaleFactor: 1 } },
@@ -118,15 +119,15 @@ async function instrumentPage(page, sink) {
   });
 }
 
-async function seedPage(page, manga) {
-  await page.evaluateOnNewDocument((mangaOn) => {
+async function seedPage(page, manga, perfTier = 'balanced') {
+  await page.evaluateOnNewDocument((mangaOn, tier) => {
     localStorage.setItem('godgames_playerName', 'PERF');
     localStorage.removeItem('godgames_debug');
-    localStorage.setItem('godgames_perf', 'balanced');
+    localStorage.setItem('godgames_perf', tier);
     localStorage.setItem('icarus_lastPlay', String(Date.now()));
     if (mangaOn) localStorage.setItem('godgames_manga', '1');
     else localStorage.removeItem('godgames_manga');
-  }, manga);
+  }, manga, perfTier);
 }
 
 async function newScenarioPage(context, sink, viewport, manga, cold) {
@@ -134,7 +135,7 @@ async function newScenarioPage(context, sink, viewport, manga, cold) {
   await page.setViewport(viewport);
   await page.setCacheEnabled(!cold);
   await instrumentPage(page, sink);
-  await seedPage(page, manga);
+  await seedPage(page, manga, viewport.hasTouch ? 'low' : 'balanced');
   return page;
 }
 
@@ -327,6 +328,7 @@ function gateResult(route, viewport, sink, frames, pageProbe) {
   if (sink.failedRequests.length) failures.push(`request failed ${sink.failedRequests.map((r) => `${r.method} ${r.url}: ${r.error}`).join('; ')}`);
   if (sink.pageErrors.length) failures.push(`js ${sink.pageErrors.join('; ')}`);
   if (sink.consoleErrors.length) failures.push(`console ${sink.consoleErrors.join('; ')}`);
+  if (FRAME_GATE && route.frameGate !== false && frames.frames < MIN_FRAMES) failures.push(`only ${frames.frames} frames collected < ${MIN_FRAMES}`);
   if (FRAME_GATE && route.frameGate !== false && frames.p95 > viewport.budget) failures.push(`p95 ${frames.p95.toFixed(1)}ms > ${viewport.budget}ms`);
 
   if (route.needsDebug) {
@@ -348,7 +350,13 @@ async function launchBrowser() {
   return puppeteer.launch({
     executablePath: CHROME,
     headless: 'new',
-    args: ['--disable-dev-shm-usage', '--no-sandbox'],
+    args: [
+      '--disable-dev-shm-usage',
+      '--no-sandbox',
+      '--disable-background-timer-throttling',
+      '--disable-renderer-backgrounding',
+      '--disable-backgrounding-occluded-windows',
+    ],
     defaultViewport: null,
   });
 }
@@ -356,66 +364,65 @@ async function launchBrowser() {
 const results = [];
 
 for (const route of routes) {
-  const browser = await launchBrowser();
-  try {
-    for (const viewport of VIEWPORTS) {
-      for (const manga of [false, true]) {
-        for (const load of ['cold', 'warm']) {
-          const sink = makeSink();
-          const context = await createContext(browser);
-          let page;
-          let loadMs = 0;
-          try {
-            if (load === 'warm') {
-              const warmup = await newScenarioPage(context, sink, viewport.viewport, manga, false);
-              await gotoMeasured(warmup, route);
-              await sleep(450);
-              await warmup.close();
-            }
-
-            page = await newScenarioPage(context, sink, viewport.viewport, manga, load === 'cold');
-            loadMs = await gotoMeasured(page, route);
-            await startRoute(page, route);
-
-            const framePromise = measureFrames(page, DURATION_MS);
-            const drivePromise = driveRoute(page, route.id, DURATION_MS);
-            const frames = await framePromise;
-            await drivePromise;
-            await sleep(120);
-            const pageProbe = await probe(page);
-            const failures = gateResult(route, viewport, sink, frames, pageProbe);
-            results.push({
-              route: route.id,
-              viewport: viewport.id,
-              manga,
-              load,
-              loadMs,
-              frames,
-              debug: pageProbe.debug,
-              ok: failures.length === 0,
-              failures,
-            });
-          } catch (err) {
-            results.push({
-              route: route.id,
-              viewport: viewport.id,
-              manga,
-              load,
-              loadMs,
-              frames: null,
-              debug: null,
-              ok: false,
-              failures: [`threw ${err.message}`],
-            });
-          } finally {
-            if (page) await page.close().catch(() => {});
-            await context.close().catch(() => {});
+  for (const viewport of VIEWPORTS) {
+    for (const manga of [false, true]) {
+      for (const load of ['cold', 'warm']) {
+        const sink = makeSink();
+        let browser;
+        let context;
+        let page;
+        let loadMs = 0;
+        try {
+          browser = await launchBrowser();
+          context = await createContext(browser);
+          if (load === 'warm') {
+            const warmup = await newScenarioPage(context, sink, viewport.viewport, manga, false);
+            await gotoMeasured(warmup, route);
+            await sleep(450);
+            await warmup.close();
           }
+
+          page = await newScenarioPage(context, sink, viewport.viewport, manga, load === 'cold');
+          loadMs = await gotoMeasured(page, route);
+          await startRoute(page, route);
+
+          const framePromise = measureFrames(page, DURATION_MS);
+          const drivePromise = driveRoute(page, route.id, DURATION_MS);
+          const frames = await framePromise;
+          await drivePromise;
+          await sleep(120);
+          const pageProbe = await probe(page);
+          const failures = gateResult(route, viewport, sink, frames, pageProbe);
+          results.push({
+            route: route.id,
+            viewport: viewport.id,
+            manga,
+            load,
+            loadMs,
+            frames,
+            debug: pageProbe.debug,
+            ok: failures.length === 0,
+            failures,
+          });
+        } catch (err) {
+          results.push({
+            route: route.id,
+            viewport: viewport.id,
+            manga,
+            load,
+            loadMs,
+            frames: null,
+            debug: null,
+            ok: false,
+            failures: [`threw ${err.message}`],
+          });
+        } finally {
+          if (page) await page.close().catch(() => {});
+          if (context) await context.close().catch(() => {});
+          if (browser) await browser.close().catch(() => {});
         }
       }
     }
-  } finally {
-    await browser.close().catch(() => {});
   }
 }
 
@@ -447,6 +454,6 @@ for (const r of results) {
 
 console.log('-'.repeat(132));
 console.log(`${results.length - failed} passed, ${failed} failed`);
-console.log(`budgets: desktop p95 <= ${DESKTOP_P95_MS}ms, mobile p95 <= ${MOBILE_P95_MS}ms, drift <= ${(DRIFT_BUDGET * 100).toFixed(1)}%`);
-console.log(`frame gate: ${FRAME_GATE ? 'on' : 'off'} (set PERF_FRAME_GATE=1 to fail on p95 budget)`);
+console.log(`budgets: desktop p95 <= ${DESKTOP_P95_MS}ms, mobile p95 <= ${MOBILE_P95_MS}ms, frames >= ${MIN_FRAMES}, drift <= ${(DRIFT_BUDGET * 100).toFixed(1)}%`);
+console.log(`frame gate: ${FRAME_GATE ? 'on' : 'off'} (set PERF_FRAME_GATE=0 to report p95 without failing)`);
 process.exit(failed ? 1 : 0);

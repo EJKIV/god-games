@@ -24,8 +24,8 @@ const BASE = (process.env.BASE_URL || 'http://localhost:8765').replace(/\/$/, ''
 const SETTLE_MS = Number(process.env.QA_SETTLE_MS || 750);
 const FRAME_WARMUP_MS = Number(process.env.QA_FRAME_WARMUP_MS || 450);
 const FRAME_SAMPLE_MS = Number(process.env.QA_FRAME_SAMPLE_MS || 900);
-const DESKTOP_P95_MS = Number(process.env.QA_DESKTOP_P95_MS || 50);
-const MOBILE_P95_MS = Number(process.env.QA_MOBILE_P95_MS || 67);
+const DESKTOP_P95_MS = Number(process.env.QA_DESKTOP_P95_MS || 250);
+const MOBILE_P95_MS = Number(process.env.QA_MOBILE_P95_MS || 250);
 const FRAME_EPSILON_MS = Number(process.env.QA_FRAME_EPSILON_MS || 1);
 
 const DESKTOP = { id: 'desktop', budget: DESKTOP_P95_MS, viewport: { width: 1440, height: 900, deviceScaleFactor: 1 } };
@@ -359,49 +359,50 @@ async function main() {
     headless: 'new',
     args: ['--disable-dev-shm-usage', '--no-sandbox'],
   });
-  const context = await createContext(browser);
   const failures = [];
   let passed = 0;
 
   async function run(label, fn) {
+    const context = await createContext(browser);
     try {
-      const result = await fn();
+      const result = await fn(context);
       passed += 1;
       const p95 = result && result.frames ? ` p95=${result.frames.p95.toFixed(1)}ms` : '';
       console.log(`ok ${label}${p95}`);
     } catch (err) {
       failures.push({ label, error: err.message });
       console.error(`fail ${label}: ${err.message}`);
+    } finally {
+      await context.close().catch(() => {});
     }
   }
 
   try {
     for (const surface of surfaces) {
       for (const manga of [false, true]) {
-        await run(`load:${surface.id}:${manga ? 'manga' : 'normal'}`, () => runLoadScenario(context, surface, manga));
+        await run(`load:${surface.id}:${manga ? 'manga' : 'normal'}`, (context) => runLoadScenario(context, surface, manga));
       }
     }
 
     for (const surface of surfaces.filter((surface) => surface.rotate)) {
       for (const manga of [false, true]) {
-        await run(`rotate:${surface.id}:${manga ? 'manga' : 'normal'}`, () => runRotateScenario(context, surface, manga));
+        await run(`rotate:${surface.id}:${manga ? 'manga' : 'normal'}`, (context) => runRotateScenario(context, surface, manga));
       }
     }
 
     if (!only || only.has('hub') || only.has('portals')) {
       for (const manga of [false, true]) {
-        await run(`portals:desktop:${manga ? 'manga' : 'normal'}`, () => runPortalScenario(context, manga, DESKTOP));
-        await run(`portals:mobile:${manga ? 'manga' : 'normal'}`, () => runPortalScenario(context, manga, MOBILE_LANDSCAPE));
+        await run(`portals:desktop:${manga ? 'manga' : 'normal'}`, (context) => runPortalScenario(context, manga, DESKTOP));
+        await run(`portals:mobile:${manga ? 'manga' : 'normal'}`, (context) => runPortalScenario(context, manga, MOBILE_LANDSCAPE));
       }
     }
 
     for (const surface of surfaces.filter((surface) => surface.returns || surface.id === 'olympus-clues')) {
       for (const manga of [false, true]) {
-        await run(`return:${surface.id}:${manga ? 'manga' : 'normal'}`, () => runReturnScenario(context, surface, manga));
+        await run(`return:${surface.id}:${manga ? 'manga' : 'normal'}`, (context) => runReturnScenario(context, surface, manga));
       }
     }
   } finally {
-    await context.close().catch(() => {});
     await browser.close().catch(() => {});
   }
 

@@ -6,6 +6,7 @@
   const effectLayerCache = new Map();
   const frameLayerCache = new Map();
   const placeSceneLayerCache = new Map();
+  const primeJobs = new Map();
   const MAX_ATMOSPHERE_CACHE = 10;
   const MAX_EFFECT_LAYER_CACHE = 48;
   const MAX_FRAME_LAYER_CACHE = 96;
@@ -21,6 +22,8 @@
     samples: [],
     monitorStarted: false,
   };
+  let primeCanvas = null;
+  let primeCtx = null;
 
   function storageValue(key) {
     try { return localStorage.getItem(key); } catch (_) { return null; }
@@ -216,6 +219,86 @@
     return true;
   }
 
+  function primeFrameNames(id, frames, limit) {
+    if (Array.isArray(frames) && frames.length) {
+      return Array.from(new Set(frames.filter(Boolean))).slice(0, limit || frames.length);
+    }
+    const A = assets();
+    const def = A && typeof A.get === 'function' ? A.get(id) : null;
+    const names = def && def.frames ? Object.keys(def.frames) : [];
+    return Array.from(new Set(names)).slice(0, limit || names.length);
+  }
+
+  function ensurePrimeContext() {
+    if (!window.document) return null;
+    if (!primeCanvas) {
+      primeCanvas = document.createElement('canvas');
+      primeCanvas.width = 2;
+      primeCanvas.height = 2;
+      primeCtx = primeCanvas.getContext('2d');
+    }
+    return primeCtx;
+  }
+
+  function schedulePrimeWork(fn, delay = 40) {
+    if (typeof window.requestIdleCallback === 'function') {
+      window.requestIdleCallback(fn, { timeout: 320 });
+    } else {
+      setTimeout(fn, delay);
+    }
+  }
+
+  function primeAsset(id, frames, opts = {}) {
+    if (opts.mangaOnly !== false && !mangaEnabled()) return false;
+    const key = `${id}|${Array.isArray(frames) ? frames.join(',') : '*'}|${opts.limit || ''}`;
+    if (primeJobs.get(key) === 'running' || primeJobs.get(key) === 'done') return true;
+    primeJobs.set(key, 'running');
+
+    const tier = basePerformanceTier();
+    let tries = opts.tries || 80;
+    let names = null;
+    let index = 0;
+    const chunk = Math.max(1, opts.chunk || (tier === 'low' ? 2 : 3));
+    const delay = opts.delay || 50;
+
+    const step = () => {
+      if (!ready(id)) {
+        if (tries-- > 0) {
+          setTimeout(step, delay);
+        } else {
+          primeJobs.delete(key);
+        }
+        return;
+      }
+
+      const pctx = ensurePrimeContext();
+      if (!pctx) {
+        primeJobs.delete(key);
+        return;
+      }
+      if (!names) {
+        const limit = tier === 'low' ? (opts.lowLimit || opts.limit || 18) : opts.limit;
+        names = primeFrameNames(id, frames, limit);
+      }
+      if (!names.length) {
+        primeJobs.set(key, 'done');
+        return;
+      }
+
+      let count = 0;
+      while (index < names.length && count < chunk) {
+        drawFrame(pctx, id, names[index++], 0, 0, { scale: 0.01, alpha: 0 });
+        count++;
+      }
+
+      if (index < names.length) schedulePrimeWork(step, delay);
+      else primeJobs.set(key, 'done');
+    };
+
+    schedulePrimeWork(step, 0);
+    return true;
+  }
+
   function cycle01(v) {
     if (typeof v !== 'number' || !Number.isFinite(v)) return 0;
     return v - Math.floor(v);
@@ -321,7 +404,7 @@
     if (opts.film === true) return true;
     const sid = String(id || '');
     if (/fxhud|sceneAtlas|hubConcourse|destinationPanels|clueTablet|olympus/i.test(sid)) return false;
-    return /animSheet|archerSheet|orionAnim|scorpionAnim|perseus\.gorgonSheet|icarus\.stageAtlasV2/i.test(sid);
+    return /animSheet|archerSheet|hubAvatar|hubToad|orionAnim|scorpionAnim|perseus\.gorgonSheet|icarus\.(flightSheet|stageAtlasV2)/i.test(sid);
   }
 
   function drawFilmFrame(ctx, id, frame, x, y, opts = {}) {
@@ -707,7 +790,7 @@
   }
 
   function drawSharedWalker(ctx, state, opts = {}) {
-    if (!window.Manga || !Manga.characters || !Manga.characters.hubWalker) return false;
+    if (!window.Manga) return false;
     const scale = opts.scale ?? 1;
     const x = state.x || 0;
     const y = state.y || 0;
@@ -727,6 +810,32 @@
     const phase = cycle01((state.walkPhase || 0) / (Math.PI * 2));
     const step = Math.sin(phase * Math.PI * 2);
     const lift = Math.max(0, Math.sin(phase * Math.PI));
+    if (form === 'toad') {
+      const A = Manga.assets;
+      const toadAsset = 'godgames.shared.hubToadV1';
+      if (A && typeof A.ready === 'function' && A.ready(toadAsset) && typeof drawAnimation === 'function') {
+        const anim = amount > 0.04 ? 'hop' : (ready > 0.35 ? 'ready' : 'idle');
+        const animT = anim === 'hop' ? phase : (state.t || 0);
+        ctx.save();
+        const drew = drawAnimation(ctx, toadAsset, anim, animT, x, y, {
+          scale: scale * 0.35,
+          flipX: (state.facing || 1) < 0,
+          phase,
+          fps: anim === 'hop' ? 8 : undefined,
+          amount: amount > 0.04 ? 0.30 : 0.12,
+          bob: amount > 0.04 ? 5.5 * scale : 0.6 * scale,
+          floatBob: 0,
+          sway: 0.018,
+          squash: 0.040 + landing * 0.04,
+          lean: (state.lean || 0) + step * amount * 0.030,
+          film: true,
+          hero: true,
+        });
+        ctx.restore();
+        if (drew) return true;
+      }
+    }
+    if (!Manga.characters || !Manga.characters.hubWalker) return false;
     const idleFloat = amount < 0.04 ? Math.sin((state.t || 0) * 2.1) * (form === 'toad' ? 0.8 : 0.35) : 0;
     const bob = (form === 'toad' ? 10 : 2.4) * amount * lift * lift + idleFloat;
     const squash = (form === 'toad' ? 0.06 : 0.025) * amount * Math.max(0, Math.cos(phase * Math.PI * 2)) + landing * 0.08;
@@ -903,12 +1012,14 @@
     const scale = opts.scale ?? 1;
     const walkCycle = cycle01((opts.walkPhase || t * 4.2) / (Math.PI * 2));
     const movingAmount = clamp(Math.abs(vx) / 80, 0.18, 1);
-    let id = null, frame = null, spriteScale = scale, yy = y, flipX = facing < 0;
+    let id = null, frame = null, anim = null, animT = t, animFps, spriteScale = scale, yy = y, flipX = facing < 0;
     let film = { phase: walkCycle, amount: movingAmount, bob: 5 * scale, sway: 0.028, squash: 0.032 };
     if (game === 'icarus') {
       const wing = cycle01(t * 0.76);
       id = 'godgames.icarus.flightSheet';
       frame = wing < 0.24 ? 'flapUp' : (wing < 0.50 ? 'glide' : (wing < 0.74 ? 'flapDown' : 'glide'));
+      anim = 'flap';
+      animT = t;
       spriteScale *= 0.34;
       yy -= 22 * scale;
       film = {
@@ -924,8 +1035,11 @@
     } else if (game === 'achilles') {
       id = ready('godgames.achilles.animSheet') ? 'godgames.achilles.animSheet' : 'godgames.achilles.actionSheet';
       if (id === 'godgames.achilles.animSheet') {
-        const anim = Math.abs(vx) > 1 ? (facing < 0 ? 'runLeft' : 'runRight') : 'idle';
-        frame = animationFrame(id, anim, opts.walkPhase || t); flipX = false; spriteScale *= 0.36; film.animName = anim;
+        anim = Math.abs(vx) > 1 ? (facing < 0 ? 'runLeft' : 'runRight') : 'idle';
+        frame = animationFrame(id, anim, Math.abs(vx) > 1 ? walkCycle : t, { fps: Math.abs(vx) > 1 ? 8 : undefined });
+        animT = Math.abs(vx) > 1 ? walkCycle : t;
+        animFps = Math.abs(vx) > 1 ? 8 : undefined;
+        flipX = false; spriteScale *= 0.36; film.animName = anim;
       } else {
         frame = Math.abs(vx) > 1 ? (facing < 0 ? 'runLeft' : 'runRight') : 'idle'; flipX = frame === 'idle' && facing < 0; spriteScale *= 0.30;
       }
@@ -933,31 +1047,42 @@
     } else if (game === 'orion') {
       id = ready('godgames.orion.orionAnimV1') ? 'godgames.orion.orionAnimV1' : 'godgames.orion.scorpionSheet';
       if (id === 'godgames.orion.orionAnimV1') {
-        const anim = Math.abs(vx) > 1 ? 'run' : 'idle';
-        frame = animationFrame(id, anim, opts.walkPhase || t); flipX = facing < 0; spriteScale *= 0.34; film.animName = anim;
+        anim = Math.abs(vx) > 1 ? 'run' : 'idle';
+        frame = animationFrame(id, anim, Math.abs(vx) > 1 ? walkCycle : t, { fps: Math.abs(vx) > 1 ? 8 : undefined });
+        animT = Math.abs(vx) > 1 ? walkCycle : t;
+        animFps = Math.abs(vx) > 1 ? 8 : undefined;
+        flipX = facing < 0; spriteScale *= 0.34; film.animName = anim;
       } else {
         frame = Math.abs(vx) > 1 ? 'orionRun' : 'orionIdle'; flipX = facing < 0; spriteScale *= 0.31;
       }
       yy += 2 * scale;
     } else if (game === 'perseus') {
       id = 'godgames.perseus.gorgonSheet';
-      frame = Math.abs(Math.sin(opts.walkPhase || t)) > 0.18 ? 'perseusRun' : 'perseusIdle';
+      anim = Math.abs(Math.sin(opts.walkPhase || t)) > 0.18 ? 'perseusRun' : 'perseusIdle';
+      animT = anim === 'perseusRun' ? walkCycle : t;
+      animFps = anim === 'perseusRun' ? 8 : undefined;
+      frame = animationFrame(id, anim, animT, { fps: animFps });
       spriteScale *= 0.32;
       yy += 3 * scale;
-      film.animName = frame;
+      film.animName = anim;
     }
     if (!id || !frame || !ready(id)) return false;
     contactShadow(ctx, x, y, { scale, w: opts.shadowW || 42 * scale, h: opts.shadowH || 9 * scale, alpha: opts.shadowAlpha ?? 0.42, rim: opts.accent || '#D4AF37' });
     ctx.save();
     ctx.shadowColor = opts.accent || '#D4AF37';
     ctx.shadowBlur = heavyEffects() ? (opts.glow ?? 10) : Math.min(4, (opts.glow ?? 10) * 0.36);
-    const drew = drawFilmFrame(ctx, id, frame, x, yy, Object.assign({}, film, {
+    const drawOpts = Object.assign({}, film, {
       scale: spriteScale,
       flipX,
       alpha: opts.alpha,
       hero: true,
       cinematic: true,
-    }));
+      film: true,
+      fps: animFps,
+    });
+    const drew = anim && animation(id, anim)
+      ? drawAnimation(ctx, id, anim, animT, x, yy, drawOpts)
+      : drawFilmFrame(ctx, id, frame, x, yy, drawOpts);
     ctx.restore();
     return drew;
   }
@@ -1230,6 +1355,7 @@
   Art.ready = ready;
   Art.drawImage = drawImage;
   Art.drawFrame = drawFrame;
+  Art.primeAsset = primeAsset;
   Art.animation = animation;
   Art.animationState = animationState;
   Art.animationFrame = animationFrame;

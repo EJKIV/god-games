@@ -5,6 +5,15 @@
       setTimeout(register, 0);
       return;
     }
+    function mangaRequested() {
+      try { return localStorage.getItem('godgames_manga') === '1'; }
+      catch (_e) { return false; }
+    }
+    function hubPage() {
+      const path = (location.pathname || '').split('/').pop();
+      return !path || path === 'index.html';
+    }
+    if (!mangaRequested() && !hubPage()) return;
 
     const cell = 362;
     const frame = (col, row) => ({ x: col * cell, y: row * cell, w: cell, h: cell });
@@ -64,25 +73,90 @@
       },
     });
 
-    const avatarCell = 1774 / 4;
-    const avatarFrame = (idx) => ({
-      x: idx * avatarCell,
-      y: 0,
+    const avatarCell = 3552 / 8;
+    const avatarH = 887;
+    const avatarFrame = (col, row) => ({
+      x: col * avatarCell,
+      y: row * avatarH,
       w: avatarCell,
-      h: 887,
+      h: avatarH,
       anchorX: avatarCell / 2,
       anchorY: 768,
     });
     M.assets.define('godgames.shared.hubAvatarV2', {
-      src: 'assets/manga/shared/hub-avatar-v2.png',
+      src: 'assets/manga/shared/hub-avatar-loops-v1.png',
       frames: {
-        idle: avatarFrame(0),
-        walkA: avatarFrame(1),
-        walkB: avatarFrame(2),
-        ready: avatarFrame(3),
+        idle:  avatarFrame(0, 0),
+        walkA: avatarFrame(0, 1),
+        walkB: avatarFrame(4, 1),
+        ready: avatarFrame(4, 0),
+        idle1: avatarFrame(0, 0),
+        idle2: avatarFrame(1, 0),
+        idle3: avatarFrame(2, 0),
+        idle4: avatarFrame(3, 0),
+        ready1: avatarFrame(4, 0),
+        ready2: avatarFrame(5, 0),
+        ready3: avatarFrame(6, 0),
+        ready4: avatarFrame(7, 0),
+        walk1: avatarFrame(0, 1),
+        walk2: avatarFrame(1, 1),
+        walk3: avatarFrame(2, 1),
+        walk4: avatarFrame(3, 1),
+        walk5: avatarFrame(4, 1),
+        walk6: avatarFrame(5, 1),
+        walk7: avatarFrame(6, 1),
+        walk8: avatarFrame(7, 1),
       },
       meta: {
         usage: 'Transparent manga/anime hub traveler sprite sheet for the Mount Olympus concourse.',
+        animations: {
+          idle: { frames: ['idle1', 'idle2', 'idle3', 'idle4'], fps: 5, loop: true },
+          ready: { frames: ['ready1', 'ready2', 'ready3', 'ready4'], fps: 5, loop: true },
+          walk: { frames: ['walk1', 'walk2', 'walk3', 'walk4', 'walk5', 'walk6', 'walk7', 'walk8'], fps: 12, loop: true },
+        },
+      },
+    });
+
+    const toadCellW = 2048 / 8;
+    const toadCellH = 384 / 2;
+    const toadFrame = (col, row) => ({
+      x: col * toadCellW,
+      y: row * toadCellH,
+      w: toadCellW,
+      h: toadCellH,
+      anchorX: toadCellW / 2,
+      anchorY: 160,
+    });
+    M.assets.define('godgames.shared.hubToadV1', {
+      src: 'assets/manga/shared/hub-toad-loops-v1.png',
+      frames: {
+        idle: toadFrame(0, 0),
+        ready: toadFrame(4, 0),
+        hop: toadFrame(0, 1),
+        idle1: toadFrame(0, 0),
+        idle2: toadFrame(1, 0),
+        idle3: toadFrame(2, 0),
+        idle4: toadFrame(3, 0),
+        ready1: toadFrame(4, 0),
+        ready2: toadFrame(5, 0),
+        ready3: toadFrame(6, 0),
+        ready4: toadFrame(7, 0),
+        hop1: toadFrame(0, 1),
+        hop2: toadFrame(1, 1),
+        hop3: toadFrame(2, 1),
+        hop4: toadFrame(3, 1),
+        hop5: toadFrame(4, 1),
+        hop6: toadFrame(5, 1),
+        hop7: toadFrame(6, 1),
+        hop8: toadFrame(7, 1),
+      },
+      meta: {
+        usage: 'Transparent manga/anime hub toad sprite loops for clue entrance traversal.',
+        animations: {
+          idle: { frames: ['idle1', 'idle2', 'idle3', 'idle4'], fps: 4, loop: true },
+          ready: { frames: ['ready1', 'ready2', 'ready3', 'ready4'], fps: 4, loop: true },
+          hop: { frames: ['hop1', 'hop2', 'hop3', 'hop4', 'hop5', 'hop6', 'hop7', 'hop8'], fps: 9, loop: true },
+        },
       },
     });
   }
