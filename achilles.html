@@ -919,7 +919,7 @@ function drawMangaBattlefield(opts = {}) {
   const focusX = opts.focusX ?? 0.50;
   const focusY = opts.focusY ?? 0.53;
   const alpha = opts.alpha ?? 1;
-  const perf = typeof art.performanceTier === 'function' ? art.performanceTier() : 'balanced';
+  const perf = typeof art.basePerformanceTier === 'function' ? art.basePerformanceTier() : 'balanced';
   const key = [W, H, focusX, focusY, alpha, opts.title ? 1 : 0, perf].join('|');
   if (!achillesMangaStageCache || achillesMangaStageCache.key !== key) {
     const layer = document.createElement('canvas');

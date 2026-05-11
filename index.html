@@ -1249,7 +1249,7 @@ function mangaHubAssetReady(id) {
 
 function mangaHubStaticKey() {
   const art = window.GodGames && GodGames.MangaArt;
-  const tier = art && typeof art.performanceTier === 'function' ? art.performanceTier() : 'base';
+  const tier = art && typeof art.basePerformanceTier === 'function' ? art.basePerformanceTier() : 'base';
   return [
     W, H, tier,
     mangaHubAssetReady(HUB_CONCOURSE_ASSET) ? 1 : 0,

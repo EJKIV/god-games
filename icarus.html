@@ -3280,7 +3280,7 @@ function drawMangaFlightStageBackground(W, H, opts = {}) {
   const wet = player ? clamp01(player.wetDmg / 100) : 0;
   const dead = !!opts.dead;
   const alpha = opts.alpha ?? 1;
-  const perf = typeof art.performanceTier === 'function' ? art.performanceTier() : 'balanced';
+  const perf = typeof art.basePerformanceTier === 'function' ? art.basePerformanceTier() : 'balanced';
   const key = [W, H, opts.title ? 1 : 0, alpha, perf].join('|');
   if (!icarusMangaStageCache || icarusMangaStageCache.key !== key) {
     const layer = document.createElement('canvas');

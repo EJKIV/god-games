@@ -1024,7 +1024,7 @@ function drawMangaCaveStage(t, opts = {}) {
   const focusX = opts.focusX ?? (level === 2 ? 0.54 : 0.50);
   const focusY = opts.focusY ?? 0.54;
   const alpha = opts.alpha ?? 1;
-  const perf = typeof art.performanceTier === 'function' ? art.performanceTier() : 'balanced';
+  const perf = typeof art.basePerformanceTier === 'function' ? art.basePerformanceTier() : 'balanced';
   const key = [W, H, level, frame, focusX, focusY, alpha, opts.title ? 1 : 0, perf].join('|');
   if (!perseusMangaStageCache || perseusMangaStageCache.key !== key) {
     const layer = document.createElement('canvas');
