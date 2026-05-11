@@ -2329,12 +2329,17 @@ function drawMangaChamberCuts(t) {
 
   if (levelBannerT > 0) {
     const a = Math.min(1, levelBannerT / 0.5);
-    const compactHud = H < 520;
+    const compactHud = H < 520 || W < 720;
     ctx.save();
     ctx.globalAlpha = a;
     ctx.textAlign = 'center';
     ctx.lineJoin = 'round';
-    ctx.font = `900 ${compactHud ? 24 : 34}px serif`;
+    let titleSize = compactHud ? 24 : 34;
+    ctx.font = `900 ${titleSize}px serif`;
+    while (ctx.measureText(cfg.name).width > W * 0.86 && titleSize > 18) {
+      titleSize -= 1;
+      ctx.font = `900 ${titleSize}px serif`;
+    }
     ctx.strokeStyle = '#0a0a0a';
     ctx.lineWidth = 6;
     ctx.strokeText(cfg.name, W / 2, compactHud ? H * 0.20 : H * 0.24);
@@ -2581,7 +2586,7 @@ function drawHud() {
   Engine.hud.drawHearts(20, 28, player.hp, HP_MAX);
   const W = Engine.W;
   const cfg = levelCfg();
-  const compactHud = Engine.H < 520;
+  const compactHud = Engine.H < 520 || W < 720;
   ctx.save();
   ctx.textAlign = 'center';
   ctx.font = `bold ${compactHud ? 12 : 15}px monospace`;
@@ -2638,7 +2643,12 @@ function drawHud() {
     const bannerY = compactHud ? Engine.H * 0.20 : Engine.H * 0.24;
     ctx.globalAlpha = a;
     ctx.textAlign = 'center';
-    ctx.font = `bold ${compactHud ? 24 : 34}px serif`;
+    let titleSize = compactHud ? 24 : 34;
+    ctx.font = `bold ${titleSize}px serif`;
+    while (ctx.measureText(cfg.name).width > W * 0.86 && titleSize > 18) {
+      titleSize -= 1;
+      ctx.font = `bold ${titleSize}px serif`;
+    }
     ctx.fillStyle = '#d6fbff';
     ctx.shadowColor = '#3db0c6';
     ctx.shadowBlur = 22;
