@@ -54,9 +54,8 @@
 <script src="mysteries.js"></script>
 <script src="progress-sync.js"></script>
 <script>
-// olympus-clues.html — the toad's secret journal. Reached by jumping onto
-// the mushroom that appears at the base of Mt. Olympus when in toad form
-// on the hub. Interprets the current mythic omen and stores uncovered clues.
+// olympus-clues.html — the mystery archive reached from the first hidden
+// hub trigger. It reads the current mythic omen and stores uncovered signs.
 
 const canvas = document.getElementById('c');
 const ctx    = canvas.getContext('2d');
@@ -91,15 +90,16 @@ function render() {
     ? M.journalState()
     : { earned: [], early: [], current: null, future: null, complete: false, codeword: 'ZEUS' };
   const current = journal.current || (!journal.complete ? journal.prologue : null);
+  const wordReady = wordAssembled(journal);
   const steps = buildJournalSteps(M, journal, current);
   const layout = journalLayout(W, H);
 
   drawJournalSurface(layout.board, art, t);
-  drawJournalHeader(layout, journal, current, art, t);
+  drawJournalHeader(layout, journal, current, art, t, wordReady);
   drawPathRail(layout.path, steps, journal, current, layout.pathHorizontal);
-  drawCurrentOmenPanel(layout.main, journal, current, steps, art, layout.veryShort);
+  drawCurrentOmenPanel(layout.main, journal, current, steps, art, layout.veryShort, wordReady);
   drawFragmentLedger(layout.ledger, journal, current, art, layout.veryShort);
-  drawJournalFooter(layout, journal, current);
+  drawJournalFooter(layout, journal, current, wordReady);
 
   drawCluesDebugOverlay(layout.board);
 
@@ -232,9 +232,9 @@ function drawJournalSurface(board, art, t) {
       paper: 'rgba(238,228,198,0.97)',
       bottom: 'rgba(156,137,103,0.97)',
       accent: GOLD,
-      lineWidth: 5,
-      toneAlpha: 0.15,
-      shadow: 'rgba(0,0,0,0.58)',
+      lineWidth: 3.8,
+      toneAlpha: 0.10,
+      shadow: 'rgba(0,0,0,0.50)',
     });
   } else {
     ctx.fillStyle = 'rgba(8,7,7,0.95)';
@@ -258,7 +258,7 @@ function drawJournalSurface(board, art, t) {
     ctx.shadowBlur = 0;
   }
 
-  ctx.globalAlpha = MANGA_ON ? 0.22 : 0.15;
+  ctx.globalAlpha = MANGA_ON ? 0.11 : 0.11;
   ctx.strokeStyle = MANGA_ON ? '#0a0a0a' : GOLD;
   ctx.lineWidth = 1;
   for (let i = 0; i < 11; i++) {
@@ -278,7 +278,7 @@ function drawJournalSurface(board, art, t) {
   ctx.restore();
 }
 
-function drawJournalHeader(layout, journal, current, art, t) {
+function drawJournalHeader(layout, journal, current, art, t, wordReady) {
   const h = layout.header;
   const titleSize = layout.veryShort ? 15 : (layout.compact ? 20 : 27);
   const subSize = layout.veryShort ? 10 : 12;
@@ -288,7 +288,7 @@ function drawJournalHeader(layout, journal, current, art, t) {
   ctx.fillStyle = MANGA_ON ? '#6d3f14' : 'rgba(255,213,74,0.78)';
   ctx.fillText('WHAT YOU HAVE LEARNED', h.x, h.y + 13);
   if (MANGA_ON && art && art.inkText) {
-    art.inkText(ctx, "TOAD'S OLYMPUS JOURNAL", h.x, h.y + titleSize + (layout.veryShort ? 17 : 20), {
+    art.inkText(ctx, 'THE MOUNTAIN ARCHIVE', h.x, h.y + titleSize + (layout.veryShort ? 17 : 20), {
       align: 'left',
       font: `900 ${titleSize}px "Impact", "Arial Black", sans-serif`,
       fill: '#fff1b8',
@@ -301,26 +301,26 @@ function drawJournalHeader(layout, journal, current, art, t) {
     ctx.fillStyle = GOLD;
     ctx.shadowColor = GOLD;
     ctx.shadowBlur = 9;
-    ctx.fillText("TOAD'S OLYMPUS JOURNAL", h.x, h.y + titleSize + (layout.veryShort ? 17 : 20));
+    ctx.fillText('THE MOUNTAIN ARCHIVE', h.x, h.y + titleSize + (layout.veryShort ? 17 : 20));
     ctx.shadowBlur = 0;
   }
   if (!layout.veryShort) {
     ctx.font = `${MANGA_ON ? 'bold' : 'italic'} ${subSize}px ${MANGA_ON ? 'monospace' : 'serif'}`;
     ctx.fillStyle = MANGA_ON ? 'rgba(35,22,12,0.78)' : 'rgba(230,210,160,0.72)';
-    const status = journal.complete && !current
-      ? `the ${journal.codeword || 'ZEUS'} invocation is assembled`
-      : 'the toad sees what the human cannot';
+    const status = wordReady
+      ? 'the four marks now read as one name'
+      : 'each sign opens only after its myth is answered';
     ctx.fillText(status, h.x, h.y + h.h - 6);
   }
 
-  const count = Math.max(0, Math.min(4, journal.solvedCount || 0));
   const meterX = h.x + h.w - (layout.compact ? 118 : 176);
   const meterY = h.y + (layout.veryShort ? 5 : 10);
   const slotW = layout.compact ? 21 : 32;
   const letters = String(journal.codeword || 'ZEUS').split('');
+  const earnedLetters = earnedLetterSet(journal);
   for (let i = 0; i < 4; i++) {
     const x = meterX + i * (slotW + 6);
-    const solved = i < count;
+    const solved = earnedLetters.has(letters[i]);
     ctx.fillStyle = solved ? (MANGA_ON ? '#fff1b8' : 'rgba(212,175,55,0.20)') : (MANGA_ON ? 'rgba(255,248,220,0.32)' : 'rgba(0,0,0,0.26)');
     ctx.strokeStyle = solved ? GOLD : (MANGA_ON ? 'rgba(10,10,10,0.38)' : 'rgba(212,175,55,0.34)');
     ctx.lineWidth = solved ? 2 : 1;
@@ -334,23 +334,12 @@ function drawJournalHeader(layout, journal, current, art, t) {
     ctx.fillText(solved ? letters[i] : '?', x + slotW / 2, meterY + (layout.veryShort ? 16 : 21));
   }
   ctx.restore();
-
-  if (MANGA_ON && art && art.drawSharedWalker && !layout.veryShort) {
-    art.drawSharedWalker(ctx, {
-      x: h.x + h.w - 42,
-      y: h.y + h.h - 7,
-      facing: -1,
-      walkPhase: t * 4.2,
-      vx: 40,
-      form: 'toad',
-    }, { scale: layout.compact ? 0.52 : 0.68, shadowAlpha: 0.22 });
-  }
 }
 
 function drawPathRail(rect, steps, journal, current, horizontal) {
   const accent = MANGA_ON ? '#0a0a0a' : GOLD;
   const tight = horizontal && rect.h < 50;
-  drawInsetPanel(rect, tight ? '' : 'CLUE PATH', accent);
+  drawInsetPanel(rect, tight ? '' : 'PATH OF SIGNS', accent);
 
   const lead = tight ? 48 : 23;
   const trail = tight ? 20 : 23;
@@ -391,7 +380,10 @@ function drawPathNode(x, y, r, step, state, index, horizontal, bounds) {
     locked: MANGA_ON ? 'rgba(10,10,10,0.34)' : 'rgba(210,190,150,0.38)',
     available: GOLD,
   }[state] || GOLD;
-  const label = step && step.id === 'clue.toad' ? 'TOAD' : (step && step.letter ? step.letter : String(index));
+  const known = stepKnown(step, state);
+  const label = known
+    ? (step && step.letter ? step.letter : romanMark(index + 1))
+    : '?';
   ctx.save();
   ctx.fillStyle = MANGA_ON ? '#fff6d6' : 'rgba(6,4,10,0.92)';
   if (state === 'locked') ctx.fillStyle = MANGA_ON ? 'rgba(255,248,220,0.52)' : 'rgba(6,4,10,0.58)';
@@ -406,11 +398,13 @@ function drawPathNode(x, y, r, step, state, index, horizontal, bounds) {
   ctx.shadowBlur = 0;
 
   ctx.textAlign = 'center';
-  ctx.font = `bold ${label === 'TOAD' ? Math.max(8, r * 0.55) : Math.max(11, r * 0.72)}px monospace`;
+  ctx.font = `bold ${Math.max(11, r * 0.72)}px monospace`;
   ctx.fillStyle = state === 'locked' ? (MANGA_ON ? 'rgba(10,10,10,0.44)' : 'rgba(220,200,150,0.50)') : (MANGA_ON ? '#0a0a0a' : stateColor);
   ctx.fillText(label, x, y + 4);
 
-  const realm = step && step.id === 'clue.toad' ? 'first hop' : String(step && (step.realm || step.targetGame) || 'sealed');
+  const realm = known
+    ? (step && step.id === 'clue.toad' ? 'opening sign' : String(step && (step.realm || step.targetGame) || 'opened'))
+    : 'unread sign';
   ctx.font = `bold ${horizontal ? 9 : 10}px monospace`;
   ctx.fillStyle = state === 'current' ? (MANGA_ON ? '#6d3f14' : GOLD) : (MANGA_ON ? 'rgba(35,22,12,0.62)' : 'rgba(235,220,180,0.58)');
   if (horizontal) {
@@ -420,17 +414,23 @@ function drawPathNode(x, y, r, step, state, index, horizontal, bounds) {
     }
   } else {
     ctx.textAlign = 'left';
-    ctx.fillText(ellipsize(realm, bounds.w - 58), x + r + 10, y - 2);
-    ctx.font = '9px monospace';
-    const status = state === 'current' ? 'read now' : (state === 'resolved' ? 'fulfilled' : (state === 'early' ? 'early' : 'sealed'));
-    ctx.fillStyle = MANGA_ON ? 'rgba(35,22,12,0.50)' : 'rgba(235,220,180,0.46)';
-    ctx.fillText(status, x + r + 10, y + 12);
+    if (known) {
+      ctx.fillText(ellipsize(realm, bounds.w - 58), x + r + 10, y - 2);
+      ctx.font = '9px monospace';
+      const status = state === 'current' ? 'active' : (state === 'resolved' ? 'opened' : (state === 'early' ? 'kept early' : 'opened'));
+      ctx.fillStyle = MANGA_ON ? 'rgba(35,22,12,0.50)' : 'rgba(235,220,180,0.46)';
+      ctx.fillText(status, x + r + 10, y + 12);
+    } else {
+      ctx.fillStyle = MANGA_ON ? 'rgba(35,22,12,0.34)' : 'rgba(235,220,180,0.34)';
+      ctx.fillText(ellipsize(realm, bounds.w - 58), x + r + 10, y + 4);
+    }
   }
   ctx.restore();
 }
 
 function clueStepState(step, journal, current) {
   if (!step) return 'locked';
+  if (step.id !== 'clue.toad' && !step.unlocked) return 'locked';
   if (journal.complete && !current && step.order === 4) return 'final';
   if (current && step.id === current.id) return 'current';
   if (step.resolved) return 'resolved';
@@ -439,19 +439,41 @@ function clueStepState(step, journal, current) {
   return 'locked';
 }
 
-function drawCurrentOmenPanel(rect, journal, current, steps, art, veryShort) {
-  drawInsetPanel(rect, current ? 'CURRENT OMEN' : 'INVOCATION READY', current && current.foundEarly ? '#cc88ff' : GOLD);
-  const final = journal.complete && !current;
+function stepKnown(step, state) {
+  return !!step && (step.id === 'clue.toad' || state === 'current' || state === 'resolved' || state === 'early' || state === 'available' || state === 'final');
+}
+
+function earnedLetterSet(journal) {
+  const out = new Set();
+  for (const clue of journal.earned || []) {
+    if (clue && clue.letter) out.add(String(clue.letter).toUpperCase());
+  }
+  return out;
+}
+
+function wordAssembled(journal) {
+  const letters = String(journal.codeword || 'ZEUS').toUpperCase().split('');
+  const earned = earnedLetterSet(journal);
+  return letters.length > 0 && letters.every(letter => earned.has(letter));
+}
+
+function romanMark(n) {
+  return ['I', 'II', 'III', 'IV', 'V'][Math.max(0, Math.min(4, n - 1))] || String(n);
+}
+
+function drawCurrentOmenPanel(rect, journal, current, steps, art, veryShort, wordReady) {
+  drawInsetPanel(rect, wordReady ? 'THE NAME IS WHOLE' : 'ACTIVE SIGN', current && current.foundEarly ? '#cc88ff' : GOLD);
+  const final = wordReady;
   const active = final
     ? {
-        title: 'THE WORD HAS FORMED',
+        title: 'THE CIRCLE CLOSES ABOVE',
         realm: 'Olympus',
-        actionVerb: 'speak',
-        riddle: `Carry ${journal.codeword || 'ZEUS'} back to the mountain and speak the thunderer's name where the storm gathers.`,
-        journalNudge: 'The fragments are no longer directions. They are the key.',
+        actionVerb: 'return',
+        riddle: 'A king\'s name is complete. It belongs where thunder gathers, above the roads and outside every arena.',
+        journalNudge: 'No altar asks for it. At the summit, names are answered when they are given to the air.',
         mythBasis: 'Zeus is the Olympian king who overthrew the Titans and rules through the thunderbolt.',
       }
-    : (current || steps[0] || {});
+    : archiveViewForClue(current || steps[0] || {});
   const pad = veryShort ? 14 : 18;
   const x = rect.x + pad;
   let y = rect.y + (veryShort ? 32 : 42);
@@ -486,7 +508,7 @@ function drawCurrentOmenPanel(rect, journal, current, steps, art, veryShort) {
   }
   ctx.restore();
 
-  if (MANGA_ON && art && art.inkText && !veryShort) {
+  if (MANGA_ON && art && art.inkText && !veryShort && active.letter) {
     ctx.save();
     ctx.globalAlpha = 0.13;
     art.inkText(ctx, active.letter || '?', rect.x + rect.w - 52, rect.y + rect.h - 24, {
@@ -501,14 +523,14 @@ function drawCurrentOmenPanel(rect, journal, current, steps, art, veryShort) {
 
 function drawFragmentLedger(rect, journal, current, art, veryShort) {
   const earned = journal.earned || [];
-  drawInsetPanel(rect, 'UNCOVERED FRAGMENTS', earned.length ? GOLD : (MANGA_ON ? '#0a0a0a' : GOLD));
+  drawInsetPanel(rect, 'RECOVERED MARKS', earned.length ? GOLD : (MANGA_ON ? '#0a0a0a' : GOLD));
   const pad = veryShort ? 8 : 14;
   const bodyTop = rect.y + (veryShort ? 22 : 34);
   ctx.save();
   if (!earned.length) {
     ctx.font = MANGA_ON ? `bold ${veryShort ? 12 : 14}px Georgia, serif` : `italic ${veryShort ? 12 : 14}px serif`;
     ctx.fillStyle = MANGA_ON ? 'rgba(33,23,13,0.78)' : 'rgba(240,230,200,0.78)';
-    wrapAndDraw((current && current.purpose) || 'Four fragments form the name that wakes the mountain.', rect.x + pad, bodyTop, rect.w - pad * 2, veryShort ? 15 : 18, 'left', veryShort ? 2 : 3);
+    wrapAndDraw((current && current.purpose) || 'The first recovered marks will gather here.', rect.x + pad, bodyTop, rect.w - pad * 2, veryShort ? 15 : 18, 'left', veryShort ? 2 : 3);
     ctx.restore();
     return;
   }
@@ -525,9 +547,19 @@ function drawFragmentLedger(rect, journal, current, art, veryShort) {
     ctx.font = 'bold 10px monospace';
     ctx.textAlign = 'right';
     ctx.fillStyle = MANGA_ON ? 'rgba(35,22,12,0.56)' : 'rgba(235,220,180,0.52)';
-    ctx.fillText(`${earned.length - visible.length} older mark(s) kept above`, rect.x + rect.w - pad, rect.y + 23);
+    ctx.fillText(`${earned.length - visible.length} earlier mark(s) archived`, rect.x + rect.w - pad, rect.y + 23);
   }
   ctx.restore();
+}
+
+function archiveViewForClue(clue) {
+  if (!clue || clue.id !== 'clue.toad') return clue || {};
+  return Object.assign({}, clue, {
+    title: 'THE FIRST SIGN POINTS TO ICARUS',
+    riddle: 'Begin with the boy of wax. Seek the middle path he refused, then rise until the golden eye starts to burn.',
+    text: 'Begin with the boy of wax. Seek the middle path he refused, then rise until the golden eye starts to burn.',
+    journalNudge: 'The clue is not in winning. It is in repeating the mistake Daedalus warned against.',
+  });
 }
 
 function drawFragmentCard(x, y, w, h, clue, art, veryShort) {
@@ -538,9 +570,9 @@ function drawFragmentCard(x, y, w, h, clue, art, veryShort) {
       paper: 'rgba(255,248,220,0.66)',
       bottom: 'rgba(218,200,160,0.66)',
       accent,
-      lineWidth: 1.8,
-      toneAlpha: 0.04,
-      shadow: 'rgba(0,0,0,0.10)',
+      lineWidth: 1.3,
+      toneAlpha: 0.025,
+      shadow: 'rgba(0,0,0,0.07)',
     });
   } else {
     ctx.fillStyle = 'rgba(2,0,6,0.34)';
@@ -559,7 +591,7 @@ function drawFragmentCard(x, y, w, h, clue, art, veryShort) {
   ctx.fillText(clue.letter || '?', x + 10, y + (veryShort ? 23 : 29));
   ctx.font = `bold ${veryShort ? 9 : 10}px monospace`;
   ctx.fillStyle = MANGA_ON ? '#6d3f14' : 'rgba(255,213,74,0.78)';
-  const status = clue.foundEarly ? 'FOUND EARLY' : (clue.resolved ? 'FULFILLED' : 'ACTIVE');
+  const status = clue.foundEarly ? 'EARLY' : (clue.resolved ? 'OPENED' : 'ACTIVE');
   ctx.fillText(status, x + 36, y + (veryShort ? 15 : 18));
   if (veryShort) {
     ctx.restore();
@@ -568,28 +600,28 @@ function drawFragmentCard(x, y, w, h, clue, art, veryShort) {
   ctx.font = MANGA_ON ? `bold ${veryShort ? 11 : 13}px Georgia, serif` : `${veryShort ? 11 : 13}px serif`;
   ctx.fillStyle = MANGA_ON ? '#21170d' : 'rgba(240,230,200,0.88)';
   const text = clue.foundEarly
-    ? 'Kept, but the path still begins earlier.'
+    ? 'Kept in the archive, though earlier signs still govern the route.'
     : (clue.uncoveredText || clue.text || '');
   const lines = linesFor(text, w - 46, ctx.font, veryShort ? 1 : 2);
   lines.forEach((line, i) => ctx.fillText(line, x + 36, y + (veryShort ? 31 : 38) + i * (veryShort ? 13 : 15)));
   ctx.restore();
 }
 
-function drawJournalFooter(layout, journal, current) {
+function drawJournalFooter(layout, journal, current, wordReady) {
   if (layout.veryShort) return;
   const board = layout.board;
   ctx.save();
   ctx.textAlign = 'center';
-  if (journal.complete && !current) {
+  if (wordReady) {
     ctx.font = `bold ${layout.veryShort ? 11 : 13}px monospace`;
     ctx.fillStyle = MANGA_ON ? '#8f204f' : '#ff88cc';
     ctx.shadowColor = '#ff88cc';
     ctx.shadowBlur = MANGA_ON ? 0 : 6;
-    ctx.fillText(`SPEAK ${journal.codeword || 'ZEUS'} ON THE MOUNTAIN`, board.x + board.w / 2, board.y + board.h - 12);
+    ctx.fillText('THE SUMMIT WAITS FOR THE NAME', board.x + board.w / 2, board.y + board.h - 12);
   } else if (journal.future && (journal.earned || []).length > 0 && !layout.veryShort) {
     ctx.font = 'italic 12px Georgia, serif';
     ctx.fillStyle = MANGA_ON ? 'rgba(67,32,79,0.80)' : 'rgba(204,136,255,0.76)';
-    wrapAndDraw('A lower mark is still sealed until the current omen is answered.', board.x + board.w / 2, board.y + board.h - 15, board.w - 60, 16, 'center', 1);
+    wrapAndDraw('Another mark exists below the ink, but it will not read before its myth is answered.', board.x + board.w / 2, board.y + board.h - 15, board.w - 60, 16, 'center', 1);
   } else {
     ctx.font = '10px monospace';
     ctx.fillStyle = MANGA_ON ? 'rgba(30,20,12,0.58)' : 'rgba(180,180,180,0.46)';
@@ -603,12 +635,12 @@ function drawInsetPanel(rect, label, accent) {
   ctx.save();
   if (MANGA_ON && art && art.drawPanel) {
     art.drawPanel(ctx, rect.x, rect.y, rect.w, rect.h, {
-      paper: 'rgba(255,248,220,0.58)',
-      bottom: 'rgba(215,197,157,0.54)',
+      paper: 'rgba(255,248,220,0.50)',
+      bottom: 'rgba(215,197,157,0.46)',
       accent,
-      lineWidth: 2,
-      toneAlpha: 0.04,
-      shadow: 'rgba(0,0,0,0.11)',
+      lineWidth: 1.35,
+      toneAlpha: 0.025,
+      shadow: 'rgba(0,0,0,0.08)',
     });
   } else {
     ctx.fillStyle = 'rgba(2,0,6,0.34)';
