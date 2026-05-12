@@ -68,22 +68,29 @@
     const flightCellW = 760;
     const flightCellH = 680;
     const flightBounds = {
-      '0,0': [16, 9, 393, 418], '1,0': [43, 12, 418, 402], '2,0': [0, 93, 418, 410], '3,0': [0, 69, 418, 418], '4,0': [0, 58, 418, 418], '5,0': [0, 52, 418, 412], '6,0': [0, 99, 418, 417], '7,0': [0, 125, 264, 389],
-      '0,1': [29, 0, 418, 350], '1,1': [0, 73, 418, 348], '2,1': [0, 98, 418, 354], '3,1': [0, 0, 418, 346], '4,1': [0, 0, 418, 312], '5,1': [0, 64, 418, 418], '6,1': [0, 73, 418, 418], '7,1': [0, 86, 402, 418],
-      '0,2': [52, 51, 359, 418], '1,2': [73, 21, 361, 418], '2,2': [49, 17, 379, 330], '3,2': [72, 28, 418, 418], '4,2': [0, 42, 418, 418], '5,2': [0, 0, 418, 373], '6,2': [0, 0, 418, 418], '7,2': [0, 0, 398, 341],
+      '0,0': [215, 150, 590, 566], '1,0': [226, 142, 607, 531], '2,0': [157, 183, 564, 497], '3,0': [163, 164, 557, 518], '4,0': [199, 136, 531, 503], '5,0': [235, 158, 760, 516], '6,0': [0, 211, 369, 550], '7,0': [117, 236, 528, 527],
+      '0,1': [178, 217, 650, 511], '1,1': [188, 231, 629, 504], '2,1': [204, 268, 685, 523], '3,1': [359, 224, 760, 503], '4,1': [0, 231, 372, 483], '5,1': [275, 221, 690, 443], '6,1': [371, 230, 760, 449], '7,1': [0, 219, 560, 438],
+      '0,2': [213, 220, 519, 484], '1,2': [247, 204, 532, 486], '2,2': [208, 195, 536, 505], '3,2': [224, 177, 599, 530], '4,2': [213, 237, 760, 579], '5,2': [0, 175, 575, 562], '6,2': [167, 196, 548, 492], '7,2': [160, 190, 622, 544],
+      '0,3': [191, 178, 586, 529], '1,3': [252, 186, 518, 544], '2,3': [226, 194, 614, 522], '3,3': [184, 146, 696, 595], '4,3': [332, 271, 580, 494], '5,3': [266, 221, 570, 564], '6,3': [298, 149, 571, 511], '7,3': [209, 176, 585, 514],
     };
     const flightAnchors = {
-      '0,0': [182, 200], '1,0': [198, 211], '2,0': [265, 252], '3,0': [288, 246], '4,0': [300, 263], '5,0': [313, 235], '6,0': [163, 201], '7,0': [116, 230],
-      '0,1': [232, 179], '1,1': [275, 183], '2,1': [310, 170], '3,1': [228, 183], '4,1': [201, 203], '5,1': [237, 183], '6,1': [266, 184], '7,1': [99, 195],
-      '0,2': [220, 172], '1,2': [207, 157], '2,2': [222, 164], '3,2': [276, 192], '4,2': [280, 134], '5,2': [150, 151], '6,2': [174, 141], '7,2': [159, 136],
+      '0,0': [403, 358], '1,0': [417, 337], '2,0': [361, 340], '3,0': [360, 341], '4,0': [365, 320], '5,0': [498, 337], '6,0': [185, 381], '7,0': [323, 382],
+      '0,1': [414, 364], '1,1': [409, 368], '2,1': [445, 396], '3,1': [560, 364], '4,1': [186, 357], '5,1': [483, 332], '6,1': [566, 340], '7,1': [280, 329],
+      '0,2': [366, 352], '1,2': [390, 345], '2,2': [372, 350], '3,2': [412, 354], '4,2': [487, 408], '5,2': [288, 369], '6,2': [358, 344], '7,2': [391, 367],
+      '0,3': [389, 354], '1,3': [385, 365], '2,3': [420, 358], '3,3': [440, 371], '4,3': [456, 383], '5,3': [418, 393], '6,3': [435, 330], '7,3': [397, 345],
     };
-    const sheetFrame = (col, row) => ({
-      x: flightCellW * col, y: flightCellH * row, w: flightCellW, h: flightCellH,
-      anchorX: 380, anchorY: 340,
-    });
+    const sheetFrame = (col, row) => anchoredFrame(
+      flightCellW,
+      flightCellH,
+      flightBounds,
+      col,
+      row,
+      'center',
+      flightAnchors,
+    );
     M.assets.define('godgames.icarus.flightSheet', {
       src: 'assets/manga/icarus/icarus-flight-clean-v1.png',
-      preload: false,
+      preload: travelerPreload,
       frames: {
         flap1:    sheetFrame(0, 0),
         flap2:    sheetFrame(1, 0),
@@ -125,6 +132,46 @@
         },
       },
     });
+    prime('godgames.icarus.flightSheet');
+
+    const orcaAirCellW = 400;
+    const orcaAirCellH = 330;
+    const orcaAirBounds = {
+      '0,0': [97, 77, 313, 257], '1,0': [96, 81, 297, 266], '2,0': [96, 75, 295, 253], '3,0': [88, 76, 316, 274], '4,0': [85, 67, 295, 251], '5,0': [88, 76, 316, 274], '6,0': [88, 76, 316, 274],
+    };
+    const orcaAirAnchors = {
+      '0,0': [205, 167], '1,0': [197, 174], '2,0': [196, 164], '3,0': [202, 175], '4,0': [190, 159], '5,0': [202, 175], '6,0': [202, 175],
+    };
+    const orcaAirFrame = (col) => anchoredFrame(
+      orcaAirCellW,
+      orcaAirCellH,
+      orcaAirBounds,
+      col,
+      0,
+      'center',
+      orcaAirAnchors,
+    );
+
+    M.assets.define('godgames.icarus.orcaAirV1', {
+      src: 'assets/manga/icarus/orca-air-clean-v1.png',
+      preload: shouldPrime,
+      frames: {
+        orcaAirBreach1: orcaAirFrame(0),
+        orcaAirBreach2: orcaAirFrame(1),
+        orcaAirBreach3: orcaAirFrame(2),
+        orcaAirBreach4: orcaAirFrame(3),
+        orcaAirBreach5: orcaAirFrame(4),
+        orcaAirBreach6: orcaAirFrame(5),
+        orcaAirBite:    orcaAirFrame(6),
+      },
+      meta: {
+        usage: 'Clean airborne Icarus orca body frames with no water attached; surface water remains in the FX sheets.',
+        animations: {
+          orcaAirBreach: { frames: ['orcaAirBreach1', 'orcaAirBreach2', 'orcaAirBreach3', 'orcaAirBreach4', 'orcaAirBreach5', 'orcaAirBreach6'], fps: 10, loop: false },
+        },
+      },
+    });
+    prime('godgames.icarus.orcaAirV1');
 
     const atlasCellW = 640;
     const atlasCellH = 600;
@@ -132,7 +179,7 @@
       x: col * atlasCellW, y: row * atlasCellH, w: atlasCellW, h: atlasCellH,
       anchorX, anchorY,
     });
-    const eagleFrame = (col) => atlasFrame(col, 0);
+    const eagleFrame = (col) => atlasFrame(col, 0, 230, 320);
     const orcaBodyFrame = (col) => atlasFrame(col, 1);
     const daedalusFlyFrame = (col) => atlasFrame(col, 2);
 
@@ -144,10 +191,10 @@
         eagleFly2:      eagleFrame(1),
         eagleFly3:      eagleFrame(2),
         eagleFly4:      eagleFrame(3),
-        eagleFly5:      eagleFrame(4),
-        eagleFly6:      eagleFrame(5),
+        eagleFly5:      eagleFrame(2),
+        eagleFly6:      eagleFrame(1),
         eagleDive:      eagleFrame(0),
-        eagleHit:       eagleFrame(7),
+        eagleHit:       eagleFrame(2),
         orcaBreach1:    orcaBodyFrame(0),
         orcaBreach2:    orcaBodyFrame(1),
         orcaBreach3:    orcaBodyFrame(2),
@@ -168,7 +215,7 @@
         waterDrips:     atlasFrame(4, 3),
         diveAura:       atlasFrame(5, 3),
         eagleCruise:    eagleFrame(1),
-        eagleAttack:    eagleFrame(4),
+        eagleAttack:    eagleFrame(3),
         orcaBreach:     orcaBodyFrame(3),
         orcaBite:       orcaBodyFrame(4),
         daedalusFly:    daedalusFlyFrame(0),
