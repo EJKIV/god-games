@@ -209,11 +209,11 @@ const HUB_AVATAR_ASSET = 'godgames.shared.hubAvatarV2';
 const HUB_MANGA_STATION_X = [0.145, 0.322, 0.500, 0.678, 0.855];
 const HUB_CONCOURSE_SOURCE = { w: 1672, h: 941, focusX: 0.50, focusY: 0.54 };
 const HUB_MANGA_STATION_RECTS = [
-  { x: 162, y: 318, w: 160, h: 278, labelY: 620 },
-  { x: 460, y: 318, w: 156, h: 278, labelY: 620 },
+  { x: 74, y: 318, w: 168, h: 278, labelY: 620 },
+  { x: 440, y: 318, w: 164, h: 278, labelY: 620 },
   { x: 758, y: 318, w: 156, h: 278, labelY: 620 },
-  { x: 1056, y: 318, w: 156, h: 278, labelY: 620 },
-  { x: 1352, y: 318, w: 156, h: 278, labelY: 620 },
+  { x: 1082, y: 318, w: 168, h: 278, labelY: 620 },
+  { x: 1419, y: 318, w: 168, h: 278, labelY: 620 },
 ];
 let GY   = H * 0.73;   // ground y
 let _mangaHubStaticLayer = null;
@@ -255,7 +255,7 @@ let PORTAL_RADIUS = Math.min(130, (W / (portals.length + 1)) * 0.45);
 const IS_TOUCH = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
 
 function hubStage() {
-  const groundY = H * 0.735;
+  const groundY = H * 0.89;
   const portalGap = W / (portals.length + 1);
   const portalRadius = Math.min(140, portalGap * 0.46);
   return {
@@ -267,7 +267,7 @@ function hubStage() {
     vanishX: W * 0.50,
     playerLane: { minX: Math.max(42, W * 0.035), maxX: Math.min(W - 42, W * 0.965) },
     portalRadius,
-    foregroundY: H * 0.80,
+    foregroundY: H * 0.94,
   };
 }
 function hubPortalX(p) {
@@ -318,15 +318,16 @@ function hubPortalHitRegion(p) {
   const x = hubPortalX(p);
   if (mangaOn()) {
     const box = hubStationBox(p);
-    const w = Math.max(112 * ss, box.w + 28);
-    const top = Math.min(box.y, box.labelY - box.h * 0.18);
+    const w = Math.max(190 * ss, box.w * 1.46 + 24);
+    const top = Math.min(box.y - box.h * 0.14, box.labelY - box.h * 1.03);
     const bottom = s.groundY + 80 * ss;
-    return { x: x - w / 2, y: top, w, h: bottom - top };
+    return { x: box.cx - w / 2, y: top, w, h: bottom - top };
   }
   const isMtn = p.kind === 'mountain';
-  const w = (isMtn ? 230 : Math.max(132, s.portalRadius * 1.15)) * ss;
-  const h = (isMtn ? 265 : 205) * ss;
-  return { x: x - w / 2, y: s.groundY - h, w, h: h + 36 };
+  const gy = hubGroundY();
+  const w = isMtn ? 220 : 150;
+  const h = isMtn ? 230 : 200;
+  return { x: x - w / 2, y: gy - h, w, h };
 }
 function hubMushroomHitRegion() {
   const olympus = portals.find(p => p.kind === 'mountain');
@@ -414,6 +415,13 @@ const HUB_TURN_DUR = 0.18;
 const HUB_LAND_DUR = 0.18;
 const HUB_MANGA_HUMAN_STRIDE_PX = 88;
 const HUB_MANGA_TOAD_STRIDE_PX = 96;
+const HUB_MANGA_AVATAR_TARGET_HEIGHT = 132;
+const HUB_MANGA_AVATAR_FRAME_HEIGHT = {
+  idle1: 671, idle2: 669, idle3: 669, idle4: 671,
+  ready1: 671, ready2: 671, ready3: 671, ready4: 672,
+  walk1: 548, walk2: 548, walk3: 548, walk4: 548,
+  walk5: 550, walk6: 550, walk7: 550, walk8: 552,
+};
 
 function refreshPortalLayout() {
   portals.forEach((p, i) => {
@@ -1943,27 +1951,29 @@ function drawMangaHubAvatar(scale) {
   const turnPhase = 1 - turn;
   const turnSqueeze = turn > 0 ? 0.52 + Math.abs(turnPhase - 0.5) * 0.96 : 1;
   const facing = player.drawFacing || player.facing;
-  let frame = 'idle';
-  let anim = 'idle';
-  if (ready > 0.45 && !moving) frame = 'ready';
-  else if (moving) {
-    const walkCycle = ((player.walkPhase / (Math.PI * 2)) % 1 + 1) % 1;
-    frame = walkCycle < 0.5 ? 'walkA' : 'walkB';
+  const walkCycle = ((player.walkPhase / (Math.PI * 2)) % 1 + 1) % 1;
+  let frame;
+  if (moving) {
+    frame = `walk${1 + Math.min(7, Math.floor(walkCycle * 8))}`;
+  } else if (ready > 0.45) {
+    const readyIdx = Math.floor((time * 4) % 4);
+    frame = `ready${1 + readyIdx}`;
+  } else {
+    const idleIdx = Math.floor((time * 4) % 4);
+    frame = `idle${1 + idleIdx}`;
   }
-  if (moving) anim = 'walk';
-  else if (frame === 'ready') anim = 'ready';
 
-  const avatarScale = Math.max(0.082, Math.min(0.152, 0.138 * scale));
+  const desiredHeight = Math.max(116, Math.min(146, HUB_MANGA_AVATAR_TARGET_HEIGHT * scale));
+  const frameHeight = HUB_MANGA_AVATAR_FRAME_HEIGHT[frame] || 671;
+  const frameScale = desiredHeight / frameHeight;
   const drawX = typeof player.visualX === 'number' ? player.visualX : player.x;
   const drawY = typeof player.visualY === 'number' ? player.visualY : player.y;
-  const walkPhase = ((player.walkPhase / (Math.PI * 2)) % 1 + 1) % 1;
   const landing = Math.max(0, Math.min(1, (player.landingT || 0) / HUB_LAND_DUR));
-  const bob = moving ? Math.max(0, Math.sin(player.walkPhase)) * 2.4 * scale : ready * 0.9 * scale;
   const art = window.GodGames && GodGames.MangaArt;
   if (art && art.contactShadow) {
     art.contactShadow(ctx, drawX, drawY + 2, {
-      w: (24 + Math.abs(drawVx) * 0.018 + landing * 7) * scale,
-      h: (5.5 + landing * 2.4) * scale,
+      w: (29 + Math.abs(drawVx) * 0.020 + landing * 7) * scale,
+      h: (6.5 + landing * 2.4) * scale,
       alpha: 0.38 + ready * 0.06 + landing * 0.08,
       rim: 'rgba(255,220,120,0.45)',
     });
@@ -1974,34 +1984,13 @@ function drawMangaHubAvatar(scale) {
   ctx.filter = heavy
     ? 'drop-shadow(0 5px 3px rgba(0,0,0,0.45)) saturate(0.96) contrast(1.04)'
     : 'saturate(0.96) contrast(1.04)';
-  const frameOpts = {
-        scale: avatarScale,
-        flipX: facing < 0,
-        phase: walkPhase,
-        amount: moving ? 0.30 + Math.min(0.18, Math.abs(drawVx) / 900) : 0.10 + ready * 0.10,
-        bob: moving ? 1.15 * scale : 0.55 * scale,
-        sway: 0.008,
-        squash: 0.010 + landing * 0.045,
-        filmScaleX: turnSqueeze,
-        filmScaleY: 1 + landing * 0.05,
-        lean: (player.visualLean || 0) + ready * facing * -0.012,
-        smear: false,
-        frameBlendStrength: moving ? 0.12 : 0.08,
-        animName: anim,
-        hero: true,
-        film: true,
-        phaseTime: moving ? walkPhase : undefined,
-      };
-  const drawAnim = art && (art.drawActedAnimation || art.drawAnimation);
-  const drew = drawAnim
-    ? drawAnim(ctx, HUB_AVATAR_ASSET, anim, time, drawX, drawY, frameOpts)
-    : (art && typeof art.drawFilmFrame === 'function'
-      ? art.drawFilmFrame(ctx, HUB_AVATAR_ASSET, frame, drawX, drawY, frameOpts)
-    : Manga.assets.drawFrame(ctx, HUB_AVATAR_ASSET, frame, drawX, drawY - bob, {
-        scale: avatarScale,
-        flipX: facing < 0,
-        rotate: (player.visualLean || 0) + ready * facing * -0.012,
-      }));
+  ctx.translate(drawX, drawY);
+  ctx.scale(turnSqueeze, 1 + landing * 0.035);
+  const drew = Manga.assets.drawFrame(ctx, HUB_AVATAR_ASSET, frame, 0, 0, {
+    scale: frameScale,
+    flipX: facing < 0,
+    rotate: (player.visualLean || 0) + ready * facing * -0.012,
+  });
   ctx.restore();
   return drew;
 }
@@ -2433,13 +2422,8 @@ function render() {
   // On touch devices, expand each portal's tap region to cover the whole arch
   // so the player can navigate by tapping any portal directly (no walking).
   if (IS_TOUCH) {
-    const gy = hubGroundY();
     for (const p of portals) {
-      const isMtn = p.kind === 'mountain';
-      const w = isMtn ? 220 : 150;
-      const h = isMtn ? 230 : 200;
-      const x = hubPortalX(p);
-      p._btn = { x: x - w/2, y: gy - h, w, h };
+      p._btn = hubPortalHitRegion(p);
     }
   }
 

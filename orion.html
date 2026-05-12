@@ -777,7 +777,7 @@ function updateConstellationGaze(dt){
 }
 
 function recordConstellationGaze() {
-  if (window.GodGames && GodGames.Mysteries) {
+  if (window.GodGames && GodGames.Mysteries && !GodGames.Mysteries.hasHint('e')) {
     GodGames.Mysteries.unlockAndDepart({
       hintId:   'e',
       placeId:  'asphodel',

@@ -585,6 +585,7 @@ function completeLevel() {
 
 function triggerSerpentSeal() {
   if (sealSolved) return false;
+  if (window.GodGames && GodGames.Mysteries && GodGames.Mysteries.hasHint('s')) return false;
   sealSolved = true;
   sealFlashT = 1.0;
   burst(sealX(), groundY() - 10, '#ff88cc', 34, 1.2);

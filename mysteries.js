@@ -449,8 +449,10 @@
     //     extraUnlocks: ['hint.glyph_first'],  // optional companion unlocks
     //   });
     //
-    // Steps: earn hint → reveal that hint's chain clue → maintain the legacy
-    // solved counter → save any silent unlocks → submit score (best-effort) → navigate. Set
+    // Steps on first discovery: earn hint → reveal that hint's chain clue →
+    // maintain the legacy solved counter → save any silent unlocks → submit
+    // score (best-effort) → navigate. Already-found chain hints are reconciled
+    // silently and do not interrupt gameplay again. Set
     // window.GodGames.suppressDepart = true to skip navigation in tests.
     // Per-page-load guard so a trigger that fires on consecutive frames
     // doesn't queue multiple navigations. Reset naturally when the page
@@ -458,15 +460,13 @@
     _firedThisLoad: false,
 
     unlockAndDepart(opts) {
-      if (M._firedThisLoad) return;
+      if (M._firedThisLoad) return false;
       opts = opts || {};
       let revealedClueId = null;
       const hintId = opts.hintId ? storageHintId(opts.hintId) : '';
       const chainClue = hintId ? M.clueForHint(hintId) : null;
+      const alreadyFound = !!(window.Engine && Engine.unlock && hintId && Engine.unlock.has(hintId));
       if (window.Engine && Engine.unlock) {
-        // Only the first-ever discovery advances the chain. Re-triggers on
-        // subsequent runs still navigate to the place (so the player can
-        // re-experience the cinematic) but don't double-count or re-reveal.
         const isNew = hintId && !Engine.unlock.has(hintId);
         if (isNew) {
           M.earnHint(hintId, { silent: true });
@@ -487,16 +487,21 @@
           if (M.storedClueUnlocked(chainClue)) revealedClueId = chainClue.id;
         }
       }
+      if (alreadyFound) {
+        M._firedThisLoad = true;
+        return false;
+      }
       try { if (typeof window.GodGames.submitNow === 'function') window.GodGames.submitNow(); }
       catch (_e) {}
       M._firedThisLoad = true;
-      if (window.GodGames && window.GodGames.suppressDepart) return;
+      if (window.GodGames && window.GodGames.suppressDepart) return true;
       const params = new URLSearchParams();
       if (opts.placeId)  params.set('id',   opts.placeId);
       if (opts.fromGame) params.set('from', opts.fromGame);
       if (opts.hintId)   params.set('hint', opts.hintId);
       if (revealedClueId) params.set('clue', revealedClueId);
       setTimeout(() => { location.href = 'place.html?' + params.toString(); }, 60);
+      return true;
     },
 
     filterProgressState(state) {

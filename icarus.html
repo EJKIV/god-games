@@ -392,7 +392,7 @@ function initGame() {
   floaters = [];
   eagles = []; eagleSpawnTimer = 5;
   orcas  = []; orcaSpawnTimer  = 8;
-  waves = []; waveSpawnTimer = 5;
+  waves = []; waveSpawnTimer = 4.5;
   shakeAmt = 0;
   shakeDecay = 0;
   cameraX = player.worldX - canvas.width * 0.42;
@@ -862,13 +862,15 @@ function updatePlaying(dt) {
   if (player.y <= SUN_EMBRACE_Y) {
     sunEmbraceT += dt;
     if (sunEmbraceT >= SUN_EMBRACE_GOAL
-      && window.GodGames && GodGames.Mysteries) {
-      GodGames.Mysteries.unlockAndDepart({
+      && window.GodGames && GodGames.Mysteries
+      && !GodGames.Mysteries.hasHint('z')) {
+      if (GodGames.Mysteries.unlockAndDepart({
         hintId:   'z',
         placeId:  'oceanus',
         fromGame: 'icarus',
-      });
-      return; // game ends here; navigation begins
+      })) {
+        return; // game ends here only on first discovery; navigation begins
+      }
     }
   }
 
@@ -1168,35 +1170,27 @@ function updatePlaying(dt) {
 
   // ── Waves ──────────────────────────────────────────────────────────────
   waveSpawnTimer -= dt;
-  if (waveSpawnTimer <= 0 && waves.length < 3) {
+  if (waveSpawnTimer <= 0 && waves.length < 2) {
     // Only spawn if no other wave is within 400px of the spawn zone
     const tooClose = waves.some(w => w.x > canvas.width - 100);
     if (!tooClose) {
-      waveSpawnTimer = 6 + Math.random() * 5;
+      waveSpawnTimer = 12 + Math.random() * 7;
       waves.push({
-        x:      canvas.width + 80 + Math.random() * 300,
-        h:      0, maxH: 80 + Math.random() * 70,
-        w:      55 + Math.random() * 35,
+        x:      canvas.width + 120 + Math.random() * 320,
+        h:      0, maxH: 70 + Math.random() * 58,
+        w:      62 + Math.random() * 38,
         phase:  'rise', timer: 0, inWave: false,
       });
     } else {
-      waveSpawnTimer = 1.5;
+      waveSpawnTimer = 2.8;
     }
   }
   for (let i = waves.length - 1; i >= 0; i--) {
     const wv = waves[i];
-    wv.x -= 450 * dt;
-    if (wv.x < -wv.w - 20 || wv.x > canvas.width + wv.w + 20) {
-      // Space loop-back away from any other wave
-      let spawnX = canvas.width + 200 + Math.random() * 400;
-      for (const other of waves) {
-        if (other !== wv && Math.abs(other.x - spawnX) < 350)
-          spawnX += 350;
-      }
-      wv.x = spawnX;
-      wv.h = 0; wv.phase = 'rise'; wv.timer = 0; wv.inWave = false;
-      wv.maxH = 80 + Math.random() * 70;
-      wv.w = 55 + Math.random() * 35;
+    wv.x -= 260 * dt;
+    if (wv.x < -wv.w - 20) {
+      waves.splice(i, 1);
+      continue;
     }
     wv.timer += dt;
     const riseT = 0.55, holdT = 8.0, fallT = 0.7;
@@ -1209,11 +1203,8 @@ function updatePlaying(dt) {
     } else {
       wv.h = wv.maxH * Math.max(0, 1 - wv.timer / fallT);
       if (wv.timer >= fallT) {
-        // Loop back instead of removing
-        wv.x = canvas.width + 40 + Math.random() * 200;
-        wv.h = 0; wv.phase = 'rise'; wv.timer = 0; wv.inWave = false;
-        wv.maxH = 70 + Math.random() * 80;
-        wv.w = 38 + Math.random() * 30;
+        waves.splice(i, 1);
+        continue;
       }
     }
 
@@ -1471,11 +1462,12 @@ function rescueWorldMotion(dt) {
   }
   // Waves continue their rise/hold/fall cycle.
   const riseT = 0.55, holdT = 8.0, fallT = 0.7;
-  for (const wv of waves) {
-    wv.x -= 450 * dt;
+  for (let i = waves.length - 1; i >= 0; i--) {
+    const wv = waves[i];
+    wv.x -= 260 * dt;
     if (wv.x < -wv.w - 20) {
-      wv.x = canvas.width + 200 + Math.random() * 400;
-      wv.h = 0; wv.phase = 'rise'; wv.timer = 0; wv.inWave = false;
+      waves.splice(i, 1);
+      continue;
     }
     wv.timer += dt;
     if (wv.phase === 'rise') {
@@ -1487,10 +1479,7 @@ function rescueWorldMotion(dt) {
     } else {
       wv.h = wv.maxH * Math.max(0, 1 - wv.timer / fallT);
       if (wv.timer >= fallT) {
-        wv.x = canvas.width + 40 + Math.random() * 200;
-        wv.h = 0; wv.phase = 'rise'; wv.timer = 0; wv.inWave = false;
-        wv.maxH = 70 + Math.random() * 80;
-        wv.w = 38 + Math.random() * 30;
+        waves.splice(i, 1);
       }
     }
   }
@@ -3371,8 +3360,10 @@ const ICARUS_MANGA_HERO_ASSET = 'godgames.icarus.hero';
 const ICARUS_MANGA_SHEET_ASSET = 'godgames.icarus.flightSheet';
 const ICARUS_MANGA_STAGE_ASSET = 'godgames.icarus.flightStageV2';
 const ICARUS_MANGA_ATLAS_ASSET = 'godgames.icarus.stageAtlasV2';
+const ICARUS_MANGA_EAGLE_ASSET = 'godgames.icarus.eagleFlightV2';
 const ICARUS_MANGA_FX_ASSET = 'godgames.icarus.fxCreaturesV2';
-const ICARUS_MANGA_ORCA_AIR_ASSET = 'godgames.icarus.orcaAirV1';
+const ICARUS_MANGA_ORCA_AIR_ASSET = 'godgames.icarus.orcaAirV2';
+const ICARUS_MANGA_WAVE_ASSET = 'godgames.icarus.waveHazardV1';
 
 function icarusMangaArt() {
   return window.GodGames && GodGames.MangaArt ? GodGames.MangaArt : null;
@@ -3392,12 +3383,20 @@ function mangaAtlasReady() {
   return mangaAssetReady(ICARUS_MANGA_ATLAS_ASSET);
 }
 
+function mangaEagleReady() {
+  return mangaAssetReady(ICARUS_MANGA_EAGLE_ASSET);
+}
+
 function mangaFxReady() {
   return mangaAssetReady(ICARUS_MANGA_FX_ASSET);
 }
 
 function mangaOrcaAirReady() {
   return mangaAssetReady(ICARUS_MANGA_ORCA_AIR_ASSET);
+}
+
+function mangaWaveReady() {
+  return mangaAssetReady(ICARUS_MANGA_WAVE_ASSET);
 }
 
 function drawMangaAtlasFrame(frame, x, y, opts = {}) {
@@ -3417,6 +3416,18 @@ function drawMangaAtlasAnimation(name, t, x, y, opts = {}) {
   if (!art || !mangaAtlasReady() || typeof art.drawAnimation !== 'function') return false;
   const drawAnim = art.drawActedAnimation || art.drawAnimation;
   return drawAnim(ctx, ICARUS_MANGA_ATLAS_ASSET, name, t, x, y, opts);
+}
+
+function drawMangaEagleFrame(frame, x, y, opts = {}) {
+  const art = icarusMangaArt();
+  if (!art || !mangaEagleReady() || typeof art.drawFrame !== 'function') return false;
+  return art.drawFrame(ctx, ICARUS_MANGA_EAGLE_ASSET, frame, x, y, opts);
+}
+
+function drawMangaWaveFrame(frame, x, y, opts = {}) {
+  const art = icarusMangaArt();
+  if (!art || !mangaWaveReady() || typeof art.drawFrame !== 'function') return false;
+  return art.drawFrame(ctx, ICARUS_MANGA_WAVE_ASSET, frame, x, y, opts);
 }
 
 function drawMangaFxFrame(frame, x, y, opts = {}) {
@@ -3807,95 +3818,151 @@ function renderMangaWaveHazard(wv, W, H) {
   if (h < 2) return false;
   const progress = Math.min(1, h / wv.maxH);
   const cx = wv.x, hw = wv.w;
-  const top = oY - h;
-  const lean = hw * 0.68 * progress;
-
-  if (mangaFxReady()) {
-    const waveT = wv.phase === 'rise'
-      ? progress * 0.58
-      : (wv.phase === 'fall' ? 0.58 + (1 - progress) * 0.20 : time * 0.52 + cx * 0.002);
-    const scale = Math.max(0.30, Math.min(0.72, Math.max(h, wv.maxH || h) / 178));
-    const alpha = Math.max(0.42, Math.min(0.96, 0.48 + progress * 0.52));
-    const opts = {
-      scale,
-      alpha,
-      rotate: -0.035 + Math.sin((wv.timer || 0) * 2.2) * 0.018,
-      film: true,
-      phase: progress,
-      amount: 0.32,
-      bob: 2.4,
-      sway: 0.016,
-      squash: 0.012,
+  if (mangaWaveReady()) {
+    const frameMetrics = {
+      waveSmall:  { visibleH: 102, visibleW: 342 },
+      waveMedium: { visibleH: 184, visibleW: 362 },
+      waveTall:   { visibleH: 278, visibleW: 348 },
+      waveCrash:  { visibleH: 312, visibleW: 353 },
+      waveFoam:   { visibleH: 146, visibleW: 362 },
+      waveLow:    { visibleH: 62,  visibleW: 343 },
     };
+    let frame = 'waveMedium';
+    if (wv.phase === 'fall') frame = progress > 0.55 ? 'waveFoam' : 'waveLow';
+    else if (progress < 0.30) frame = 'waveLow';
+    else if (progress < 0.52) frame = 'waveSmall';
+    else if (progress < 0.78) frame = 'waveMedium';
+    else frame = ((wv.timer || 0) * 1.6 + cx * 0.01) % 2 > 1 ? 'waveCrash' : 'waveTall';
+
+    const metric = frameMetrics[frame] || frameMetrics.waveMedium;
+    const desiredH = Math.max(32, Math.min(150, h * (frame === 'waveCrash' ? 1.10 : 1.02)));
+    const scale = desiredH / metric.visibleH;
+    const visualW = metric.visibleW * scale;
+    const baseY = oY + 8;
+
     ctx.save();
-    const drew = drawMangaFxAnimation(wv.inWave ? 'waveImpact' : 'waveCurl', waveT, cx, oY + 10, opts);
-    if (drew) {
-      if (!wv.inWave && progress > 0.45) {
-        drawMangaFxFrame('waveFoam', cx + hw * 0.22, oY + 12, {
-          scale: scale * 0.82,
-          alpha: alpha * 0.50,
-          rotate: 0.03,
-          film: true,
-          phase: waveT,
-          amount: 0.10,
-          bob: 1.2,
-        });
-      }
-      ctx.restore();
-      return true;
-    }
+    const wash = ctx.createLinearGradient(cx - visualW * 0.72, 0, cx + visualW * 0.72, 0);
+    wash.addColorStop(0, 'rgba(255,246,216,0)');
+    wash.addColorStop(0.34, 'rgba(255,246,216,0.30)');
+    wash.addColorStop(0.70, 'rgba(22,105,132,0.18)');
+    wash.addColorStop(1, 'rgba(255,246,216,0)');
+    ctx.fillStyle = wash;
+    ctx.beginPath();
+    ctx.ellipse(cx + visualW * 0.06, oY + 8, visualW * 0.68, Math.max(7, desiredH * 0.09), -0.03, 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
+
+    return drawMangaWaveFrame(frame, cx, baseY, {
+      scale,
+      alpha: 0.98,
+      rotate: Math.sin((wv.timer || 0) * 1.4 + cx * 0.01) * 0.015,
+      film: false,
+      frameBlend: false,
+      tween: false,
+    });
   }
+  const phase = (wv.timer || 0) * 1.15 + cx * 0.01;
+  const waveW = Math.max(150, hw * 3.45);
+  const waveH = Math.max(34, h);
+  const left = cx - waveW * 0.48;
+  const right = cx + waveW * 0.54;
+  const top = oY - waveH;
+  const crestX = cx - waveW * (0.10 + progress * 0.03);
+  const crestY = top + waveH * (0.12 + (1 - progress) * 0.10);
 
   ctx.save();
-  const body = ctx.createLinearGradient(cx - lean, top, cx + hw, oY);
-  body.addColorStop(0, 'rgba(132,236,255,0.92)');
-  body.addColorStop(0.42, 'rgba(22,133,207,0.90)');
-  body.addColorStop(1, 'rgba(3,42,105,0.96)');
-  ctx.fillStyle = body;
+
+  const lift = ctx.createLinearGradient(left, top, right, oY + 8);
+  lift.addColorStop(0, 'rgba(230,236,211,0.18)');
+  lift.addColorStop(0.22, 'rgba(108,176,184,0.26)');
+  lift.addColorStop(0.58, 'rgba(20,93,134,0.32)');
+  lift.addColorStop(1, 'rgba(5,44,94,0.16)');
+  ctx.fillStyle = lift;
   ctx.beginPath();
-  ctx.moveTo(cx + hw * 0.62, oY);
-  ctx.bezierCurveTo(cx + hw * 0.35, top + h * 0.52, cx - lean + hw * 0.38, top + h * 0.04, cx - lean, top);
-  ctx.bezierCurveTo(cx - lean + hw * 0.38, top - h * 0.08, cx - lean - hw * 0.10, top + h * 0.12, cx - lean - hw * 0.30, top + h * 0.30);
-  ctx.bezierCurveTo(cx - hw * 0.18, oY - h * 0.38, cx - hw * 0.12, oY - h * 0.08, cx - hw * 0.08, oY);
+  ctx.moveTo(left, oY + 2);
+  ctx.bezierCurveTo(left + waveW * 0.12, oY - waveH * 0.20, left + waveW * 0.24, top + waveH * 0.30, crestX, crestY);
+  ctx.bezierCurveTo(cx + waveW * 0.10, top + waveH * 0.02, right - waveW * 0.20, oY - waveH * 0.32, right, oY + 2);
   ctx.closePath();
   ctx.fill();
 
-  ctx.strokeStyle = 'rgba(10,10,10,0.70)';
-  ctx.lineWidth = 3;
-  ctx.stroke();
-  ctx.strokeStyle = 'rgba(255,255,245,0.92)';
-  ctx.lineWidth = 4.2;
+  const face = ctx.createLinearGradient(crestX - waveW * 0.10, crestY, right, oY);
+  face.addColorStop(0, 'rgba(226,238,217,0.16)');
+  face.addColorStop(0.34, 'rgba(82,151,165,0.18)');
+  face.addColorStop(1, 'rgba(3,38,82,0.00)');
+  ctx.fillStyle = face;
   ctx.beginPath();
-  ctx.moveTo(cx - lean, top + 2);
-  ctx.bezierCurveTo(cx - lean + hw * 0.20, top - h * 0.04, cx - lean + hw * 0.46, top + h * 0.02, cx + hw * 0.03, top + h * 0.16);
+  ctx.moveTo(crestX - waveW * 0.06, crestY + waveH * 0.08);
+  ctx.bezierCurveTo(cx + waveW * 0.06, top + waveH * 0.28, cx + waveW * 0.18, oY - waveH * 0.28, right - waveW * 0.12, oY - 2);
+  ctx.bezierCurveTo(cx + waveW * 0.14, oY - waveH * 0.08, cx - waveW * 0.06, oY - waveH * 0.10, crestX - waveW * 0.06, crestY + waveH * 0.08);
+  ctx.fill();
+
+  const baseWash = ctx.createLinearGradient(left, 0, right, 0);
+  baseWash.addColorStop(0, 'rgba(255,246,210,0.00)');
+  baseWash.addColorStop(0.30, 'rgba(255,246,210,0.18)');
+  baseWash.addColorStop(0.66, 'rgba(118,191,205,0.14)');
+  baseWash.addColorStop(1, 'rgba(255,246,210,0.00)');
+  ctx.fillStyle = baseWash;
+  ctx.beginPath();
+  ctx.ellipse(cx + waveW * 0.05, oY + 5, waveW * 0.56, 8 + waveH * 0.040, -0.04, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = 'rgba(255,248,220,0.66)';
+  ctx.lineWidth = 2.2 + progress * 1.1;
+  ctx.beginPath();
+  ctx.moveTo(crestX - waveW * 0.12, crestY + waveH * 0.05);
+  ctx.bezierCurveTo(crestX + waveW * 0.03, crestY - waveH * 0.06, cx + waveW * 0.20, crestY + waveH * 0.05, cx + waveW * 0.28, top + waveH * 0.30);
   ctx.stroke();
 
-  if (mangaAtlasReady()) {
-    drawMangaAtlasFrame('waterDrips', cx - lean * 0.36, top + h * 0.18, {
-      scale: Math.max(0.10, Math.min(0.22, h / 460)),
-      alpha: 0.42 + progress * 0.28,
-      rotate: -0.28,
-    });
+  ctx.strokeStyle = 'rgba(241,246,223,0.32)';
+  ctx.lineWidth = 1.4;
+  for (let i = 0; i < 7; i++) {
+    const t = i / 6;
+    const y = top + waveH * (0.30 + t * 0.54);
+    const wiggle = Math.sin(phase + i * 0.9) * waveH * 0.018;
+    ctx.beginPath();
+    ctx.moveTo(left + waveW * (0.16 + t * 0.03), y + wiggle);
+    ctx.bezierCurveTo(cx - waveW * 0.12, y - waveH * 0.08, cx + waveW * 0.10, y - waveH * 0.05, right - waveW * (0.16 + t * 0.03), y + waveH * 0.07);
+    ctx.stroke();
   }
 
-  if (window.Manga && Manga.effects && Manga.effects.halftone) {
-    const art = icarusMangaArt();
-    const opts = {
-      density: 5,
-      dotSize: 1.1,
-      alpha: 0.18,
-      color: '#0a0a0a',
-    };
-    if (art && typeof art.halftone === 'function') art.halftone(ctx, cx - hw * 1.2, top, hw * 2.4, h, opts);
-    else Manga.effects.halftone(ctx, cx - hw * 1.2, top, hw * 2.4, h, opts);
+  ctx.strokeStyle = 'rgba(7,51,83,0.20)';
+  ctx.lineWidth = 1.1;
+  for (let i = 0; i < 5; i++) {
+    const t = i / 4;
+    ctx.beginPath();
+    ctx.moveTo(left + waveW * (0.20 + t * 0.13), top + waveH * (0.42 + t * 0.05));
+    ctx.bezierCurveTo(cx - waveW * 0.10 + t * waveW * 0.12, top + waveH * 0.62, cx + waveW * 0.04 + t * waveW * 0.12, oY - waveH * 0.16, right - waveW * (0.30 - t * 0.06), oY - waveH * 0.06);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = 'rgba(255,248,220,0.42)';
+  for (let i = 0; i < 8; i++) {
+    const p = i / 7;
+    const x = crestX - waveW * 0.18 + p * waveW * 0.48 + Math.sin(phase + i) * 2.0;
+    const y = crestY + waveH * (0.10 + p * 0.10) - Math.sin(p * Math.PI) * waveH * 0.08;
+    const r = 1.1 + progress * 1.0 + (i % 3) * 0.45;
+    ctx.beginPath();
+    ctx.ellipse(x, y, r * 1.55, r * 0.72, -0.25, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.strokeStyle = 'rgba(255,248,220,0.22)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 4; i++) {
+    const y = oY - 5 - i * (5 + waveH * 0.012);
+    ctx.beginPath();
+    ctx.moveTo(left + waveW * 0.08, y);
+    ctx.bezierCurveTo(cx - waveW * 0.12, y + Math.sin(phase + i) * 2, cx + waveW * 0.18, y - 3, right - waveW * 0.08, y + 1);
+    ctx.stroke();
   }
   ctx.restore();
   return true;
 }
 
 function drawMangaEagle(e, W, H) {
-  if (!mangaAtlasReady()) return false;
+  if (!mangaEagleReady()) return false;
   const s = icarusMangaStage();
   const base = Math.max(0.16, Math.min(0.25, Math.min(W, H) / 2850));
   const scale = base * e.size * (e._diving ? 1.12 : 1);
@@ -3906,7 +3973,7 @@ function drawMangaEagle(e, W, H) {
   const targetY = e.diveTargetY || (player ? player.y : e.y + 140);
   const travelVX = e._diving ? (e.diveVX || targetX - ex) : -(Math.abs(e.speed || 260));
   const travelVY = e._diving ? (e.diveVY || targetY - ey) : 0;
-  const flipX = travelVX < 0;
+  const flipX = travelVX > 0;
   const aimTilt = Math.max(-0.35, Math.min(0.35, Math.atan2(travelVY, Math.max(80, Math.abs(travelVX))) * 0.45));
   const spriteTilt = (flipX ? -aimTilt : aimTilt) + tilt * 0.35;
 
@@ -3922,7 +3989,9 @@ function drawMangaEagle(e, W, H) {
     ctx.quadraticCurveTo((ex + targetX) * 0.5, Math.min(ey, targetY) - H * 0.08, targetX, targetY);
     ctx.stroke();
     ctx.setLineDash([]);
-    drawMangaAtlasFrame('diveAura', ex, ey, { scale: scale * 1.12, alpha: 0.32 + warn * 0.20, rotate: -0.55 + tilt });
+    if (mangaAtlasReady()) {
+      drawMangaAtlasFrame('diveAura', ex, ey, { scale: scale * 1.12, alpha: 0.32 + warn * 0.20, rotate: -0.55 + tilt });
+    }
   }
 
   if (e._diving) {
@@ -3944,11 +4013,11 @@ function drawMangaEagle(e, W, H) {
   if (heavy) {
     ctx.filter = `sepia(0.12) saturate(1.08) brightness(${0.88 + icarusSkyDepth(ey) * 0.16}) contrast(1.08)`;
   }
-  const wingPhase = (((time + e.wingPhase * 0.12) * 0.78) % 1 + 1) % 1;
-  const flyFrames = ['eagleFly1', 'eagleFly2', 'eagleFly3', 'eagleFly4'];
+  const wingPhase = ((((e.wingPhase || 0) / (Math.PI * 2)) % 1) + 1) % 1;
+  const flyFrames = ['eagleFly1', 'eagleFly2', 'eagleFly3', 'eagleFly4', 'eagleFly5', 'eagleFly6', 'eagleFly7', 'eagleFly8'];
   const flyFrame = flyFrames[Math.min(flyFrames.length - 1, Math.floor(wingPhase * flyFrames.length))];
   const eagleFrame = e._diving ? 'eagleDive' : (e.markT > 0 ? 'eagleAttack' : flyFrame);
-  const drew = drawMangaAtlasFrame(eagleFrame, ex, ey, {
+  const drew = drawMangaEagleFrame(eagleFrame, ex, ey, {
     scale,
     alpha: e._diving || e.markT > 0 ? 0.98 : 0.96,
     rotate: spriteTilt,
@@ -4088,7 +4157,7 @@ function drawMangaDaedalusFly(x, y, opts = {}) {
     scale,
     alpha: 0.88,
     rotate: (opts.tilt || 0) + Math.sin(time * 1.2) * 0.035,
-    flipX: false,
+    flipX: true,
     film: false,
     frameBlend: false,
     tween: false,

@@ -161,7 +161,7 @@
 
     M.assets.define('godgames.icarus.orcaAirV1', {
       src: 'assets/manga/icarus/orca-air-clean-v1.png',
-      preload: shouldPrime,
+      preload: false,
       frames: {
         orcaAirBreach1: orcaAirFrame(0),
         orcaAirBreach2: orcaAirFrame(1),
@@ -178,7 +178,37 @@
         },
       },
     });
-    prime('godgames.icarus.orcaAirV1');
+
+    const orcaAirV2CellW = 420;
+    const orcaAirV2CellH = 360;
+    const orcaAirV2Frame = (col) => ({
+      x: col * orcaAirV2CellW,
+      y: 0,
+      w: orcaAirV2CellW,
+      h: orcaAirV2CellH,
+      anchorX: orcaAirV2CellW / 2,
+      anchorY: orcaAirV2CellH / 2,
+    });
+    M.assets.define('godgames.icarus.orcaAirV2', {
+      src: 'assets/manga/icarus/orca-air-complete-v2.png',
+      preload: shouldPrime,
+      frames: {
+        orcaAirBreach1: orcaAirV2Frame(0),
+        orcaAirBreach2: orcaAirV2Frame(1),
+        orcaAirBreach3: orcaAirV2Frame(2),
+        orcaAirBreach4: orcaAirV2Frame(3),
+        orcaAirBreach5: orcaAirV2Frame(4),
+        orcaAirBreach6: orcaAirV2Frame(5),
+        orcaAirBite:    orcaAirV2Frame(6),
+      },
+      meta: {
+        usage: 'Full-tail airborne Icarus orca body frames with no water attached; surface water remains in the FX sheets.',
+        animations: {
+          orcaAirBreach: { frames: ['orcaAirBreach1', 'orcaAirBreach2', 'orcaAirBreach3', 'orcaAirBreach4', 'orcaAirBreach5', 'orcaAirBreach6'], fps: 10, loop: false },
+        },
+      },
+    });
+    prime('godgames.icarus.orcaAirV2');
 
     const atlasCellW = 640;
     const atlasCellH = 600;
@@ -246,6 +276,89 @@
         },
       },
     });
+    const loopCell = 314;
+    const eagleLoopFrame = (col) => ({
+      x: col * loopCell,
+      y: 0,
+      w: loopCell,
+      h: loopCell,
+      anchorX: loopCell / 2,
+      anchorY: loopCell / 2,
+    });
+    M.assets.define('godgames.icarus.eagleLoopsV1', {
+      src: 'assets/manga/icarus/icarus-stage-atlas-loops-v1.png',
+      preload: false,
+      frames: {
+        eagleFly1:   eagleLoopFrame(0),
+        eagleFly2:   eagleLoopFrame(1),
+        eagleFly3:   eagleLoopFrame(2),
+        eagleFly4:   eagleLoopFrame(3),
+        eagleFly5:   eagleLoopFrame(4),
+        eagleFly6:   eagleLoopFrame(5),
+        eagleDive:   eagleLoopFrame(5),
+        eagleAttack: eagleLoopFrame(4),
+        eagleCruise: eagleLoopFrame(1),
+      },
+      meta: {
+        usage: 'Complete eagle flight silhouettes for Icarus gameplay hazards.',
+        animations: {
+          eagleFly: { frames: ['eagleFly1', 'eagleFly2', 'eagleFly3', 'eagleFly4', 'eagleFly5', 'eagleFly6'], fps: 10, loop: true },
+        },
+      },
+    });
+    const eagleV2CellW = 420;
+    const eagleV2CellH = 420;
+    const eagleV2Frame = (col) => ({
+      x: col * eagleV2CellW,
+      y: 0,
+      w: eagleV2CellW,
+      h: eagleV2CellH,
+      anchorX: 210,
+      anchorY: 260,
+    });
+    M.assets.define('godgames.icarus.eagleFlightV2', {
+      src: 'assets/manga/icarus/eagle-flight-clean-v2.png',
+      preload: false,
+      frames: {
+        eagleFly1:   eagleV2Frame(0),
+        eagleFly2:   eagleV2Frame(1),
+        eagleFly3:   eagleV2Frame(2),
+        eagleFly4:   eagleV2Frame(3),
+        eagleFly5:   eagleV2Frame(4),
+        eagleFly6:   eagleV2Frame(5),
+        eagleFly7:   eagleV2Frame(6),
+        eagleFly8:   eagleV2Frame(7),
+        eagleDive:   eagleV2Frame(2),
+        eagleAttack: eagleV2Frame(0),
+        eagleCruise: eagleV2Frame(2),
+      },
+      meta: {
+        usage: 'Dedicated Icarus eagle gameplay sprite sheet with body-anchored flapping frames for smoother hazard animation.',
+        animations: {
+          eagleFly: { frames: ['eagleFly1', 'eagleFly2', 'eagleFly3', 'eagleFly4', 'eagleFly5', 'eagleFly6', 'eagleFly7', 'eagleFly8'], fps: 9, loop: true },
+        },
+      },
+    });
+    const waveFrame = (x, y, w, h) => ({
+      x, y, w, h,
+      anchorX: w / 2,
+      anchorY: h - 10,
+    });
+    M.assets.define('godgames.icarus.waveHazardV1', {
+      src: 'assets/manga/icarus/wave-hazards-island-style-v1.png',
+      preload: shouldPrime,
+      frames: {
+        waveSmall:  waveFrame(10, 380, 352, 126),
+        waveMedium: waveFrame(362, 302, 362, 208),
+        waveTall:   waveFrame(724, 208, 372, 302),
+        waveCrash:  waveFrame(1086, 174, 372, 336),
+        waveFoam:   waveFrame(1448, 339, 372, 170),
+        waveLow:    waveFrame(1810, 420, 372, 86),
+      },
+      meta: {
+        usage: 'Island-style painted manga ocean breakers for Icarus wave hazards.',
+      },
+    });
     const fxCell = 314;
     const fxFrame = (col, row, anchorY = fxCell / 2, anchorX = fxCell / 2) => ({
       x: col * fxCell, y: row * fxCell, w: fxCell, h: fxCell,
@@ -307,7 +420,10 @@
         },
       },
     });
+    loadAfterPlaying('godgames.icarus.eagleFlightV2', 450);
+    loadAfterPlaying('godgames.icarus.eagleLoopsV1', 650);
     loadAfterPlaying('godgames.icarus.stageAtlasV2', 500);
+    loadAfterPlaying('godgames.icarus.waveHazardV1', 700);
     loadAfterPlaying('godgames.icarus.fxCreaturesV2', 1050);
   }
 
