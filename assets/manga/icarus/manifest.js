@@ -53,7 +53,7 @@
       },
     });
 
-    function anchoredFrame(cellW, cellH, bounds, col, row, mode = 'center', anchors) {
+    function anchoredFrame(cellW, cellH, bounds, col, row, mode = 'center', anchors, pad = 8) {
       const key = `${col},${row}`;
       const b = bounds[key];
       const anchor = anchors && anchors[key];
@@ -62,7 +62,19 @@
       const anchorY = anchor ? anchor[1] : (valid
         ? (mode === 'ground' ? b[3] : (b[1] + b[3]) / 2)
         : cellH / 2);
-      return { x: cellW * col, y: cellH * row, w: cellW, h: cellH, anchorX, anchorY };
+      if (!valid) return { x: cellW * col, y: cellH * row, w: cellW, h: cellH, anchorX, anchorY };
+      const cropX = Math.max(0, b[0] - pad);
+      const cropY = Math.max(0, b[1] - pad);
+      const cropR = Math.min(cellW, b[2] + pad);
+      const cropB = Math.min(cellH, b[3] + pad);
+      return {
+        x: cellW * col + cropX,
+        y: cellH * row + cropY,
+        w: cropR - cropX,
+        h: cropB - cropY,
+        anchorX: anchorX - cropX,
+        anchorY: anchorY - cropY,
+      };
     }
 
     const flightCellW = 760;
@@ -179,9 +191,17 @@
       x: col * atlasCellW, y: row * atlasCellH, w: atlasCellW, h: atlasCellH,
       anchorX, anchorY,
     });
-    const eagleFrame = (col) => atlasFrame(col, 0, 230, 320);
+    const atlasBounds = {
+      '0,0': [167, 160, 491, 425], '1,0': [170, 231, 458, 380], '2,0': [152, 219, 479, 388], '3,0': [206, 208, 428, 392],
+      '0,2': [182, 198, 494, 411], '1,2': [185, 196, 498, 414], '2,2': [138, 230, 478, 409], '3,2': [200, 167, 441, 394],
+    };
+    const atlasAnchors = {
+      '0,0': [320, 230], '1,0': [320, 230], '2,0': [320, 230], '3,0': [320, 230],
+      '0,2': [338, 305], '1,2': [342, 305], '2,2': [308, 320], '3,2': [321, 281],
+    };
+    const eagleFrame = (col) => anchoredFrame(atlasCellW, atlasCellH, atlasBounds, col, 0, 'center', atlasAnchors, 10);
     const orcaBodyFrame = (col) => atlasFrame(col, 1);
-    const daedalusFlyFrame = (col) => atlasFrame(col, 2);
+    const daedalusFlyFrame = (col) => anchoredFrame(atlasCellW, atlasCellH, atlasBounds, col, 2, 'center', atlasAnchors, 10);
 
     M.assets.define('godgames.icarus.stageAtlasV2', {
       src: 'assets/manga/icarus/icarus-creatures-clean-v1.png',
