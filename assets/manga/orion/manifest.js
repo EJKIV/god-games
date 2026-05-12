@@ -70,8 +70,8 @@
       },
     });
 
-    const ow = 2512 / 8;
-    const oh = 942 / 3;
+    const ow = 520;
+    const oh = 420;
     function anchoredFrame(cellW, cellH, bounds, col, row, mode = 'ground', fallbackY = cellH * 0.90) {
       const b = bounds[`${col},${row}`];
       const valid = b && (b[2] - b[0]) > cellW * 0.12 && (b[3] - b[1]) > cellH * 0.12;
@@ -86,10 +86,13 @@
       '0,1': [23, 56, 314, 314], '1,1': [0, 51, 314, 242], '2,1': [0, 53, 314, 241], '3,1': [0, 51, 309, 226], '4,1': [11, 52, 314, 242], '5,1': [0, 55, 314, 314], '6,1': [0, 57, 314, 209], '7,1': [0, 52, 296, 241],
       '0,2': [28, 0, 314, 225], '1,2': [0, 29, 314, 225], '2,2': [0, 33, 314, 227], '3,2': [0, 61, 314, 224], '4,2': [0, 3, 274, 227], '5,2': [35, 0, 314, 227], '6,2': [0, 92, 314, 225], '7,2': [0, 21, 274, 225],
     };
-    const orionFrame = (col, row) => anchoredFrame(ow, oh, orionBounds, col, row, 'ground', oh * 0.90);
+    const orionFrame = (col, row) => ({
+      x: col * ow, y: row * oh, w: ow, h: oh,
+      anchorX: ow / 2, anchorY: 360,
+    });
 
     M.assets.define('godgames.orion.orionAnimV1', {
-      src: 'assets/manga/orion/orion-film-v2.png',
+      src: 'assets/manga/orion/orion-film-clean-v1.png',
       preload: travelerPreload,
       frames: {
         idle1:        orionFrame(0, 0),
@@ -134,18 +137,21 @@
     });
     prime('godgames.orion.orionAnimV1');
 
-    const sw = 2808 / 8;
-    const sh = 1124 / 4;
+    const sw = 560;
+    const sh = 390;
     const scorpionBounds = {
       '0,0': [34, 29, 351, 281], '1,0': [0, 29, 351, 281], '2,0': [0, 29, 351, 281], '3,0': [0, 45, 351, 281], '4,0': [0, 131, 351, 281], '5,0': [0, 24, 348, 281], '6,0': [14, 196, 351, 281], '7,0': [0, 183, 334, 281],
       '0,1': [26, 0, 351, 268], '1,1': [0, 0, 351, 268], '2,1': [0, 0, 351, 270], '3,1': [0, 0, 351, 270], '4,1': [0, 0, 351, 268], '5,1': [0, 0, 351, 270], '6,1': [0, 0, 351, 268], '7,1': [0, 0, 328, 271],
       '0,2': [17, 84, 351, 238], '1,2': [0, 86, 351, 237], '2,2': [0, 86, 351, 242], '3,2': [0, 98, 351, 243], '4,2': [0, 104, 351, 243], '5,2': [0, 105, 351, 241], '6,2': [0, 99, 343, 242], '7,2': [2, 108, 334, 242],
       '0,3': [15, 7, 346, 260], '1,3': [11, 8, 351, 248], '2,3': [0, 32, 350, 251], '3,3': [12, 16, 351, 252], '4,3': [0, 31, 339, 251], '5,3': [0, 43, 351, 251], '6,3': [0, 47, 351, 249], '7,3': [0, 31, 314, 254],
     };
-    const scorpionFrame = (col, row) => anchoredFrame(sw, sh, scorpionBounds, col, row, 'ground', sh * 0.80);
+    const scorpionFrame = (col, row) => ({
+      x: col * sw, y: row * sh, w: sw, h: sh,
+      anchorX: sw / 2, anchorY: 335,
+    });
 
     M.assets.define('godgames.orion.scorpionAnimV1', {
-      src: 'assets/manga/orion/scorpion-film-v2.png',
+      src: 'assets/manga/orion/scorpion-film-clean-v1.png',
       preload: shouldPrime,
       frames: {
         idle1:        scorpionFrame(0, 0),

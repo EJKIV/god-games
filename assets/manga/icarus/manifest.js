@@ -65,7 +65,8 @@
       return { x: cellW * col, y: cellH * row, w: cellW, h: cellH, anchorX, anchorY };
     }
 
-    const cell = 418;
+    const flightCellW = 760;
+    const flightCellH = 680;
     const flightBounds = {
       '0,0': [16, 9, 393, 418], '1,0': [43, 12, 418, 402], '2,0': [0, 93, 418, 410], '3,0': [0, 69, 418, 418], '4,0': [0, 58, 418, 418], '5,0': [0, 52, 418, 412], '6,0': [0, 99, 418, 417], '7,0': [0, 125, 264, 389],
       '0,1': [29, 0, 418, 350], '1,1': [0, 73, 418, 348], '2,1': [0, 98, 418, 354], '3,1': [0, 0, 418, 346], '4,1': [0, 0, 418, 312], '5,1': [0, 64, 418, 418], '6,1': [0, 73, 418, 418], '7,1': [0, 86, 402, 418],
@@ -76,9 +77,12 @@
       '0,1': [232, 179], '1,1': [275, 183], '2,1': [310, 170], '3,1': [228, 183], '4,1': [201, 203], '5,1': [237, 183], '6,1': [266, 184], '7,1': [99, 195],
       '0,2': [220, 172], '1,2': [207, 157], '2,2': [222, 164], '3,2': [276, 192], '4,2': [280, 134], '5,2': [150, 151], '6,2': [174, 141], '7,2': [159, 136],
     };
-    const sheetFrame = (col, row) => anchoredFrame(cell, cell, flightBounds, col, row, 'center', flightAnchors);
+    const sheetFrame = (col, row) => ({
+      x: flightCellW * col, y: flightCellH * row, w: flightCellW, h: flightCellH,
+      anchorX: 380, anchorY: 340,
+    });
     M.assets.define('godgames.icarus.flightSheet', {
-      src: 'assets/manga/icarus/icarus-flight-film-v2.png',
+      src: 'assets/manga/icarus/icarus-flight-clean-v1.png',
       preload: travelerPreload,
       frames: {
         flap1:    sheetFrame(0, 0),
@@ -101,10 +105,10 @@
         burn:     sheetFrame(1, 2),
         wet:      sheetFrame(2, 2),
         falling:  sheetFrame(3, 2),
-        recover:  sheetFrame(4, 2),
-        flapDown: sheetFrame(5, 2),
-        glide:    sheetFrame(6, 2),
-        flapUp:   sheetFrame(7, 2),
+        recover:  sheetFrame(3, 3),
+        flapDown: sheetFrame(0, 0),
+        glide:    sheetFrame(0, 1),
+        flapUp:   sheetFrame(1, 0),
         speed:    sheetFrame(4, 1),
       },
       meta: {
@@ -123,17 +127,21 @@
     });
     prime('godgames.icarus.flightSheet');
 
-    const orcaAirCell = 314;
+    const orcaAirCellW = 400;
+    const orcaAirCellH = 330;
     const orcaAirBounds = {
       '0,0': [97, 65, 314, 247], '1,0': [112, 61, 314, 247], '2,0': [101, 68, 302, 247], '3,0': [85, 48, 314, 247], '4,0': [103, 62, 314, 247], '5,0': [85, 48, 314, 247], '6,0': [85, 48, 314, 247],
     };
     const orcaAirAnchors = {
       '0,0': [195, 153], '1,0': [211, 145], '2,0': [197, 163], '3,0': [192, 133], '4,0': [214, 161], '5,0': [192, 133], '6,0': [192, 133],
     };
-    const orcaAirFrame = (col) => anchoredFrame(orcaAirCell, orcaAirCell, orcaAirBounds, col, 0, 'center', orcaAirAnchors);
+    const orcaAirFrame = (col) => ({
+      x: orcaAirCellW * col, y: 0, w: orcaAirCellW, h: orcaAirCellH,
+      anchorX: 200, anchorY: 165,
+    });
 
     M.assets.define('godgames.icarus.orcaAirV1', {
-      src: 'assets/manga/icarus/orca-air-v1.png',
+      src: 'assets/manga/icarus/orca-air-clean-v1.png',
       preload: shouldPrime,
       frames: {
         orcaAirBreach1: orcaAirFrame(0),
@@ -153,27 +161,18 @@
     });
     prime('godgames.icarus.orcaAirV1');
 
-    const atlasCell = 2512 / 8;
-    const atlasFrame = (col, row, anchorY = atlasCell / 2, anchorX = atlasCell / 2) => ({
-      x: col * atlasCell, y: row * atlasCell, w: atlasCell, h: atlasCell,
+    const atlasCellW = 640;
+    const atlasCellH = 600;
+    const atlasFrame = (col, row, anchorY = 300, anchorX = 320) => ({
+      x: col * atlasCellW, y: row * atlasCellH, w: atlasCellW, h: atlasCellH,
       anchorX, anchorY,
     });
-    const eagleAtlasAnchors = [
-      [144, 165], [169, 187], [159, 191], [212, 192],
-      [197, 188], [228, 171], [169, 192], [86, 220],
-    ];
-    const orcaAtlasAnchors = [
-      [189, 188], [202, 182], [188, 192], [195, 171], [213, 193], [177, 190],
-    ];
-    const daedalusAtlasAnchors = [
-      [154, 150], [149, 151], [170, 149], [200, 163],
-    ];
-    const eagleFrame = (col) => atlasFrame(col, 0, eagleAtlasAnchors[col][1], eagleAtlasAnchors[col][0]);
-    const orcaBodyFrame = (col) => atlasFrame(col, 1, orcaAtlasAnchors[col][1], orcaAtlasAnchors[col][0]);
-    const daedalusFlyFrame = (col) => atlasFrame(col, 2, daedalusAtlasAnchors[col][1], daedalusAtlasAnchors[col][0]);
+    const eagleFrame = (col) => atlasFrame(col, 0);
+    const orcaBodyFrame = (col) => atlasFrame(col, 1);
+    const daedalusFlyFrame = (col) => atlasFrame(col, 2);
 
     M.assets.define('godgames.icarus.stageAtlasV2', {
-      src: 'assets/manga/icarus/icarus-creatures-film-v2.png',
+      src: 'assets/manga/icarus/icarus-creatures-clean-v1.png',
       preload: false,
       frames: {
         eagleFly1:      eagleFrame(0),
@@ -182,7 +181,7 @@
         eagleFly4:      eagleFrame(3),
         eagleFly5:      eagleFrame(4),
         eagleFly6:      eagleFrame(5),
-        eagleDive:      eagleFrame(6),
+        eagleDive:      eagleFrame(0),
         eagleHit:       eagleFrame(7),
         orcaBreach1:    orcaBodyFrame(0),
         orcaBreach2:    orcaBodyFrame(1),
@@ -191,20 +190,20 @@
         orcaBreach5:    orcaBodyFrame(4),
         orcaBreach6:    orcaBodyFrame(5),
         orcaChurn:      atlasFrame(6, 1),
-        orcaSplash:     atlasFrame(7, 1, atlasCell * 0.74),
+        orcaSplash:     atlasFrame(7, 1),
         daedalusFly1:   daedalusFlyFrame(0),
         daedalusFly2:   daedalusFlyFrame(1),
         daedalusFly3:   daedalusFlyFrame(2),
         daedalusFly4:   daedalusFlyFrame(3),
-        daedalusRescue: atlasFrame(4, 2, atlasCell * 0.82),
-        islandReady:    atlasFrame(0, 3, atlasCell * 0.78),
-        islandSinking:  atlasFrame(1, 3, atlasCell * 0.76),
+        daedalusRescue: atlasFrame(4, 2),
+        islandReady:    atlasFrame(0, 3),
+        islandSinking:  atlasFrame(1, 3),
         featherBurst:   atlasFrame(2, 3),
         burnFlare:      atlasFrame(3, 3),
         waterDrips:     atlasFrame(4, 3),
         diveAura:       atlasFrame(5, 3),
         eagleCruise:    eagleFrame(1),
-        eagleAttack:    eagleFrame(6),
+        eagleAttack:    eagleFrame(4),
         orcaBreach:     orcaBodyFrame(3),
         orcaBite:       orcaBodyFrame(4),
         daedalusFly:    daedalusFlyFrame(0),

@@ -67,8 +67,8 @@
       },
     });
 
-    const aw = 2016 / 8;
-    const ah = 1256 / 4;
+    const aw = 420;
+    const ah = 420;
     function anchoredFrame(cellW, cellH, bounds, col, row, mode = 'ground', fallbackY = cellH * 0.88) {
       const b = bounds[`${col},${row}`];
       const valid = b && (b[2] - b[0]) > cellW * 0.12 && (b[3] - b[1]) > cellH * 0.12;
@@ -84,10 +84,13 @@
       '0,2': [36, 24, 218, 277], '1,2': [30, 26, 217, 314], '2,2': [18, 28, 252, 314], '3,2': [0, 28, 252, 314], '4,2': [0, 28, 252, 314], '5,2': [0, 28, 252, 314], '6,2': [0, 27, 252, 314], '7,2': [0, 65, 143, 314],
       '0,3': [29, 9, 230, 274], '1,3': [9, 0, 222, 274], '2,3': [19, 0, 235, 296], '3,3': [11, 0, 252, 298], '4,3': [0, 0, 252, 298], '5,3': [0, 0, 202, 293], '6,3': [5, 0, 252, 291], '7,3': [0, 0, 188, 293],
     };
-    const animFrame = (col, row) => anchoredFrame(aw, ah, achillesBounds, col, row, 'ground', ah * 0.88);
+    const animFrame = (col, row) => ({
+      x: col * aw, y: row * ah, w: aw, h: ah,
+      anchorX: aw / 2, anchorY: 360,
+    });
 
     M.assets.define('godgames.achilles.animSheet', {
-      src: 'assets/manga/achilles/achilles-film-v2.png',
+      src: 'assets/manga/achilles/achilles-film-clean-v1.png',
       preload: travelerPreload,
       frames: {
         idle1:       animFrame(0, 0),

@@ -592,19 +592,39 @@ function startIcarusEagleDive(e) {
   if (!e || !player) return;
   e._diving = true;
   e.divingT = 0.72;
-  e.diveTargetX = player.x;
-  e.diveTargetY = player.y;
+  updateIcarusEagleDiveAim(e);
   const dist = Math.hypot(e.diveTargetX - e.x, e.diveTargetY - e.y);
-  e.diveSpeed = Math.max(660, Math.min(1020, dist / 0.58));
+  const diveDuration = e.fastDive ? 0.44 + Math.random() * 0.18 : 0.68 + Math.random() * 0.34;
+  e.diveSpeed = Math.max(e.fastDive ? 680 : 430, Math.min(e.fastDive ? 1060 : 780, dist / diveDuration));
   e.diveVX = 0;
   e.diveVY = 0;
+}
+
+function planIcarusEagleDive(e, diff) {
+  const accurate = Math.random() < 0.34 + diff * 0.18;
+  const errX = accurate ? 18 + Math.random() * 28 : 44 + Math.random() * 80;
+  const errY = accurate ? 24 + Math.random() * 34 : 66 + Math.random() * 96;
+  e.diveErrX = (Math.random() < 0.5 ? -1 : 1) * errX;
+  e.diveErrY = (Math.random() < 0.5 ? -1 : 1) * errY;
+  e.diveLead = accurate ? 0.18 + Math.random() * 0.18 : 0.05 + Math.random() * 0.22;
+  e.fastDive = Math.random() < 0.24 + diff * 0.16;
+  updateIcarusEagleDiveAim(e);
+}
+
+function updateIcarusEagleDiveAim(e) {
+  if (!e || !player) return;
+  const stage = Engine.manga ? icarusMangaStage() : null;
+  const minY = stage ? stage.sunZoneY + 36 : 70;
+  const maxY = stage ? stage.safeBottom - 36 : canvas.height - 80;
+  const lead = e.diveLead || 0;
+  e.diveTargetX = player.x + (player.vx || 0) * lead + (e.diveErrX || 0);
+  e.diveTargetY = Math.max(minY, Math.min(maxY, player.y + (player.vy || 0) * lead + (e.diveErrY || 0)));
 }
 
 function moveIcarusEagle(e, dt, opts = {}) {
   if (!e) return;
   if (e.markT > 0 && player && opts.retarget !== false) {
-    e.diveTargetX = player.x;
-    e.diveTargetY = player.y;
+    updateIcarusEagleDiveAim(e);
   }
   if (!e._diving) {
     e.x -= e.speed * dt;
@@ -626,9 +646,12 @@ function moveIcarusEagle(e, dt, opts = {}) {
     e.x += dx / dist * step;
     e.y += dy / dist * step;
   }
-  if (dist < 14 && player) {
-    e.diveTargetX = player.x;
-    e.diveTargetY = player.y;
+  if (dist < 18) {
+    const vx = e.diveVX || -speed;
+    const vy = e.diveVY || 120;
+    const mag = Math.max(1, Math.hypot(vx, vy));
+    e.diveTargetX = e.x + vx / mag * 260;
+    e.diveTargetY = e.y + vy / mag * 260;
   }
 }
 
@@ -956,16 +979,19 @@ function updatePlaying(dt) {
       const spawnY = stage
         ? Math.max(stage.sunZoneY + 32, Math.min(stage.safeBottom - 34, player.y + (Math.random() - 0.72) * canvas.height * 0.36))
         : player.y + (Math.random() - 0.5) * canvas.height * 0.42;
+      const fastCruise = Math.random() < 0.22 + diff * 0.14;
       eagles.push({
         x: canvas.width + 70 + i * 110,
         y: spawnY,
         visualX: canvas.width + 70 + i * 110,
         visualY: spawnY,
         visualTilt: 0,
-        speed: 340 + Math.random() * 140 + diff * 90,
+        speed: fastCruise
+          ? 390 + Math.random() * 150 + diff * 90
+          : 220 + Math.random() * 125 + diff * 55,
         wingPhase: Math.random() * Math.PI * 2,
         size: 0.9 + Math.random() * 0.4,
-        markT: 0, divingT: 0, diveTargetX: 0, diveTargetY: 0,
+        markT: 0, divingT: 0, diveTargetX: null, diveTargetY: null,
         originX: canvas.width + 70 + i * 110,
         originY: spawnY,
       });
@@ -976,19 +1002,38 @@ function updatePlaying(dt) {
     e.wingPhase += dt * 5.5;
     e.markT  = Math.max(0, e.markT  - dt);
     e.divingT = Math.max(0, e.divingT - dt);
-    // Manga-only special — DIVING CLAW: mark Icarus, then dive at his live body center.
+    // Manga-only special — DIVING CLAW: telegraph near Icarus, then commit.
     if (Engine.manga && e.markT <= 0 && e.divingT <= 0 && !e._diveRolled
         && e.x > 60 && e.x < canvas.width + 40) {
-      e._diveRolled = true;
-      if (Math.random() < 0.25) {
-        e.markT = 0.45;
-        e.diveTargetX = player.x;
-        e.diveTargetY = player.y;
-        mangaTexts.push({ text: 'DIVE!', x: e.x, y: e.y - 24, t: 0.45, color: '#ff2200', size: 26 });
+      const diveOriginOk = e.x > player.x + 145 && e.y < player.y - 28;
+      if (diveOriginOk) {
+        e._diveRolled = true;
+        if (Math.random() < 0.25) {
+          planIcarusEagleDive(e, diff);
+          e.markT = 0.38 + Math.random() * 0.24;
+          mangaTexts.push({ text: 'DIVE!', x: e.x, y: e.y - 24, t: e.markT, color: '#ff2200', size: 26 });
+        } else {
+          e.diveTargetX = null;
+          e.diveTargetY = null;
+        }
+      } else if (e.x <= player.x + 145) {
+        e._diveRolled = true;
       }
     }
-    if (e.markT <= 0 && e._diveRolled && e.divingT <= 0 && !e._diving && e.diveTargetY != null) {
-      startIcarusEagleDive(e);
+    if (e.markT <= 0 && e._diveRolled && e.divingT <= 0 && !e._diving
+        && Number.isFinite(e.diveTargetY)) {
+      const diveOriginOk = e.x > player.x + 88 && e.y < player.y - 12;
+      if (diveOriginOk) {
+        startIcarusEagleDive(e);
+      } else {
+        e.divingT = 0.35;
+        e.diveTargetX = null;
+        e.diveTargetY = null;
+        e._diving = false;
+        if (Math.random() < 0.35) {
+          mangaTexts.push({ text: 'MISS!', x: e.x, y: e.y - 18, t: 0.32, color: '#ffd54a', size: 20 });
+        }
+      }
     }
     moveIcarusEagle(e, dt);
     updateIcarusEnemyVisual(e, dt, {
@@ -1358,8 +1403,16 @@ function rescueWorldMotion(dt) {
     e.wingPhase += dt * 5.5;
     e.markT   = Math.max(0, e.markT   - dt);
     e.divingT = Math.max(0, e.divingT - dt);
-    if (e.markT <= 0 && e._diveRolled && e.divingT <= 0 && !e._diving && e.diveTargetY != null) {
-      startIcarusEagleDive(e);
+    if (e.markT <= 0 && e._diveRolled && e.divingT <= 0 && !e._diving
+        && Number.isFinite(e.diveTargetY)) {
+      const diveOriginOk = e.x > player.x + 88 && e.y < player.y - 12;
+      if (diveOriginOk) {
+        startIcarusEagleDive(e);
+      } else {
+        e.divingT = 0.35;
+        e.diveTargetX = null;
+        e.diveTargetY = null;
+      }
     }
     moveIcarusEagle(e, dt, { retarget: false });
     updateIcarusEnemyVisual(e, dt, {

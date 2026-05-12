@@ -47,7 +47,8 @@
       return { x: col * cellW, y: row * cellH, w: cellW, h: cellH, anchorX, anchorY };
     }
 
-    const cell = 362;
+    const cellW = 680;
+    const cellH = 600;
     const gorgonBounds = {
       '0,0': [105, 46, 330, 362], '1,0': [77, 42, 301, 362], '2,0': [55, 42, 278, 362], '3,0': [47, 44, 276, 362], '4,0': [22, 46, 318, 362], '5,0': [5, 46, 292, 362], '6,0': [45, 0, 362, 362], '7,0': [0, 7, 177, 362],
       '0,1': [53, 0, 339, 362], '1,1': [56, 0, 315, 362], '2,1': [26, 0, 307, 362], '3,1': [29, 0, 337, 362], '4,1': [15, 0, 295, 362], '5,1': [8, 0, 273, 362], '6,1': [6, 0, 294, 362], '7,1': [5, 0, 323, 362],
@@ -55,11 +56,17 @@
       '0,3': [55, 19, 319, 362], '1,3': [34, 13, 299, 362], '2,3': [23, 19, 296, 362], '3,3': [33, 19, 287, 362], '4,3': [5, 19, 359, 362], '5,3': [16, 47, 362, 362], '6,3': [0, 0, 362, 362], '7,3': [0, 65, 94, 362],
       '0,4': [17, 0, 339, 309], '1,4': [11, 0, 362, 316], '2,4': [0, 0, 362, 311], '3,4': [0, 0, 324, 324], '4,4': [7, 0, 322, 314], '5,4': [21, 0, 362, 320], '6,4': [0, 0, 362, 316], '7,4': [0, 0, 252, 324],
     };
-    const actorFrame = (col, row) => anchoredFrame(cell, cell, gorgonBounds, col, row, 'ground', cell * 0.78);
-    const centerFrame = (col, row) => anchoredFrame(cell, cell, gorgonBounds, col, row, 'center', cell / 2);
+    const actorFrame = (col, row) => ({
+      x: col * cellW, y: row * cellH, w: cellW, h: cellH,
+      anchorX: cellW / 2, anchorY: 520,
+    });
+    const centerFrame = (col, row) => ({
+      x: col * cellW, y: row * cellH, w: cellW, h: cellH,
+      anchorX: cellW / 2, anchorY: cellH / 2,
+    });
 
     M.assets.define('godgames.perseus.gorgonSheet', {
-      src: 'assets/manga/perseus/perseus-gorgon-film-v2.png',
+      src: 'assets/manga/perseus/perseus-gorgon-clean-v1.png',
       preload: travelerPreload,
       frames: {
         perseusIdle:     actorFrame(0, 0),
@@ -99,9 +106,9 @@
         medusaGaze:      actorFrame(4, 3),
         medusaGaze1:     actorFrame(4, 3),
         medusaGaze2:     actorFrame(5, 3),
-        medusaHurt:      actorFrame(6, 3),
-        medusaHurt1:     actorFrame(6, 3),
-        medusaHurt2:     actorFrame(7, 3),
+        medusaHurt:      actorFrame(5, 3),
+        medusaHurt1:     actorFrame(5, 3),
+        medusaHurt2:     actorFrame(4, 3),
         snake:           centerFrame(0, 4),
         snake1:          centerFrame(0, 4),
         snake2:          centerFrame(1, 4),
