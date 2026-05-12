@@ -53,7 +53,7 @@
       },
     });
 
-    function anchoredFrame(cellW, cellH, bounds, col, row, mode = 'center', anchors, pad = 8) {
+    function anchoredFrame(cellW, cellH, bounds, col, row, mode = 'center', anchors) {
       const key = `${col},${row}`;
       const b = bounds[key];
       const anchor = anchors && anchors[key];
@@ -62,18 +62,13 @@
       const anchorY = anchor ? anchor[1] : (valid
         ? (mode === 'ground' ? b[3] : (b[1] + b[3]) / 2)
         : cellH / 2);
-      if (!valid) return { x: cellW * col, y: cellH * row, w: cellW, h: cellH, anchorX, anchorY };
-      const cropX = Math.max(0, b[0] - pad);
-      const cropY = Math.max(0, b[1] - pad);
-      const cropR = Math.min(cellW, b[2] + pad);
-      const cropB = Math.min(cellH, b[3] + pad);
       return {
-        x: cellW * col + cropX,
-        y: cellH * row + cropY,
-        w: cropR - cropX,
-        h: cropB - cropY,
-        anchorX: anchorX - cropX,
-        anchorY: anchorY - cropY,
+        x: cellW * col,
+        y: cellH * row,
+        w: cellW,
+        h: cellH,
+        anchorX,
+        anchorY,
       };
     }
 
@@ -128,14 +123,14 @@
         flapDown: sheetFrame(0, 0),
         glide:    sheetFrame(0, 1),
         flapUp:   sheetFrame(1, 0),
-        speed:    sheetFrame(4, 1),
+        speed:    sheetFrame(5, 1),
       },
       meta: {
         sourcePrompt: '8x4 chroma-key manga/anime Icarus film-motion gameplay sprite sheet with flap, glide, speed, dive, burn, wet, falling, and recovery states.',
         animations: {
-          flap: { frames: ['flap1', 'flap2', 'flap3', 'flap4', 'flap5', 'flap6', 'flap7', 'flap8'], fps: 12, loop: true },
-          glide: { frames: ['glide1', 'glide2', 'glide3', 'glide4'], fps: 4, loop: true },
-          speed: { frames: ['speed1', 'speed2', 'speed3', 'speed4'], fps: 7, loop: true },
+          flap: { frames: ['flap1', 'flap2', 'flap3', 'flap4', 'flap5', 'flap8'], fps: 10, loop: true },
+          glide: { frames: ['glide1', 'glide2', 'glide3'], fps: 4, loop: true },
+          speed: { frames: ['speed2'], fps: 1, loop: true },
           dive: { frames: ['dive'], fps: 1, loop: false },
           burn: { frames: ['burn'], fps: 1, loop: false },
           wet: { frames: ['wet'], fps: 1, loop: false },

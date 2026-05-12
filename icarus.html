@@ -3944,21 +3944,20 @@ function drawMangaEagle(e, W, H) {
   if (heavy) {
     ctx.filter = `sepia(0.12) saturate(1.08) brightness(${0.88 + icarusSkyDepth(ey) * 0.16}) contrast(1.08)`;
   }
-  const wingPhase = ((time + e.wingPhase * 0.12) * 0.78) % 1;
-  const drew = e._diving
-      ? drawMangaAtlasFrame('eagleDive', ex, ey, {
-        scale, alpha: 0.98, rotate: spriteTilt, flipX,
-        film: true, phase: wingPhase, amount: 0.16, bob: 1.2, sway: 0.008, squash: 0.006, smearAlpha: 0, crowdedActor: true,
-      })
-    : (e.markT > 0
-      ? drawMangaAtlasFrame('eagleAttack', ex, ey, {
-          scale, alpha: 0.98, rotate: spriteTilt, flipX,
-          film: true, phase: wingPhase, amount: 0.18, bob: 1.4, sway: 0.010, squash: 0.006, smearAlpha: 0, crowdedActor: true,
-        })
-      : drawMangaAtlasAnimation('eagleFly', time + e.wingPhase * 0.12, ex, ey, {
-          scale, alpha: 0.96, rotate: spriteTilt, flipX,
-          amount: 0.16, bob: 1.2, sway: 0.008, squash: 0.006, smearAlpha: 0, crowdedActor: true,
-        }));
+  const wingPhase = (((time + e.wingPhase * 0.12) * 0.78) % 1 + 1) % 1;
+  const flyFrames = ['eagleFly1', 'eagleFly2', 'eagleFly3', 'eagleFly4'];
+  const flyFrame = flyFrames[Math.min(flyFrames.length - 1, Math.floor(wingPhase * flyFrames.length))];
+  const eagleFrame = e._diving ? 'eagleDive' : (e.markT > 0 ? 'eagleAttack' : flyFrame);
+  const drew = drawMangaAtlasFrame(eagleFrame, ex, ey, {
+    scale,
+    alpha: e._diving || e.markT > 0 ? 0.98 : 0.96,
+    rotate: spriteTilt,
+    flipX,
+    film: false,
+    frameBlend: false,
+    tween: false,
+    smear: false,
+  });
   if (heavy) ctx.filter = 'none';
 
   if (drew && e.markT > 0) {
@@ -3971,50 +3970,6 @@ function drawMangaEagle(e, W, H) {
   }
   ctx.restore();
   return drew;
-}
-
-function drawMangaOrcaTail(x, y, opts = {}) {
-  const scale = opts.scale || 1;
-  ctx.save();
-  ctx.translate(x, y);
-  if (opts.rotate) ctx.rotate(opts.rotate);
-  ctx.scale((opts.flipX ? -1 : 1) * scale, scale);
-  ctx.globalAlpha *= opts.alpha ?? 0.9;
-  ctx.lineJoin = 'round';
-  ctx.lineCap = 'round';
-  ctx.fillStyle = '#050b12';
-  ctx.strokeStyle = 'rgba(10,10,10,0.86)';
-  ctx.lineWidth = 3;
-
-  ctx.beginPath();
-  ctx.moveTo(42, 6);
-  ctx.bezierCurveTo(70, -4, 88, 0, 104, 14);
-  ctx.bezierCurveTo(82, 22, 60, 20, 42, 6);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.moveTo(98, 9);
-  ctx.bezierCurveTo(132, -28, 153, -16, 125, 16);
-  ctx.bezierCurveTo(151, 44, 128, 58, 99, 23);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-
-  ctx.fillStyle = 'rgba(245,245,236,0.72)';
-  ctx.beginPath();
-  ctx.ellipse(75, 12, 22, 5.5, 0.14, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.42)';
-  ctx.lineWidth = 1.4;
-  ctx.beginPath();
-  ctx.moveTo(64, 10);
-  ctx.quadraticCurveTo(92, 6, 116, -10);
-  ctx.moveTo(86, 18);
-  ctx.quadraticCurveTo(106, 30, 124, 44);
-  ctx.stroke();
-  ctx.restore();
 }
 
 function drawMangaOrca(o, W, H) {
@@ -4074,7 +4029,9 @@ function drawMangaOrca(o, W, H) {
     flipX: !facingRight,
     rotate: rot,
     alpha: o.y > oY + 30 ? 0.74 : 0.98,
-    film: above,
+    film: false,
+    frameBlend: false,
+    tween: false,
     phase: (((o.airT || 0) * 1.3 + o.x * 0.001) % 1 + 1) % 1,
     amount: above ? 0.30 : 0.08,
     bob: 4,
@@ -4085,14 +4042,10 @@ function drawMangaOrca(o, W, H) {
   };
   if (above && !o.splashed) {
     const breachT = Math.max(0, Math.min(0.64, o.airT || 0));
-    drawMangaOrcaTail(ox, drawY, {
-      scale: drawOpts.scale,
-      rotate: rot,
-      flipX: !facingRight,
-      alpha: drawOpts.alpha * 0.88,
-    });
     const biteOpts = Object.assign({}, drawOpts, {
-      film: true,
+      film: false,
+      frameBlend: false,
+      tween: false,
       phase: Math.min(1, breachT / 0.64),
       amount: 0.12,
       bob: 1.2,
@@ -4108,7 +4061,9 @@ function drawMangaOrca(o, W, H) {
           || drawMangaFxAnimation('orcaBreach', breachT, ox, drawY, drawOpts)));
   } else {
     const splashOpts = Object.assign({}, drawOpts, {
-      film: true,
+      film: false,
+      frameBlend: false,
+      tween: false,
       phase: Math.min(1, (o.splashT || 0) * 2.2),
       amount: 0.08,
       bob: 0.8,
@@ -4133,8 +4088,11 @@ function drawMangaDaedalusFly(x, y, opts = {}) {
     scale,
     alpha: 0.88,
     rotate: (opts.tilt || 0) + Math.sin(time * 1.2) * 0.035,
-    flipX: true,
-    film: true,
+    flipX: false,
+    film: false,
+    frameBlend: false,
+    tween: false,
+    smear: false,
     phase: ((time * 0.52) % 1 + 1) % 1,
     amount: 0.12,
     bob: 1.4,
@@ -4249,21 +4207,12 @@ function currentIcarusSpriteFrame() {
   return 'glide';
 }
 
-function currentIcarusSpriteAnimation() {
-  if (state === 'dying') return 'falling';
-  if (diveT > 0) return 'dive';
-  if (keys && (keys['ArrowUp'] || keys[' '])) return 'flap';
-  if (Math.abs(player.vy) > 190 || player.vx > 170) return 'speed';
-  return 'glide';
-}
-
 function drawIcarusMangaSprite() {
   if (!mangaAssetReady(ICARUS_MANGA_SHEET_ASSET)
     || !Manga.assets || typeof Manga.assets.drawFrame !== 'function') return false;
 
   const p = player;
   const frame = currentIcarusSpriteFrame();
-  const anim = currentIcarusSpriteAnimation();
   const compact = Math.min(canvas.width, canvas.height);
   const nearScale = Math.max(0.26, Math.min(0.42, compact / 2200));
   const drawX = p.x;
@@ -4313,40 +4262,19 @@ function drawIcarusMangaSprite() {
     ctx.filter = 'sepia(0.06) saturate(1.04) brightness(0.98) contrast(1.05)';
   }
   const wingCycle = ((p.flapPhase / (Math.PI * 2)) % 1 + 1) % 1;
-  const thrusting = keys && (keys['ArrowUp'] || keys[' ']);
-  const motionAmount = state === 'dying'
-    ? 0.04
-    : (diveT > 0 ? 0.18 : Math.max(thrusting ? 0.18 : 0.10, Math.min(0.20, Math.abs(p.vy) / 1800)));
   const rotate = state === 'dying' ? p.angle * 0.16 : (p.spriteTilt || 0);
   const frameOpts = {
-        scale,
-        flipX: !p.facingRight,
-        rotate,
-        phase: wingCycle,
-        amount: motionAmount,
-        bob: state === 'dying' ? 0 : 1.6,
-        floatBob: state === 'dying' ? 0 : 0.8,
-        floatRate: 2.1,
-        sway: diveT > 0 ? 0.006 : 0.010,
-        squash: thrusting ? 0.006 : 0.004,
-        animName: anim,
-        hero: true,
-        film: true,
-        smearAlpha: 0,
-        crowdedActor: true,
-        phaseTime: anim === 'flap' ? wingCycle : undefined,
-        frameBlendStrength: anim === 'flap' ? 0.12 : undefined,
-      };
-  const drawAnim = art && (art.drawActedAnimation || art.drawAnimation);
-  const drew = drawAnim
-    ? drawAnim(ctx, ICARUS_MANGA_SHEET_ASSET, anim, time, drawX, drawY, frameOpts)
-    : (art && typeof art.drawFilmFrame === 'function'
-      ? art.drawFilmFrame(ctx, ICARUS_MANGA_SHEET_ASSET, frame, drawX, drawY, frameOpts)
-    : Manga.assets.drawFrame(ctx, ICARUS_MANGA_SHEET_ASSET, frame, drawX, drawY, {
-        scale,
-        flipX: !p.facingRight,
-        rotate,
-      }));
+    scale,
+    flipX: !p.facingRight,
+    rotate,
+    film: false,
+    frameBlend: false,
+    tween: false,
+    smear: false,
+  };
+  const drew = art && typeof art.drawFrame === 'function'
+    ? art.drawFrame(ctx, ICARUS_MANGA_SHEET_ASSET, frame, drawX, drawY, frameOpts)
+    : Manga.assets.drawFrame(ctx, ICARUS_MANGA_SHEET_ASSET, frame, drawX, drawY, frameOpts);
   if (heavy) ctx.filter = 'none';
   ctx.shadowBlur = 0;
   ctx.restore();
