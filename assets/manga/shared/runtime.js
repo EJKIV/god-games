@@ -446,7 +446,7 @@
     if (opts.film === true) return true;
     const sid = String(id || '');
     if (/fxhud|sceneAtlas|hubConcourse|destinationPanels|clueTablet|olympus/i.test(sid)) return false;
-    return /animSheet|archerSheet|hubAvatar|hubToad|orionAnim|scorpionAnim|perseus\.gorgonSheet|icarus\.(flightSheet|stageAtlasV2|orcaAirV1)/i.test(sid);
+    return /animSheet|archerSheet|hubAvatar|hubToad|orionAnim|scorpionAnim|perseus\.gorgonSheet|icarus\.(flightSheet|stageAtlasV2)/i.test(sid);
   }
 
   function drawFilmFrame(ctx, id, frame, x, y, opts = {}) {

@@ -83,7 +83,7 @@
     });
     M.assets.define('godgames.icarus.flightSheet', {
       src: 'assets/manga/icarus/icarus-flight-clean-v1.png',
-      preload: travelerPreload,
+      preload: false,
       frames: {
         flap1:    sheetFrame(0, 0),
         flap2:    sheetFrame(1, 0),
@@ -125,41 +125,6 @@
         },
       },
     });
-    prime('godgames.icarus.flightSheet');
-
-    const orcaAirCellW = 400;
-    const orcaAirCellH = 330;
-    const orcaAirBounds = {
-      '0,0': [97, 65, 314, 247], '1,0': [112, 61, 314, 247], '2,0': [101, 68, 302, 247], '3,0': [85, 48, 314, 247], '4,0': [103, 62, 314, 247], '5,0': [85, 48, 314, 247], '6,0': [85, 48, 314, 247],
-    };
-    const orcaAirAnchors = {
-      '0,0': [195, 153], '1,0': [211, 145], '2,0': [197, 163], '3,0': [192, 133], '4,0': [214, 161], '5,0': [192, 133], '6,0': [192, 133],
-    };
-    const orcaAirFrame = (col) => ({
-      x: orcaAirCellW * col, y: 0, w: orcaAirCellW, h: orcaAirCellH,
-      anchorX: 200, anchorY: 165,
-    });
-
-    M.assets.define('godgames.icarus.orcaAirV1', {
-      src: 'assets/manga/icarus/orca-air-clean-v1.png',
-      preload: shouldPrime,
-      frames: {
-        orcaAirBreach1: orcaAirFrame(0),
-        orcaAirBreach2: orcaAirFrame(1),
-        orcaAirBreach3: orcaAirFrame(2),
-        orcaAirBreach4: orcaAirFrame(3),
-        orcaAirBreach5: orcaAirFrame(4),
-        orcaAirBreach6: orcaAirFrame(5),
-        orcaAirBite:    orcaAirFrame(6),
-      },
-      meta: {
-        usage: 'Clean airborne Icarus orca body frames with no water attached; surface water remains in the FX sheets.',
-        animations: {
-          orcaAirBreach: { frames: ['orcaAirBreach1', 'orcaAirBreach2', 'orcaAirBreach3', 'orcaAirBreach4', 'orcaAirBreach5', 'orcaAirBreach6'], fps: 10, loop: false },
-        },
-      },
-    });
-    prime('godgames.icarus.orcaAirV1');
 
     const atlasCellW = 640;
     const atlasCellH = 600;
