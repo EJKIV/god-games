@@ -1473,7 +1473,7 @@ function drawAchillesMangaSprite() {
   const compact = Math.min(Engine.W, Engine.H);
   const nearScale = Math.max(0.32, Math.min(0.46, compact / 1600));
   const scale = mangaStageScale(PLAYER_Y, nearScale * 0.72, nearScale, { curve: 0.78 });
-  const y = PLAYER_Y + 10;
+  const y = PLAYER_Y;
   const drawX = typeof player.visualX === 'number' ? player.visualX : player.x;
   const jitter = player.hitFlash > 0 ? Math.sin(time * 80) * 2 : 0;
   const art = achillesMangaArt();

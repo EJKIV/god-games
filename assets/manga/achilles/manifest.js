@@ -69,10 +69,22 @@
 
     const aw = 2016 / 8;
     const ah = 1256 / 4;
-    const animFrame = (col, row, anchorY = ah * 0.88) => ({
-      x: col * aw, y: row * ah, w: aw, h: ah,
-      anchorX: aw / 2, anchorY,
-    });
+    function anchoredFrame(cellW, cellH, bounds, col, row, mode = 'ground', fallbackY = cellH * 0.88) {
+      const b = bounds[`${col},${row}`];
+      const valid = b && (b[2] - b[0]) > cellW * 0.12 && (b[3] - b[1]) > cellH * 0.12;
+      const anchorX = valid && mode === 'center' ? (b[0] + b[2]) / 2 : cellW / 2;
+      const anchorY = valid
+        ? (mode === 'center' ? (b[1] + b[3]) / 2 : b[3])
+        : fallbackY;
+      return { x: col * cellW, y: row * cellH, w: cellW, h: cellH, anchorX, anchorY };
+    }
+    const achillesBounds = {
+      '0,0': [63, 22, 196, 314], '1,0': [28, 22, 174, 314], '2,0': [13, 22, 252, 314], '3,0': [0, 22, 252, 314], '4,0': [0, 56, 252, 314], '5,0': [0, 39, 252, 314], '6,0': [0, 96, 252, 314], '7,0': [0, 199, 222, 314],
+      '0,1': [32, 0, 221, 311], '1,1': [12, 0, 213, 277], '2,1': [11, 0, 210, 311], '3,1': [4, 0, 252, 314], '4,1': [0, 0, 252, 314], '5,1': [0, 0, 252, 314], '6,1': [0, 0, 252, 312], '7,1': [0, 0, 210, 297],
+      '0,2': [36, 24, 218, 277], '1,2': [30, 26, 217, 314], '2,2': [18, 28, 252, 314], '3,2': [0, 28, 252, 314], '4,2': [0, 28, 252, 314], '5,2': [0, 28, 252, 314], '6,2': [0, 27, 252, 314], '7,2': [0, 65, 143, 314],
+      '0,3': [29, 9, 230, 274], '1,3': [9, 0, 222, 274], '2,3': [19, 0, 235, 296], '3,3': [11, 0, 252, 298], '4,3': [0, 0, 252, 298], '5,3': [0, 0, 202, 293], '6,3': [5, 0, 252, 291], '7,3': [0, 0, 188, 293],
+    };
+    const animFrame = (col, row) => anchoredFrame(aw, ah, achillesBounds, col, row, 'ground', ah * 0.88);
 
     M.assets.define('godgames.achilles.animSheet', {
       src: 'assets/manga/achilles/achilles-film-v2.png',
@@ -131,10 +143,12 @@
     prime('godgames.achilles.animSheet');
 
     const archerCell = 362;
-    const archerFrame = (col, row, anchorY = archerCell * 0.90) => ({
-      x: col * archerCell, y: row * archerCell, w: archerCell, h: archerCell,
-      anchorX: archerCell / 2, anchorY,
-    });
+    const archerBounds = {
+      '0,0': [105, 31, 331, 338], '1,0': [98, 30, 333, 338], '2,0': [42, 31, 340, 337], '3,0': [44, 30, 315, 337], '4,0': [7, 8, 362, 362], '5,0': [0, 14, 322, 335],
+      '0,1': [25, 34, 362, 329], '1,1': [0, 33, 323, 329], '3,1': [0, 1, 362, 362], '4,1': [0, 0, 362, 333], '5,1': [0, 6, 233, 362],
+      '0,2': [12, 126, 362, 292], '1,2': [0, 53, 362, 293], '2,2': [0, 6, 362, 307], '3,2': [0, 0, 362, 320], '4,2': [0, 4, 343, 325], '5,2': [2, 0, 293, 318],
+    };
+    const archerFrame = (col, row) => anchoredFrame(archerCell, archerCell, archerBounds, col, row, 'ground', archerCell * 0.90);
 
     M.assets.define('godgames.achilles.archerSheet', {
       src: 'assets/manga/achilles/archers-film-v2.png',

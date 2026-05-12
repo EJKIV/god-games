@@ -1263,7 +1263,7 @@ function drawOrionMangaSprite() {
   const drawX = typeof orion.visualX === 'number' ? orion.visualX : orion.x;
   const drawY = typeof orion.visualY === 'number' ? orion.visualY : orion.y;
   const scale = orionMangaScale(drawY, nearScale * 0.84, nearScale, { curve: 0.78 });
-  const y = drawY + 8;
+  const y = drawY;
   const jitter = orion.hurtFlash > 0 ? Math.sin(Engine.time * 78) * 2 : 0;
   const art = orionMangaArt();
   const hasAnim = orionMangaAssetReady(ORION_MANGA_ORION_SHEET)
@@ -1317,8 +1317,8 @@ function drawOrionMangaSprite() {
       hero: true,
     };
     drew = art && typeof art.drawFilmFrame === 'function'
-      ? art.drawFilmFrame(ctx, ORION_MANGA_LEGACY_SHEET, frame, drawX + jitter, drawY + 4, drawOpts)
-      : Manga.assets.drawFrame(ctx, ORION_MANGA_LEGACY_SHEET, frame, drawX + jitter, drawY + 4, drawOpts);
+      ? art.drawFilmFrame(ctx, ORION_MANGA_LEGACY_SHEET, frame, drawX + jitter, drawY, drawOpts)
+      : Manga.assets.drawFrame(ctx, ORION_MANGA_LEGACY_SHEET, frame, drawX + jitter, drawY, drawOpts);
   }
   ctx.restore();
   return drew;
@@ -1448,7 +1448,7 @@ function drawScorpionMangaSprite() {
   if (hasAnim) {
     const motion = currentScorpionMangaMotion();
     const drawBossAnim = art.drawActedAnimation || art.drawAnimation;
-    drew = drawBossAnim(ctx, ORION_MANGA_SCORPION_SHEET, motion.anim, motion.t, drawX, drawY + 12, {
+    drew = drawBossAnim(ctx, ORION_MANGA_SCORPION_SHEET, motion.anim, motion.t, drawX, drawY, {
       scale,
       flipX: boss.facing < 0,
       rotate: motion.rotate || 0,
@@ -1474,8 +1474,8 @@ function drawScorpionMangaSprite() {
       hero: true,
     };
     drew = art && typeof art.drawFilmFrame === 'function'
-      ? art.drawFilmFrame(ctx, ORION_MANGA_LEGACY_SHEET, frame, drawX, drawY + 10, drawOpts)
-      : Manga.assets.drawFrame(ctx, ORION_MANGA_LEGACY_SHEET, frame, drawX, drawY + 10, drawOpts);
+      ? art.drawFilmFrame(ctx, ORION_MANGA_LEGACY_SHEET, frame, drawX, drawY, drawOpts)
+      : Manga.assets.drawFrame(ctx, ORION_MANGA_LEGACY_SHEET, frame, drawX, drawY, drawOpts);
   }
   ctx.restore();
   return drew;

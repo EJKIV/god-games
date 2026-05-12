@@ -179,6 +179,7 @@ god-games/
 
 | Date       | Change                                                                                     | Author |
 |------------|--------------------------------------------------------------------------------------------|--------|
+| 2026-05-11 | Re-anchored manga gameplay sprite sheets to visible alpha bounds and split Icarus's airborne orca body frames from water-only surface FX. | codex  |
 | 2026-05-11 | Bumped the ZEUS chain to v3, filtered stale chain keys in progress sync/API, fixed hub resize, and wired mystery departures to submit scores across games. | codex  |
 | 2026-05-11 | Added film-motion manga sprite sheets across hub and games, plus `drawActedAnimation` phase-driven timing so stride/flap cycles read more naturally. | codex  |
 | 2026-05-11 | Added authored manga hub idle/selected background states so portal lighting, dimmed neighboring bays, and game names are baked into the hall art. | codex  |

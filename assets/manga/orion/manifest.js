@@ -72,10 +72,21 @@
 
     const ow = 2512 / 8;
     const oh = 942 / 3;
-    const orionFrame = (col, row, anchorY = oh * 0.90) => ({
-      x: col * ow, y: row * oh, w: ow, h: oh,
-      anchorX: ow / 2, anchorY,
-    });
+    function anchoredFrame(cellW, cellH, bounds, col, row, mode = 'ground', fallbackY = cellH * 0.90) {
+      const b = bounds[`${col},${row}`];
+      const valid = b && (b[2] - b[0]) > cellW * 0.12 && (b[3] - b[1]) > cellH * 0.12;
+      const anchorX = valid && mode === 'center' ? (b[0] + b[2]) / 2 : cellW / 2;
+      const anchorY = valid
+        ? (mode === 'center' ? (b[1] + b[3]) / 2 : b[3])
+        : fallbackY;
+      return { x: col * cellW, y: row * cellH, w: cellW, h: cellH, anchorX, anchorY };
+    }
+    const orionBounds = {
+      '0,0': [73, 49, 281, 290], '1,0': [12, 44, 314, 290], '2,0': [0, 47, 314, 290], '3,0': [0, 41, 314, 289], '4,0': [0, 45, 314, 281], '5,0': [0, 77, 314, 288], '6,0': [0, 99, 314, 285], '7,0': [0, 213, 281, 286],
+      '0,1': [23, 56, 314, 314], '1,1': [0, 51, 314, 242], '2,1': [0, 53, 314, 241], '3,1': [0, 51, 309, 226], '4,1': [11, 52, 314, 242], '5,1': [0, 55, 314, 314], '6,1': [0, 57, 314, 209], '7,1': [0, 52, 296, 241],
+      '0,2': [28, 0, 314, 225], '1,2': [0, 29, 314, 225], '2,2': [0, 33, 314, 227], '3,2': [0, 61, 314, 224], '4,2': [0, 3, 274, 227], '5,2': [35, 0, 314, 227], '6,2': [0, 92, 314, 225], '7,2': [0, 21, 274, 225],
+    };
+    const orionFrame = (col, row) => anchoredFrame(ow, oh, orionBounds, col, row, 'ground', oh * 0.90);
 
     M.assets.define('godgames.orion.orionAnimV1', {
       src: 'assets/manga/orion/orion-film-v2.png',
@@ -85,10 +96,10 @@
         idle2:        orionFrame(1, 0),
         idle3:        orionFrame(2, 0),
         idle4:        orionFrame(3, 0),
-        jump:         orionFrame(4, 0, oh * 0.82),
-        dodge:        orionFrame(5, 0, oh * 0.84),
+        jump:         orionFrame(4, 0),
+        dodge:        orionFrame(5, 0),
         hit:          orionFrame(6, 0),
-        prone:        orionFrame(7, 0, oh * 0.66),
+        prone:        orionFrame(7, 0),
         run1:         orionFrame(0, 1),
         run2:         orionFrame(1, 1),
         run3:         orionFrame(2, 1),
@@ -103,7 +114,7 @@
         stabThrust:   orionFrame(3, 2),
         stabRecover:  orionFrame(4, 2),
         victory:      orionFrame(5, 2),
-        fallen:       orionFrame(6, 2, oh * 0.66),
+        fallen:       orionFrame(6, 2),
       },
       meta: {
         usage: 'Manga/anime Orion film-motion gameplay, title, death, and victory animation sheet.',
@@ -125,10 +136,13 @@
 
     const sw = 2808 / 8;
     const sh = 1124 / 4;
-    const scorpionFrame = (col, row, anchorY = sh * 0.80) => ({
-      x: col * sw, y: row * sh, w: sw, h: sh,
-      anchorX: sw / 2, anchorY,
-    });
+    const scorpionBounds = {
+      '0,0': [34, 29, 351, 281], '1,0': [0, 29, 351, 281], '2,0': [0, 29, 351, 281], '3,0': [0, 45, 351, 281], '4,0': [0, 131, 351, 281], '5,0': [0, 24, 348, 281], '6,0': [14, 196, 351, 281], '7,0': [0, 183, 334, 281],
+      '0,1': [26, 0, 351, 268], '1,1': [0, 0, 351, 268], '2,1': [0, 0, 351, 270], '3,1': [0, 0, 351, 270], '4,1': [0, 0, 351, 268], '5,1': [0, 0, 351, 270], '6,1': [0, 0, 351, 268], '7,1': [0, 0, 328, 271],
+      '0,2': [17, 84, 351, 238], '1,2': [0, 86, 351, 237], '2,2': [0, 86, 351, 242], '3,2': [0, 98, 351, 243], '4,2': [0, 104, 351, 243], '5,2': [0, 105, 351, 241], '6,2': [0, 99, 343, 242], '7,2': [2, 108, 334, 242],
+      '0,3': [15, 7, 346, 260], '1,3': [11, 8, 351, 248], '2,3': [0, 32, 350, 251], '3,3': [12, 16, 351, 252], '4,3': [0, 31, 339, 251], '5,3': [0, 43, 351, 251], '6,3': [0, 47, 351, 249], '7,3': [0, 31, 314, 254],
+    };
+    const scorpionFrame = (col, row) => anchoredFrame(sw, sh, scorpionBounds, col, row, 'ground', sh * 0.80);
 
     M.assets.define('godgames.orion.scorpionAnimV1', {
       src: 'assets/manga/orion/scorpion-film-v2.png',
@@ -140,8 +154,8 @@
         idle4:        scorpionFrame(3, 0),
         hurt:         scorpionFrame(4, 0),
         enraged:      scorpionFrame(5, 0),
-        dead1:        scorpionFrame(6, 0, sh * 0.70),
-        dead2:        scorpionFrame(7, 0, sh * 0.70),
+        dead1:        scorpionFrame(6, 0),
+        dead2:        scorpionFrame(7, 0),
         crawl1:       scorpionFrame(0, 1),
         crawl2:       scorpionFrame(1, 1),
         crawl3:       scorpionFrame(2, 1),

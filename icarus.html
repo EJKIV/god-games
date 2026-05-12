@@ -588,6 +588,50 @@ function updateIcarusEnemyVisual(actor, dt, opts = {}) {
   }
 }
 
+function startIcarusEagleDive(e) {
+  if (!e || !player) return;
+  e._diving = true;
+  e.divingT = 0.72;
+  e.diveTargetX = player.x;
+  e.diveTargetY = player.y;
+  const dist = Math.hypot(e.diveTargetX - e.x, e.diveTargetY - e.y);
+  e.diveSpeed = Math.max(660, Math.min(1020, dist / 0.58));
+  e.diveVX = 0;
+  e.diveVY = 0;
+}
+
+function moveIcarusEagle(e, dt, opts = {}) {
+  if (!e) return;
+  if (e.markT > 0 && player && opts.retarget !== false) {
+    e.diveTargetX = player.x;
+    e.diveTargetY = player.y;
+  }
+  if (!e._diving) {
+    e.x -= e.speed * dt;
+    e.diveVX = -e.speed;
+    e.diveVY = 0;
+    return;
+  }
+
+  const tx = Number.isFinite(e.diveTargetX) ? e.diveTargetX : (player ? player.x : e.x - 80);
+  const ty = Number.isFinite(e.diveTargetY) ? e.diveTargetY : (player ? player.y : e.y + 120);
+  const dx = tx - e.x;
+  const dy = ty - e.y;
+  const dist = Math.hypot(dx, dy);
+  const speed = e.diveSpeed || 760;
+  if (dist > 0.001) {
+    const step = Math.min(dist, speed * dt);
+    e.diveVX = dx / dist * speed;
+    e.diveVY = dy / dist * speed;
+    e.x += dx / dist * step;
+    e.y += dy / dist * step;
+  }
+  if (dist < 14 && player) {
+    e.diveTargetX = player.x;
+    e.diveTargetY = player.y;
+  }
+}
+
 // ── Update ─────────────────────────────────────────────────────────────────
 // `time` is synced from Engine.time before each call (see onUpdate in Engine.boot).
 function update(dt) {
@@ -932,7 +976,7 @@ function updatePlaying(dt) {
     e.wingPhase += dt * 5.5;
     e.markT  = Math.max(0, e.markT  - dt);
     e.divingT = Math.max(0, e.divingT - dt);
-    // Manga-only special — DIVING CLAW: random eagles mark + dive straight down.
+    // Manga-only special — DIVING CLAW: mark Icarus, then dive at his live body center.
     if (Engine.manga && e.markT <= 0 && e.divingT <= 0 && !e._diveRolled
         && e.x > 60 && e.x < canvas.width + 40) {
       e._diveRolled = true;
@@ -944,22 +988,13 @@ function updatePlaying(dt) {
       }
     }
     if (e.markT <= 0 && e._diveRolled && e.divingT <= 0 && !e._diving && e.diveTargetY != null) {
-      e._diving = true;
-      e.divingT = 0.6;
-      // Lock dive trajectory: straight down toward last seen target X
-      e.diveDX = (e.diveTargetX - e.x) * 0.4;  // partial chase
-      e.diveDY = 700;
+      startIcarusEagleDive(e);
     }
-    if (e._diving) {
-      e.x += e.diveDX * dt;
-      e.y += e.diveDY * dt;
-    } else {
-      e.x -= e.speed * dt;
-    }
+    moveIcarusEagle(e, dt);
     updateIcarusEnemyVisual(e, dt, {
       xEase: e._diving ? 15 : 10,
       yEase: e._diving ? 15 : 9,
-      tilt: e._diving ? 0.28 : -0.06 + Math.sin(e.wingPhase) * 0.035,
+      tilt: e._diving ? Math.max(-0.42, Math.min(0.42, 0.12 + Math.atan2(e.diveVY || 0, Math.max(1, Math.abs(e.diveVX || 1))) * 0.18)) : -0.06 + Math.sin(e.wingPhase) * 0.035,
       tiltEase: e._diving ? 13 : 8,
       hitRadius: 28,
       maxDrift: e._diving ? 8 : 9,
@@ -1323,12 +1358,14 @@ function rescueWorldMotion(dt) {
     e.wingPhase += dt * 5.5;
     e.markT   = Math.max(0, e.markT   - dt);
     e.divingT = Math.max(0, e.divingT - dt);
-    if (e._diving) { e.x += e.diveDX * dt; e.y += e.diveDY * dt; }
-    else           { e.x -= e.speed * dt; }
+    if (e.markT <= 0 && e._diveRolled && e.divingT <= 0 && !e._diving && e.diveTargetY != null) {
+      startIcarusEagleDive(e);
+    }
+    moveIcarusEagle(e, dt, { retarget: false });
     updateIcarusEnemyVisual(e, dt, {
       xEase: e._diving ? 15 : 10,
       yEase: e._diving ? 15 : 9,
-      tilt: e._diving ? 0.28 : -0.06 + Math.sin(e.wingPhase) * 0.035,
+      tilt: e._diving ? Math.max(-0.42, Math.min(0.42, 0.12 + Math.atan2(e.diveVY || 0, Math.max(1, Math.abs(e.diveVX || 1))) * 0.18)) : -0.06 + Math.sin(e.wingPhase) * 0.035,
       tiltEase: e._diving ? 13 : 8,
       hitRadius: 28,
       maxDrift: e._diving ? 8 : 9,
@@ -1753,7 +1790,7 @@ function drawIcarusDebugOverlay(W, H) {
     const vx = typeof player.visualX === 'number' ? player.visualX : px;
     const vy = typeof player.visualY === 'number' ? player.visualY : py;
     items.push({ role: 'player', x: px, y: py, r: 20, label: 'icarus hit' });
-    items.push({ role: 'visual', x: vx, y: vy - 4, w: 86, h: 96, label: 'icarus sprite' });
+    items.push({ role: 'visual', x: vx, y: vy, w: 86, h: 96, label: 'icarus sprite' });
   }
   for (const e of eagles) {
     const vx = typeof e.visualX === 'number' ? e.visualX : e.x;
@@ -3282,6 +3319,7 @@ const ICARUS_MANGA_SHEET_ASSET = 'godgames.icarus.flightSheet';
 const ICARUS_MANGA_STAGE_ASSET = 'godgames.icarus.flightStageV2';
 const ICARUS_MANGA_ATLAS_ASSET = 'godgames.icarus.stageAtlasV2';
 const ICARUS_MANGA_FX_ASSET = 'godgames.icarus.fxCreaturesV2';
+const ICARUS_MANGA_ORCA_AIR_ASSET = 'godgames.icarus.orcaAirV1';
 
 function icarusMangaArt() {
   return window.GodGames && GodGames.MangaArt ? GodGames.MangaArt : null;
@@ -3303,6 +3341,10 @@ function mangaAtlasReady() {
 
 function mangaFxReady() {
   return mangaAssetReady(ICARUS_MANGA_FX_ASSET);
+}
+
+function mangaOrcaAirReady() {
+  return mangaAssetReady(ICARUS_MANGA_ORCA_AIR_ASSET);
 }
 
 function drawMangaAtlasFrame(frame, x, y, opts = {}) {
@@ -3341,6 +3383,25 @@ function drawMangaFxAnimation(name, t, x, y, opts = {}) {
   if (!art || !mangaFxReady() || typeof art.drawAnimation !== 'function') return false;
   const drawAnim = art.drawActedAnimation || art.drawAnimation;
   return drawAnim(ctx, ICARUS_MANGA_FX_ASSET, name, t, x, y, opts);
+}
+
+function drawMangaOrcaAirFrame(frame, x, y, opts = {}) {
+  const art = icarusMangaArt();
+  if (!art || !mangaOrcaAirReady() || typeof art.drawFrame !== 'function') return false;
+  if (opts.film && typeof art.drawFilmFrame === 'function') {
+    return art.drawFilmFrame(ctx, ICARUS_MANGA_ORCA_AIR_ASSET, frame, x, y, Object.assign({
+      animName: frame,
+      t: time,
+    }, opts));
+  }
+  return art.drawFrame(ctx, ICARUS_MANGA_ORCA_AIR_ASSET, frame, x, y, opts);
+}
+
+function drawMangaOrcaAirAnimation(name, t, x, y, opts = {}) {
+  const art = icarusMangaArt();
+  if (!art || !mangaOrcaAirReady() || typeof art.drawAnimation !== 'function') return false;
+  const drawAnim = art.drawActedAnimation || art.drawAnimation;
+  return drawAnim(ctx, ICARUS_MANGA_ORCA_AIR_ASSET, name, t, x, y, opts);
 }
 
 function drawIcarusSheetFrame(frame, x, y, opts = {}) {
@@ -3852,7 +3913,7 @@ function drawMangaEagle(e, W, H) {
 }
 
 function drawMangaOrca(o, W, H) {
-  if (!mangaAtlasReady() && !mangaFxReady()) return false;
+  if (!mangaAtlasReady() && !mangaFxReady() && !mangaOrcaAirReady()) return false;
   const oY = oceanY();
   const base = Math.max(0.28, Math.min(0.42, Math.min(W, H) / 1750));
   const ox = typeof o.visualX === 'number' ? o.visualX : o.x;
@@ -3890,7 +3951,7 @@ function drawMangaOrca(o, W, H) {
   }
 
   const above = oy < oY - 10;
-  const frame = !above || o.splashed ? 'orcaSplash' : (o.vy > -80 ? 'orcaBite' : 'orcaBreach');
+  const frame = !above || o.splashed ? 'orcaSplash' : (o.vy > -80 ? 'orcaAirBite' : 'orcaAirBreach');
   const rot = above ? tilt : 0;
   const depth = icarusSeaDepth(oy);
   const facingRight = (o.vx || 0) >= 0;
@@ -3902,10 +3963,10 @@ function drawMangaOrca(o, W, H) {
   if (heavy) {
     ctx.filter = `saturate(1.10) brightness(${0.92 + depth * 0.12}) contrast(1.08)`;
   }
-  const drawY = Math.min(oy + 26, oY + 36);
+  const drawY = above ? oy : Math.min(oy + 26, oY + 36);
   const drawOpts = {
     scale: base * (frame === 'orcaSplash' ? 0.92 : 1.0),
-    flipX: facingRight,
+    flipX: !facingRight,
     rotate: rot,
     alpha: o.y > oY + 30 ? 0.74 : 0.98,
     film: above,
@@ -3924,9 +3985,11 @@ function drawMangaOrca(o, W, H) {
       bob: 2.2,
     });
     drew = (o.vy > -80
-      ? (drawMangaAtlasFrame('orcaBite', ox, drawY, biteOpts)
+      ? (drawMangaOrcaAirFrame('orcaAirBite', ox, drawY, biteOpts)
+          || drawMangaAtlasFrame('orcaBite', ox, drawY, biteOpts)
           || drawMangaFxFrame('orcaBite', ox, drawY, biteOpts))
-      : (drawMangaAtlasAnimation('orcaBreach', breachT, ox, drawY, drawOpts)
+      : (drawMangaOrcaAirAnimation('orcaAirBreach', breachT, ox, drawY, drawOpts)
+          || drawMangaAtlasAnimation('orcaBreach', breachT, ox, drawY, drawOpts)
           || drawMangaFxAnimation('orcaBreach', breachT, ox, drawY, drawOpts)));
   } else {
     const splashOpts = Object.assign({}, drawOpts, {

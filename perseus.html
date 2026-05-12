@@ -1469,7 +1469,7 @@ function drawPerseusMangaSprite() {
   const drawY = typeof player.visualY === 'number' ? player.visualY : player.y;
   const scale = mangaScaleForY(drawY, nearScale * 0.82, nearScale);
   const x = mangaActorX(player);
-  const y = drawY + 8;
+  const y = drawY;
   const motion = currentPerseusMangaMotion();
   const art = perseusMangaArt();
   const fxReady = art && perseusMangaAssetReady(PERSEUS_FXHUD_SHEET);
@@ -1907,7 +1907,7 @@ function drawMedusaMangaSprite(t) {
   const scale = mangaScaleForY(drawY, nearScale * 0.86, nearScale);
   const motion = currentMedusaMangaMotion();
   const x = mangaActorX(medusa);
-  const y = drawY + 8;
+  const y = drawY;
   const art = perseusMangaArt();
   const heavy = art && typeof art.heavyEffects === 'function' && art.heavyEffects();
   const gaze = medusa.visualGaze || 0;
